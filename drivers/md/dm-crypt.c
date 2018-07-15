@@ -201,9 +201,6 @@ static struct crypto_ablkcipher *any_tfm(struct crypt_config *cc)
  * plain64: the initial vector is the 64-bit little-endian version of the sector
  *        number, padded with zeros if necessary.
  *
- * plain64be: the initial vector is the 64-bit big-endian version of the sector
- *        number, padded with zeros if necessary.
- *
  * essiv: "encrypted sector|salt initial vector", the sector number is
  *        encrypted with the bulk cipher using a salt as key. The salt
  *        should be derived from the bulk cipher's key via hashing.
@@ -256,16 +253,6 @@ static int crypt_iv_plain64_gen(struct crypt_config *cc, u8 *iv,
 {
 	memset(iv, 0, cc->iv_size);
 	*(__le64 *)iv = cpu_to_le64(dmreq->iv_sector);
-
-	return 0;
-}
-
-static int crypt_iv_plain64be_gen(struct crypt_config *cc, u8 *iv,
-				  struct dm_crypt_request *dmreq)
-{
-	memset(iv, 0, cc->iv_size);
-	/* iv_size is at least of size u64; usually it is 16 bytes */
-	*(__be64 *)&iv[cc->iv_size - sizeof(u64)] = cpu_to_be64(dmreq->iv_sector);
 
 	return 0;
 }
@@ -773,10 +760,6 @@ static struct crypt_iv_operations crypt_iv_plain_ops = {
 
 static struct crypt_iv_operations crypt_iv_plain64_ops = {
 	.generator = crypt_iv_plain64_gen
-};
-
-static struct crypt_iv_operations crypt_iv_plain64be_ops = {
-	.generator = crypt_iv_plain64be_gen
 };
 
 static struct crypt_iv_operations crypt_iv_essiv_ops = {
@@ -1557,86 +1540,11 @@ static void crypt_dtr(struct dm_target *ti)
 	kzfree(cc);
 }
 
-/*
- * Workaround to parse cipher algorithm from crypto API spec.
- * The cc->cipher is currently used only in ESSIV.
- * This should be probably done by crypto-api calls (once available...)
- */
-static int crypt_ctr_blkdev_cipher(struct crypt_config *cc)
-{
-	const char *alg_name = NULL;
-	char *start, *end;
-
-	alg_name = crypto_tfm_alg_name(crypto_ablkcipher_tfm(any_tfm(cc)));
-	if (!alg_name)
-		return -EINVAL;
-
-	start = strchr(alg_name, '(');
-	end = strchr(alg_name, ')');
-
-	if (!start && !end) {
-		cc->cipher = kstrdup(alg_name, GFP_KERNEL);
-		return cc->cipher ? 0 : -ENOMEM;
-	}
-
-	if (!start || !end || ++start >= end)
-		return -EINVAL;
-
-	cc->cipher = kzalloc(end - start + 1, GFP_KERNEL);
-	if (!cc->cipher)
-		return -ENOMEM;
-
-	strncpy(cc->cipher, start, end - start);
-
-	return 0;
-}
-
-static int crypt_ctr_cipher_new(struct dm_target *ti, char *cipher_in, char *key,
-				char **ivmode, char **ivopts)
+static int crypt_ctr_cipher(struct dm_target *ti,
+			    char *cipher_in, char *key)
 {
 	struct crypt_config *cc = ti->private;
-	char *tmp, *cipher_api;
-	int ret = -EINVAL;
-
-	cc->tfms_count = 1;
-
-	/*
-	 * New format (capi: prefix)
-	 * capi:cipher_api_spec-iv:ivopts
-	 */
-	tmp = &cipher_in[strlen("capi:")];
-	cipher_api = strsep(&tmp, "-");
-	*ivmode = strsep(&tmp, ":");
-	*ivopts = tmp;
-
-	if (*ivmode && !strcmp(*ivmode, "lmk"))
-		cc->tfms_count = 64;
-
-	cc->key_parts = cc->tfms_count;
-
-	/* Allocate cipher */
-	ret = crypt_alloc_tfms(cc, cipher_api);
-	if (ret < 0) {
-		ti->error = "Error allocating crypto tfm";
-		return ret;
-	}
-
-	cc->iv_size = crypto_ablkcipher_ivsize(any_tfm(cc));
-
-	ret = crypt_ctr_blkdev_cipher(cc);
-	if (ret < 0) {
-		ti->error = "Cannot allocate cipher string";
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-
-static int crypt_ctr_cipher_old(struct dm_target *ti, char *cipher_in, char *key,
-				char **ivmode, char **ivopts)
-{
-	struct crypt_config *cc = ti->private;
-	char *tmp, *cipher, *chainmode, *keycount;
+	char *tmp, *cipher, *chainmode, *ivmode, *ivopts, *keycount;
 	char *cipher_api = NULL;
 	int ret = -EINVAL;
 	char dummy;
@@ -1646,6 +1554,10 @@ static int crypt_ctr_cipher_old(struct dm_target *ti, char *cipher_in, char *key
 		ti->error = "Bad cipher specification";
 		return -EINVAL;
 	}
+
+	cc->cipher_string = kstrdup(cipher_in, GFP_KERNEL);
+	if (!cc->cipher_string)
+		goto bad_mem;
 
 	/*
 	 * Legacy dm-crypt cipher specification
@@ -1670,8 +1582,8 @@ static int crypt_ctr_cipher_old(struct dm_target *ti, char *cipher_in, char *key
 		goto bad_mem;
 
 	chainmode = strsep(&tmp, "-");
-	*ivopts = strsep(&tmp, "-");
-	*ivmode = strsep(&*ivopts, ":");
+	ivopts = strsep(&tmp, "-");
+	ivmode = strsep(&ivopts, ":");
 
 	if (tmp)
 		DMWARN("Ignoring unexpected additional cipher options");
@@ -1680,12 +1592,12 @@ static int crypt_ctr_cipher_old(struct dm_target *ti, char *cipher_in, char *key
 	 * For compatibility with the original dm-crypt mapping format, if
 	 * only the cipher name is supplied, use cbc-plain.
 	 */
-	if (!chainmode || (!strcmp(chainmode, "plain") && !*ivmode)) {
+	if (!chainmode || (!strcmp(chainmode, "plain") && !ivmode)) {
 		chainmode = "cbc";
-		*ivmode = "plain";
+		ivmode = "plain";
 	}
 
-	if (strcmp(chainmode, "ecb") && !*ivmode) {
+	if (strcmp(chainmode, "ecb") && !ivmode) {
 		ti->error = "IV mechanism required";
 		return -EINVAL;
 	}
@@ -1705,35 +1617,8 @@ static int crypt_ctr_cipher_old(struct dm_target *ti, char *cipher_in, char *key
 	ret = crypt_alloc_tfms(cc, cipher_api);
 	if (ret < 0) {
 		ti->error = "Error allocating crypto tfm";
-		kfree(cipher_api);
-		return ret;
+		goto bad;
 	}
-	kfree(cipher_api);
-
-	return 0;
-bad_mem:
-	ti->error = "Cannot allocate cipher strings";
-	return -ENOMEM;
-}
-
-static int crypt_ctr_cipher(struct dm_target *ti, char *cipher_in, char *key)
-{
-	struct crypt_config *cc = ti->private;
-	char *ivmode = NULL, *ivopts = NULL;
-	int ret;
-
-	cc->cipher_string = kstrdup(cipher_in, GFP_KERNEL);
-	if (!cc->cipher_string) {
-		ti->error = "Cannot allocate cipher strings";
-		return -ENOMEM;
-	}
-
-	if (strstarts(cipher_in, "capi:"))
-		ret = crypt_ctr_cipher_new(ti, cipher_in, key, &ivmode, &ivopts);
-	else
-		ret = crypt_ctr_cipher_old(ti, cipher_in, key, &ivmode, &ivopts);
-	if (ret)
-		return ret;
 
 	/* Initialize IV */
 	cc->iv_size = crypto_ablkcipher_ivsize(any_tfm(cc));
@@ -1753,8 +1638,6 @@ static int crypt_ctr_cipher(struct dm_target *ti, char *cipher_in, char *key)
 		cc->iv_gen_ops = &crypt_iv_plain_ops;
 	else if (strcmp(ivmode, "plain64") == 0)
 		cc->iv_gen_ops = &crypt_iv_plain64_ops;
-	else if (strcmp(ivmode, "plain64be") == 0)
-		cc->iv_gen_ops = &crypt_iv_plain64be_ops;
 	else if (strcmp(ivmode, "essiv") == 0)
 		cc->iv_gen_ops = &crypt_iv_essiv_ops;
 	else if (strcmp(ivmode, "benbi") == 0)
@@ -1778,15 +1661,16 @@ static int crypt_ctr_cipher(struct dm_target *ti, char *cipher_in, char *key)
 		cc->key_parts += 2; /* IV + whitening */
 		cc->key_extra_size = cc->iv_size + TCW_WHITENING_SIZE;
 	} else {
+		ret = -EINVAL;
 		ti->error = "Invalid IV mode";
-		return -EINVAL;
+		goto bad;
 	}
 
 	/* Initialize and set key */
 	ret = crypt_set_key(cc, key);
 	if (ret < 0) {
 		ti->error = "Error decoding and setting key";
-		return ret;
+		goto bad;
 	}
 
 	/* Allocate IV */
@@ -1794,7 +1678,7 @@ static int crypt_ctr_cipher(struct dm_target *ti, char *cipher_in, char *key)
 		ret = cc->iv_gen_ops->ctr(cc, ti, ivopts);
 		if (ret < 0) {
 			ti->error = "Error creating IV";
-			return ret;
+			goto bad;
 		}
 	}
 
@@ -1803,11 +1687,18 @@ static int crypt_ctr_cipher(struct dm_target *ti, char *cipher_in, char *key)
 		ret = cc->iv_gen_ops->init(cc);
 		if (ret < 0) {
 			ti->error = "Error initialising IV";
-			return ret;
+			goto bad;
 		}
 	}
 
+	ret = 0;
+bad:
+	kfree(cipher_api);
 	return ret;
+
+bad_mem:
+	ti->error = "Cannot allocate cipher strings";
+	return -ENOMEM;
 }
 
 /*

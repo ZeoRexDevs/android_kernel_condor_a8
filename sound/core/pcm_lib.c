@@ -363,7 +363,7 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 		if (delta > new_hw_ptr) {
 			/* check for double acknowledged interrupts */
 			hdelta = curr_jiffies - runtime->hw_ptr_jiffies;
-			if (hdelta > runtime->hw_ptr_buffer_jiffies/2 + 1) {
+			if (hdelta > runtime->hw_ptr_buffer_jiffies/2) {
 				hw_base += runtime->buffer_size;
 				if (hw_base >= runtime->boundary) {
 					hw_base = 0;
@@ -1846,6 +1846,9 @@ void snd_pcm_period_elapsed(struct snd_pcm_substream *substream)
 		return;
 	runtime = substream->runtime;
 
+	if (runtime->transfer_ack_begin)
+		runtime->transfer_ack_begin(substream);
+
 	snd_pcm_stream_lock_irqsave(substream, flags);
 	if (!snd_pcm_running(substream) ||
 	    snd_pcm_update_hw_ptr0(substream, 1) < 0)
@@ -1856,6 +1859,8 @@ void snd_pcm_period_elapsed(struct snd_pcm_substream *substream)
  _end:
 	kill_fasync(&runtime->fasync, SIGIO, POLL_IN);
 	snd_pcm_stream_unlock_irqrestore(substream, flags);
+	if (runtime->transfer_ack_end)
+		runtime->transfer_ack_end(substream);
 }
 
 EXPORT_SYMBOL(snd_pcm_period_elapsed);

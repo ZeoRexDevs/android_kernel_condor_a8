@@ -19,6 +19,7 @@
 #include <linux/uaccess.h>
 #include <linux/hardirq.h>
 #include <linux/kdebug.h>
+#include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/kexec.h>
 #include <linux/bug.h>
@@ -37,7 +38,6 @@
 #include <asm/tls.h>
 #include <asm/system_misc.h>
 #include <asm/opcodes.h>
-#include <mt-plat/mt_hooks.h>
 
 
 static const char *handler[]= {
@@ -311,8 +311,7 @@ static void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	if (!die_nest_count)
 		/* Nest count reaches zero, release the lock. */
 		arch_spin_unlock(&die_lock);
-	/* not enable irq incase softirq many turn off msdc clock */
-	/*raw_local_irq_restore(flags);*/
+	raw_local_irq_restore(flags);
 	oops_exit();
 
 	if (in_interrupt())
@@ -397,11 +396,12 @@ void unregister_undef_hook(struct undef_hook *hook)
 	raw_spin_unlock_irqrestore(&undef_lock, flags);
 }
 
-static int call_undef_hook(struct pt_regs *regs, unsigned int instr)
+static nokprobe_inline
+int call_undef_hook(struct pt_regs *regs, unsigned int instr)
 {
 	struct undef_hook *hook;
 	unsigned long flags;
-	int (*fn)(struct pt_regs *regs, unsigned int instr) = arm_undefinstr_retry;
+	int (*fn)(struct pt_regs *regs, unsigned int instr) = NULL;
 
 	raw_spin_lock_irqsave(&undef_lock, flags);
 	list_for_each_entry(hook, &undef_hook, node)
@@ -470,6 +470,7 @@ die_sig:
 
 	arm_notify_die("Oops - undefined instruction", regs, &info, 0, 6);
 }
+NOKPROBE_SYMBOL(do_undefinstr)
 
 /*
  * Handle FIQ similarly to NMI on x86 systems.

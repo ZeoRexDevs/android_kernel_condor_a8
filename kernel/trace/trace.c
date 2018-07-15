@@ -11,9 +11,6 @@
  *  Copyright (C) 2004-2006 Ingo Molnar
  *  Copyright (C) 2004 Nadia Yvette Chambers
  */
-
-#define DEBUG 1
-
 #include <linux/ring_buffer.h>
 #include <generated/utsrelease.h>
 #include <linux/stacktrace.h>
@@ -48,12 +45,6 @@
 #include "trace.h"
 #include "trace_output.h"
 
-#ifdef CONFIG_MTK_SCHED_TRACERS
-#include "mtk_ftrace.h"
-#define CREATE_TRACE_POINTS
-#include <trace/events/mtk_events.h>
-EXPORT_TRACEPOINT_SYMBOL(gpu_freq);
-#endif
 /*
  * On boot up, the ring buffer is set to the minimum size, so that
  * we do not waste memory on systems that are not using tracing.
@@ -335,18 +326,9 @@ int tracing_is_enabled(void)
  * to not have to wait for all that output. Anyway this can be
  * boot time and run time configurable.
  */
-#ifdef CONFIG_MTK_FTRACE_DEFAULT_ENABLE
-#define TRACE_BUF_SIZE_DEFAULT	4194304UL
-#else
 #define TRACE_BUF_SIZE_DEFAULT	1441792UL /* 16384 * 88 (sizeof(entry)) */
-#endif
 
 static unsigned long		trace_buf_size = TRACE_BUF_SIZE_DEFAULT;
-
-void update_buf_size(unsigned long size)
-{
-	trace_buf_size = size;
-}
 
 /* trace_types holds a link list of available tracers. */
 static struct tracer		*trace_types __read_mostly;
@@ -470,9 +452,6 @@ static void tracer_tracing_on(struct trace_array *tr)
 void tracing_on(void)
 {
 	tracer_tracing_on(&global_trace);
-#ifdef CONFIG_MTK_SCHED_TRACERS
-	trace_tracing_on(1, CALLER_ADDR0);
-#endif
 }
 EXPORT_SYMBOL_GPL(tracing_on);
 
@@ -740,9 +719,6 @@ static void tracer_tracing_off(struct trace_array *tr)
  */
 void tracing_off(void)
 {
-#ifdef CONFIG_MTK_SCHED_TRACERS
-	trace_tracing_on(0, CALLER_ADDR0);
-#endif
 	tracer_tracing_off(&global_trace);
 }
 EXPORT_SYMBOL_GPL(tracing_off);
@@ -1266,7 +1242,7 @@ void tracing_reset(struct trace_buffer *buf, int cpu)
 	/* Make sure all commits have finished */
 	synchronize_sched();
 	ring_buffer_reset_cpu(buffer, cpu);
-	pr_debug("[ftrace]cpu %d trace reset\n", cpu);
+
 	ring_buffer_record_enable(buffer);
 }
 
@@ -1288,7 +1264,6 @@ void tracing_reset_online_cpus(struct trace_buffer *buf)
 	for_each_online_cpu(cpu)
 		ring_buffer_reset_cpu(buffer, cpu);
 
-	pr_debug("[ftrace]all cpu trace reset\n");
 	ring_buffer_record_enable(buffer);
 }
 
@@ -1399,7 +1374,6 @@ void tracing_start(void)
 {
 	struct ring_buffer *buffer;
 	unsigned long flags;
-	bool reset_ftrace = false;
 
 	if (tracing_disabled)
 		return;
@@ -1410,12 +1384,9 @@ void tracing_start(void)
 			/* Someone screwed up their debugging */
 			WARN_ON_ONCE(1);
 			global_trace.stop_count = 0;
-			reset_ftrace = true;
 		}
 		goto out;
-	} else
-		reset_ftrace = true;
-
+	}
 
 	/* Prevent the buffers from switching */
 	arch_spin_lock(&global_trace.max_lock);
@@ -1434,12 +1405,6 @@ void tracing_start(void)
 
  out:
 	raw_spin_unlock_irqrestore(&global_trace.start_lock, flags);
-
-#ifdef CONFIG_MTK_SCHED_TRACERS
-	/* reset ring buffer when all readers left */
-	if (reset_ftrace == true && global_trace.stop_count == 0)
-		tracing_reset_online_cpus(&global_trace.trace_buffer);
-#endif
 }
 
 static void tracing_start_tr(struct trace_array *tr)
@@ -1598,7 +1563,7 @@ static void __trace_find_cmdline(int pid, char comm[])
 
 	map = savedcmd->map_pid_to_cmdline[pid];
 	if (map != NO_CMDLINE_MAP)
-		strlcpy(comm, get_saved_cmdlines(map), TASK_COMM_LEN-1);
+		strcpy(comm, get_saved_cmdlines(map));
 	else
 		strcpy(comm, "<...>");
 }
@@ -2121,8 +2086,7 @@ void trace_printk_init_buffers(void)
 	pr_warning("**********************************************************\n");
 
 	/* Expand the buffers to set size */
-    /* M: avoid to expand buffer because of trace_printk in kernel */
-	/* tracing_update_buffers(); */
+	tracing_update_buffers();
 
 	buffers_allocated = 1;
 
@@ -2611,9 +2575,6 @@ static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
 	get_total_entries(buf, &total, &entries);
 	seq_printf(m, "# entries-in-buffer/entries-written: %lu/%lu   #P:%d\n",
 		   entries, total, num_online_cpus());
-#ifdef CONFIG_MTK_SCHED_TRACERS
-	print_enabled_events(m);
-#endif
 	seq_puts(m, "#\n");
 }
 
@@ -3234,7 +3195,6 @@ static int tracing_release(struct inode *inode, struct file *file)
 	if (iter->trace && iter->trace->close)
 		iter->trace->close(iter);
 
-	pr_debug("[ftrace]end reading trace file\n");
 	if (!iter->snapshot)
 		/* reenable tracing if it was previously enabled */
 		tracing_start_tr(tr);
@@ -3295,7 +3255,6 @@ static int tracing_open(struct inode *inode, struct file *file)
 	}
 
 	if (file->f_mode & FMODE_READ) {
-		pr_debug("[ftrace]start reading trace file\n");
 		iter = __tracing_open(inode, file, false);
 		if (IS_ERR(iter))
 			ret = PTR_ERR(iter);
@@ -4219,7 +4178,7 @@ static int __tracing_resize_ring_buffer(struct trace_array *tr,
 	return ret;
 }
 
-ssize_t tracing_resize_ring_buffer(struct trace_array *tr,
+static ssize_t tracing_resize_ring_buffer(struct trace_array *tr,
 					  unsigned long size, int cpu_id)
 {
 	int ret = size;
@@ -4407,7 +4366,6 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 	for (i = cnt - 1; i > 0 && isspace(buf[i]); i--)
 		buf[i] = 0;
 
-	pr_debug("[ftrace]set current_tracer to '%s'\n", buf);
 	err = tracing_set_tracer(tr, buf);
 	if (err)
 		return err;
@@ -4948,7 +4906,6 @@ tracing_entries_write(struct file *filp, const char __user *ubuf,
 	struct inode *inode = file_inode(filp);
 	struct trace_array *tr = inode->i_private;
 	unsigned long val;
-	bool do_drop_cache = false;
 	int ret;
 
 	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
@@ -4961,13 +4918,8 @@ tracing_entries_write(struct file *filp, const char __user *ubuf,
 
 	/* value is in KB */
 	val <<= 10;
-resize_ring_buffer:
 	ret = tracing_resize_ring_buffer(tr, val, tracing_get_cpu(inode));
-	if (ret == -ENOMEM && !do_drop_cache) {
-		do_drop_cache = true;
-		/* drop_pagecache(); */
-		goto resize_ring_buffer;
-	} else if (ret < 0)
+	if (ret < 0)
 		return ret;
 
 	*ppos += cnt;
@@ -6389,20 +6341,12 @@ rb_simple_write(struct file *filp, const char __user *ubuf,
 		return ret;
 
 	if (buffer) {
-		if (ring_buffer_record_is_on(buffer) ^ val)
-			pr_debug("[ftrace]tracing_on is toggled to %lu\n", val);
 		mutex_lock(&trace_types_lock);
 		if (val) {
 			tracer_tracing_on(tr);
-#ifdef CONFIG_MTK_SCHED_TRACERS
-			trace_tracing_on(val, CALLER_ADDR0);
-#endif
 			if (tr->current_trace->start)
 				tr->current_trace->start(tr);
 		} else {
-#ifdef CONFIG_MTK_SCHED_TRACERS
-			trace_tracing_on(val, CALLER_ADDR0);
-#endif
 			tracer_tracing_off(tr);
 			if (tr->current_trace->stop)
 				tr->current_trace->stop(tr);

@@ -402,20 +402,6 @@ static void audit_printk_skb(struct sk_buff *skb)
 	audit_hold_skb(skb);
 }
 
-
-#ifdef CONFIG_MTK_AEE_FEATURE
-/*
- * return skb field of audit buffer
- */
-struct sk_buff *audit_get_skb(struct audit_buffer *ab)
-{
-	if (ab)
-		return (struct sk_buff *)(ab->skb);
-	else
-		return NULL;
-}
-#endif
-
 static void kauditd_send_skb(struct sk_buff *skb)
 {
 	int err;
@@ -752,6 +738,8 @@ static void audit_log_feature_change(int which, u32 old_feature, u32 new_feature
 		return;
 
 	ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_FEATURE_CHANGE);
+	if (!ab)
+		return;
 	audit_log_task_info(ab, current);
 	audit_log_format(ab, " feature=%s old=%u new=%u old_lock=%u new_lock=%u res=%d",
 			 audit_feature_names[which], !!old_feature, !!new_feature,

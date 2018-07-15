@@ -9,7 +9,6 @@
  *		Changes to use preallocated sigqueue structures
  *		to allow signals to be sent reliably.
  */
-#define DEBUG
 
 #include <linux/slab.h>
 #include <linux/export.h>
@@ -851,9 +850,7 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
 
 	if (signal->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP)) {
 		if (signal->flags & SIGNAL_GROUP_COREDUMP)
-			pr_debug("[%d:%s] is in the middle of dying so skip sig %d\n", p->pid, p->comm, sig);
-
-		return 0;
+			return sig == SIGKILL;
 		/*
 		 * The process is in the middle of dying, nothing to do.
 		 */
@@ -1437,6 +1434,10 @@ static int kill_something_info(int sig, struct siginfo *info, pid_t pid)
 		rcu_read_unlock();
 		return ret;
 	}
+
+	/* -INT_MIN is undefined.  Exclude this case to avoid a UBSAN warning */
+	if (pid == INT_MIN)
+		return -ESRCH;
 
 	read_lock(&tasklist_lock);
 	if (pid != -1) {

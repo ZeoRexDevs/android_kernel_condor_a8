@@ -173,17 +173,21 @@ extern bool single_task_running(void);
 extern unsigned long nr_iowait(void);
 extern unsigned long nr_iowait_cpu(int cpu);
 extern void get_iowait_load(unsigned long *nr_waiters, unsigned long *load);
-extern unsigned long get_cpu_load(int cpu);
+#ifdef CONFIG_CPU_QUIET
+extern u64 nr_running_integral(unsigned int cpu);
+#endif
 
 extern void calc_global_load(unsigned long ticks);
+
+#if defined(CONFIG_SMP) && defined(CONFIG_NO_HZ_COMMON)
 extern void update_cpu_load_nohz(void);
+#else
+static inline void update_cpu_load_nohz(void) { }
+#endif
 
 extern unsigned long get_parent_ip(unsigned long addr);
 
 extern void dump_cpu_task(int cpu);
-#ifdef CONFIG_SCHED_DEBUG
-extern void sysrq_sched_debug_show(void);
-#endif
 
 struct seq_file;
 struct cfs_rq;
@@ -271,6 +275,15 @@ extern char ___assert_task_state[1 - 2*!!(
 
 /* Task command name length */
 #define TASK_COMM_LEN 16
+
+enum task_event {
+	PUT_PREV_TASK   = 0,
+	PICK_NEXT_TASK  = 1,
+	TASK_WAKE       = 2,
+	TASK_MIGRATE    = 3,
+	TASK_UPDATE     = 4,
+	IRQ_UPDATE	= 5,
+};
 
 #include <linux/spinlock.h>
 
@@ -876,6 +889,14 @@ enum cpu_idle_type {
 #define SCHED_CAPACITY_SHIFT	10
 #define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
 
+struct sched_capacity_reqs {
+	unsigned long cfs;
+	unsigned long rt;
+	unsigned long dl;
+
+	unsigned long total;
+};
+
 /*
  * sched-domains (multiprocessor balancing) declarations:
  */
@@ -894,29 +915,19 @@ enum cpu_idle_type {
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 #define SD_NUMA			0x4000	/* cross-node balancing */
-#ifdef CONFIG_MTK_SCHED_CMP_TGS
-#define SD_BALANCE_TG		0x8000  /* Balance for thread group */
-#endif
+#define SD_SHARE_CAP_STATES	0x8000  /* Domain members share capacity state */
 
 #ifdef CONFIG_SCHED_SMT
 static inline int cpu_smt_flags(void)
 {
-#ifdef CONFIG_DISABLE_CPU_SCHED_DOMAIN_BALANCE
-	return SD_SHARE_CPUCAPACITY | SD_SHARE_PKG_RESOURCES | SD_LOAD_BALANCE;
-#else
 	return SD_SHARE_CPUCAPACITY | SD_SHARE_PKG_RESOURCES;
-#endif
 }
 #endif
 
 #ifdef CONFIG_SCHED_MC
 static inline int cpu_core_flags(void)
 {
-#ifdef CONFIG_DISABLE_CPU_SCHED_DOMAIN_BALANCE
-	return SD_SHARE_PKG_RESOURCES | SD_LOAD_BALANCE;
-#else
 	return SD_SHARE_PKG_RESOURCES;
-#endif
 }
 #endif
 
@@ -936,6 +947,24 @@ struct sched_domain_attr {
 }
 
 extern int sched_domain_level_max;
+
+struct capacity_state {
+	unsigned long cap;	/* compute capacity */
+	unsigned long power;	/* power consumption at this compute capacity */
+};
+
+struct idle_state {
+	unsigned long power;	 /* power consumption in this idle state */
+};
+
+struct sched_group_energy {
+	unsigned int nr_idle_states;	/* number of idle states */
+	struct idle_state *idle_states;	/* ptr to idle state array */
+	unsigned int nr_cap_states;	/* number of capacity states */
+	struct capacity_state *cap_states; /* ptr to capacity state array */
+};
+
+unsigned long capacity_curr_of(int cpu);
 
 struct sched_group;
 
@@ -1033,26 +1062,10 @@ void free_sched_domains(cpumask_var_t doms[], unsigned int ndoms);
 
 bool cpus_share_cache(int this_cpu, int that_cpu);
 
-#if defined(CONFIG_MTK_SCHED_CMP) || defined(CONFIG_SCHED_HMP)
-struct clb_stats {
-	int ncpu;                     /* The number of CPU */
-	int ntask;                    /* The number of tasks */
-	int load_avg;                 /* Arithmetic average of task load ratio */
-	int cpu_capacity;             /* Current CPU capacity */
-	int cpu_power;                /* Max CPU capacity */
-	int acap;                     /* Available CPU capacity */
-	int scaled_acap;              /* Scaled available CPU capacity */
-	int scaled_atask;             /* Scaled available task */
-	int threshold;                /* Dynamic threshold */
-#ifdef CONFIG_SCHED_HMP_PRIO_FILTER
-	int nr_normal_prio_task;      /* The number of normal-prio tasks */
-	int nr_dequeuing_low_prio;    /* The number of dequeuing low-prio tasks */
-#endif
-};
-#endif /* defined(CONFIG_MTK_SCHED_CMP) || defined(CONFIG_SCHED_HMP) */
-
 typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
 typedef int (*sched_domain_flags_f)(void);
+typedef
+const struct sched_group_energy * const(*sched_domain_energy_f)(int cpu);
 
 #define SDTL_OVERLAP	0x01
 
@@ -1065,6 +1078,7 @@ struct sd_data {
 struct sched_domain_topology_level {
 	sched_domain_mask_f mask;
 	sched_domain_flags_f sd_flags;
+	sched_domain_energy_f energy;
 	int		    flags;
 	int		    numa_level;
 	struct sd_data      data;
@@ -1084,20 +1098,6 @@ extern void wake_up_if_idle(int cpu);
 # define SD_INIT_NAME(type)
 #endif
 
-#ifdef CONFIG_SCHED_HMP
-struct hmp_domain {
-	struct cpumask cpus;
-	struct cpumask possible_cpus;
-	struct list_head hmp_domains;
-};
-
-#ifdef CONFIG_HMP_TRACER
-struct hmp_statisic {
-	unsigned int nr_force_up;   /* The number of task force up-migration */
-	unsigned int nr_force_down; /* The number of task force down-migration */
-};
-#endif /* CONFIG_HMP_TRACER */
-#endif /* CONFIG_SCHED_HMP */
 #else /* CONFIG_SMP */
 
 struct sched_domain_attr;
@@ -1135,39 +1135,24 @@ struct load_weight {
 	u32 inv_weight;
 };
 
+/*
+ * The load_avg/util_avg accumulates an infinite geometric series.
+ * 1) load_avg factors frequency scaling into the amount of time that a
+ * sched_entity is runnable on a rq into its weight. For cfs_rq, it is the
+ * aggregated such weights of all runnable and blocked sched_entities.
+ * 2) util_avg factors frequency and cpu scaling into the amount of time
+ * that a sched_entity is running on a CPU, in the range [0..SCHED_LOAD_SCALE].
+ * For cfs_rq, it is the aggregated such times of all runnable and
+ * blocked sched_entities.
+ * The 64 bit load_sum can:
+ * 1) for cfs_rq, afford 4353082796 (=2^64/47742/88761) entities with
+ * the highest weight (=88761) always runnable, we should not overflow
+ * 2) for entity, support any load.weight always runnable
+ */
 struct sched_avg {
-	u64 last_runnable_update;
-	s64 decay_count;
-	/*
-	 * utilization_avg_contrib describes the amount of time that a
-	 * sched_entity is running on a CPU. It is based on running_avg_sum
-	 * and is scaled in the range [0..SCHED_LOAD_SCALE].
-	 * load_avg_contrib described the amount of time that a sched_entity
-	 * is runnable on a rq. It is based on both runnable_avg_sum and the
-	 * weight of the task.
-	 */
-	unsigned long load_avg_contrib, utilization_avg_contrib, loadwop_avg_contrib;
-	/*
-	 * These sums represent an infinite geometric series and so are bound
-	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
-	 * choices of y < 1-2^(-32)*1024.
-	 * running_avg_sum reflects the time that the sched_entity is
-	 * effectively running on the CPU.
-	 * runnable_avg_sum represents the amount of time a sched_entity is on
-	 * a runqueue which includes the running time that is monitored by
-	 * running_avg_sum.
-	 */
-	u32 runnable_avg_sum, avg_period, running_avg_sum;
-#ifdef CONFIG_SCHED_HMP
-	unsigned long pending_load;
-	u32 nr_pending;
-#ifdef CONFIG_SCHED_HMP_PRIO_FILTER
-	u32 nr_dequeuing_low_prio;
-	u32 nr_normal_prio;
-#endif
-	u64 hmp_last_up_migration;
-	u64 hmp_last_down_migration;
-#endif /* CONFIG_SCHED_HMP */
+	u64 last_update_time, load_sum;
+	u32 util_sum, period_contrib;
+	unsigned long load_avg, util_avg;
 };
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1206,15 +1191,41 @@ struct sched_statistics {
 };
 #endif
 
-#ifdef CONFIG_MTPROF_CPUTIME
-struct mtk_isr_info {
-	int     isr_num;
-	int	 isr_count;
-	u64   isr_time;
-	char *isr_name;
-	struct mtk_isr_info *next;
+#ifdef CONFIG_SCHED_WALT
+#define RAVG_HIST_SIZE_MAX  5
+
+/* ravg represents frequency scaled cpu-demand of tasks */
+struct ravg {
+	/*
+	 * 'mark_start' marks the beginning of an event (task waking up, task
+	 * starting to execute, task being preempted) within a window
+	 *
+	 * 'sum' represents how runnable a task has been within current
+	 * window. It incorporates both running time and wait time and is
+	 * frequency scaled.
+	 *
+	 * 'sum_history' keeps track of history of 'sum' seen over previous
+	 * RAVG_HIST_SIZE windows. Windows where task was entirely sleeping are
+	 * ignored.
+	 *
+	 * 'demand' represents maximum sum seen over previous
+	 * sysctl_sched_ravg_hist_size windows. 'demand' could drive frequency
+	 * demand for tasks.
+	 *
+	 * 'curr_window' represents task's contribution to cpu busy time
+	 * statistics (rq->curr_runnable_sum) in current window
+	 *
+	 * 'prev_window' represents task's contribution to cpu busy time
+	 * statistics (rq->prev_runnable_sum) in previous window
+	 */
+	u64 mark_start;
+	u32 sum, demand;
+	u32 sum_history[RAVG_HIST_SIZE_MAX];
+	u32 curr_window, prev_window;
+	u16 active_windows;
 };
 #endif
+
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
 	struct rb_node		run_node;
@@ -1242,15 +1253,8 @@ struct sched_entity {
 #endif
 
 #ifdef CONFIG_SMP
-	/* Per-entity load-tracking */
+	/* Per entity load average tracking */
 	struct sched_avg	avg;
-#endif
-#if defined(CONFIG_MTPROF_CPUTIME) || defined(CONFIG_MT_RT_THROTTLE_MON)
-	u64			mtk_isr_time;
-#endif
-#ifdef CONFIG_MTPROF_CPUTIME
-	int			mtk_isr_count;
-	struct mtk_isr_info  *mtk_isr;
 #endif
 };
 
@@ -1335,40 +1339,6 @@ enum perf_event_task_context {
 	perf_nr_task_contexts,
 };
 
-#ifdef CONFIG_MTK_SCHED_CMP_TGS
-struct thread_group_info_t {
-	/* # of cfs threas in the thread group per cluster*/
-	unsigned long cfs_nr_running;
-	/* # of threads in the thread group per cluster */
-	unsigned long nr_running;
-	/* runnable contrib of the thread group per cluster */
-	unsigned long loadwop_avg_contrib;
-};
-
-#endif
-
-#ifdef CONFIG_MT_SCHED_TRACE
-#ifdef CONFIG_MT_SCHED_DEBUG
-#define mt_sched_printf(event, x...) \
-do { \
-	char strings[128] = "";  \
-	snprintf(strings, 128, x); \
-	pr_alert(x); \
-	trace_##event(strings); \
-} while (0)
-#else
-#define mt_sched_printf(event, x...) \
-do { \
-	char strings[128] = "";  \
-	snprintf(strings, 128, x); \
-	trace_##event(strings); \
-} while (0)
-
-#endif
-#else
-#define mt_sched_printf(event, x...) do {} while (0)
-#endif
-
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
@@ -1379,9 +1349,9 @@ struct task_struct {
 #ifdef CONFIG_SMP
 	struct llist_node wake_entry;
 	int on_cpu;
-	struct task_struct *last_wakee;
-	unsigned long wakee_flips;
+	unsigned int wakee_flips;
 	unsigned long wakee_flip_decay_ts;
+	struct task_struct *last_wakee;
 
 	int wake_cpu;
 #endif
@@ -1392,6 +1362,15 @@ struct task_struct {
 	const struct sched_class *sched_class;
 	struct sched_entity se;
 	struct sched_rt_entity rt;
+#ifdef CONFIG_SCHED_WALT
+	struct ravg ravg;
+	/*
+	 * 'init_load_pct' represents the initial task load assigned to children
+	 * of this task
+	 */
+	u32 init_load_pct;
+#endif
+
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
 #endif
@@ -1487,11 +1466,6 @@ struct task_struct {
 	struct list_head sibling;	/* linkage in my parent's children list */
 	struct task_struct *group_leader;	/* threadgroup leader */
 
-#ifdef CONFIG_MTK_SCHED_CMP_TGS
-	raw_spinlock_t thread_group_info_lock;
-	struct thread_group_info_t *thread_group_info;
-#endif
-
 	/*
 	 * ptraced is the list of tasks this task is using ptrace on.
 	 * This includes both natural children and PTRACE_ATTACH targets.
@@ -1511,8 +1485,6 @@ struct task_struct {
 
 	cputime_t utime, stime, utimescaled, stimescaled;
 	cputime_t gtime;
-	atomic64_t *time_in_state;
-	unsigned int max_states;
 	unsigned long long cpu_power;
 #ifndef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
 	struct cputime prev_cputime;
@@ -1531,12 +1503,6 @@ struct task_struct {
 	u64 real_start_time;	/* boot based time in nsec */
 /* mm fault and swap info: this can arguably be seen as either mm-specific or thread-specific */
 	unsigned long min_flt, maj_flt;
-
-	/* for thrashing accounting */
-	unsigned long fm_flt;
-#ifdef CONFIG_SWAP
-	unsigned long swap_in, swap_out;
-#endif
 
 	struct task_cputime cputime_expires;
 	struct list_head cpu_timers[3];
@@ -1824,10 +1790,6 @@ struct task_struct {
 	unsigned int	sequential_io;
 	unsigned int	sequential_io_avg;
 #endif
-#ifdef CONFIG_PREEMPT_MONITOR
-	unsigned long preempt_dur;
-#endif
-
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
@@ -2253,13 +2215,6 @@ void calc_load_exit_idle(void);
 static inline void calc_load_enter_idle(void) { }
 static inline void calc_load_exit_idle(void) { }
 #endif /* CONFIG_NO_HZ_COMMON */
-
-#ifndef CONFIG_CPUMASK_OFFSTACK
-static inline int set_cpus_allowed(struct task_struct *p, cpumask_t new_mask)
-{
-	return set_cpus_allowed_ptr(p, &new_mask);
-}
-#endif
 
 /*
  * Do not use outside of architecture code which knows its limitations.
@@ -3199,13 +3154,13 @@ static inline void mm_update_next_owner(struct mm_struct *mm)
 static inline unsigned long task_rlimit(const struct task_struct *tsk,
 		unsigned int limit)
 {
-	return ACCESS_ONCE(tsk->signal->rlim[limit].rlim_cur);
+	return READ_ONCE(tsk->signal->rlim[limit].rlim_cur);
 }
 
 static inline unsigned long task_rlimit_max(const struct task_struct *tsk,
 		unsigned int limit)
 {
-	return ACCESS_ONCE(tsk->signal->rlim[limit].rlim_max);
+	return READ_ONCE(tsk->signal->rlim[limit].rlim_max);
 }
 
 static inline unsigned long rlimit(unsigned int limit)

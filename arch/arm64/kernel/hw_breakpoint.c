@@ -33,7 +33,9 @@
 #include <asm/hw_breakpoint.h>
 #include <asm/kdebug.h>
 #include <asm/traps.h>
+#include <asm/cpufeature.h>
 #include <asm/cputype.h>
+#include <asm/sysreg.h>
 #include <asm/system_misc.h>
 #include <asm/uaccess.h>
 
@@ -53,13 +55,17 @@ static int core_num_wrps;
 /* Determine number of BRP registers available. */
 static int get_num_brps(void)
 {
-	return ((read_cpuid(ID_AA64DFR0_EL1) >> 12) & 0xf) + 1;
+	return 1 +
+		cpuid_feature_extract_field(read_system_reg(SYS_ID_AA64DFR0_EL1),
+						ID_AA64DFR0_BRPS_SHIFT);
 }
 
 /* Determine number of WRP registers available. */
 static int get_num_wrps(void)
 {
-	return ((read_cpuid(ID_AA64DFR0_EL1) >> 20) & 0xf) + 1;
+	return 1 +
+		cpuid_feature_extract_field(read_system_reg(SYS_ID_AA64DFR0_EL1),
+						ID_AA64DFR0_WRPS_SHIFT);
 }
 
 int hw_breakpoint_slots(int type)
@@ -927,9 +933,6 @@ void hw_breakpoint_thread_switch(struct task_struct *next)
  */
 static void hw_breakpoint_reset(void *unused)
 {
-#ifdef CONFIG_MEDIATEK_SOLUTION
-	/* mediatek will use our own operations for hw breakpoint/watchpoint */
-#else
 	int i;
 	struct perf_event **slots;
 	/*
@@ -959,7 +962,6 @@ static void hw_breakpoint_reset(void *unused)
 			write_wb_reg(AARCH64_DBG_REG_WVR, i, 0UL);
 		}
 	}
-#endif
 }
 
 static int hw_breakpoint_reset_notify(struct notifier_block *self,

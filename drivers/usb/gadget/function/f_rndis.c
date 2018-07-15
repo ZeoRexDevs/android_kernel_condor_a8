@@ -70,12 +70,12 @@
  *   - MS-Windows drivers sometimes emit undocumented requests.
  */
 
-static unsigned int rndis_dl_max_pkt_per_xfer = 10;
+static unsigned int rndis_dl_max_pkt_per_xfer = 3;
 module_param(rndis_dl_max_pkt_per_xfer, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(rndis_dl_max_pkt_per_xfer,
 	"Maximum packets per transfer for DL aggregation");
 
-static unsigned int rndis_ul_max_pkt_per_xfer = 1;
+static unsigned int rndis_ul_max_pkt_per_xfer = 3;
 module_param(rndis_ul_max_pkt_per_xfer, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(rndis_ul_max_pkt_per_xfer,
        "Maximum packets per transfer for UL aggregation");
@@ -383,32 +383,13 @@ static struct sk_buff *rndis_add_header(struct gether *port,
 					struct sk_buff *skb)
 {
 	struct sk_buff *skb2;
-	struct rndis_packet_msg_type *header = NULL;
-	struct f_rndis *rndis = func_to_rndis(&port->func);
 
-	if (rndis->port.multi_pkt_xfer) {
-		if (port->header) {
-			header = port->header;
-			memset(header, 0, sizeof(*header));
-			header->MessageType = cpu_to_le32(RNDIS_MSG_PACKET);
-			header->MessageLength = cpu_to_le32(skb->len +
-							sizeof(*header));
-			header->DataOffset = cpu_to_le32(36);
-			header->DataLength = cpu_to_le32(skb->len);
-			return skb;
-		}
-		pr_err("RNDIS header is NULL.\n");
-		return NULL;
+	skb2 = skb_realloc_headroom(skb, sizeof(struct rndis_packet_msg_type));
+	if (skb2)
+		rndis_add_hdr(skb2);
 
-	} else {
-		skb2 = skb_realloc_headroom(skb,
-				sizeof(struct rndis_packet_msg_type));
-		if (skb2)
-			rndis_add_hdr(skb2);
-
-		dev_kfree_skb(skb);
-		return skb2;
-	}
+	dev_kfree_skb(skb);
+	return skb2;
 }
 
 static void rndis_response_available(void *_rndis)
@@ -440,13 +421,8 @@ static void rndis_response_available(void *_rndis)
 static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
-	struct usb_composite_dev	*cdev;
+	struct usb_composite_dev	*cdev = rndis->port.func.config->cdev;
 	int				status = req->status;
-
-	if (!rndis->port.func.config || !rndis->port.func.config->cdev)
-		return;
-
-	cdev = rndis->port.func.config->cdev;
 
 	/* after TX:
 	 *  - USB_CDC_GET_ENCAPSULATED_RESPONSE (ep0/control)
@@ -484,14 +460,8 @@ static void rndis_response_complete(struct usb_ep *ep, struct usb_request *req)
 static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_rndis			*rndis = req->context;
-	struct usb_composite_dev	*cdev;
 	int				status;
 	rndis_init_msg_type		*buf;
-
-	if (!rndis->port.func.config || !rndis->port.func.config->cdev)
-		return;
-
-	cdev = rndis->port.func.config->cdev;
 
 	/* received RNDIS command from USB_CDC_SEND_ENCAPSULATED_COMMAND */
 //	spin_lock(&dev->lock);
@@ -503,12 +473,9 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 	buf = (rndis_init_msg_type *)req->buf;
 
 	if (buf->MessageType == RNDIS_MSG_INIT) {
-		if (buf->MaxTransferSize > 2048) {
+		if (buf->MaxTransferSize > 2048)
 			rndis->port.multi_pkt_xfer = 1;
-			rndis->port.dl_max_transfer_len = buf->MaxTransferSize;
-			gether_update_dl_max_xfer_size(&rndis->port,
-					rndis->port.dl_max_transfer_len);
-		} else
+		else
 			rndis->port.multi_pkt_xfer = 0;
 		pr_info("%s: MaxTransferSize: %d : Multi_pkt_txr: %s\n",
 				__func__, buf->MaxTransferSize,
@@ -564,7 +531,6 @@ rndis_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 				memcpy(req->buf, buf, n);
 				req->complete = rndis_response_complete;
 				req->context = rndis;
-
 				rndis_free_response(rndis->config, buf);
 				value = n;
 			}
@@ -759,7 +725,7 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	 * with list_for_each_entry, so we assume no race condition
 	 * with regard to rndis_opts->bound access
 	 */
-	if (rndis_opts && !rndis_opts->bound) {
+	if (!rndis_opts->bound) {
 		gether_set_gadget(rndis_opts->net, cdev->gadget);
 		status = gether_register_netdev(rndis_opts->net);
 		if (status)
@@ -901,72 +867,6 @@ fail:
 
 	ERROR(cdev, "%s: can't bind, err %d\n", f->name, status);
 
-	return status;
-}
-
-static void
-rndis_old_unbind(struct usb_configuration *c, struct usb_function *f)
-{
-	struct f_rndis	*rndis = func_to_rndis(f);
-
-	rndis_deregister(rndis->config);
-
-	usb_free_all_descriptors(f);
-
-	kfree(rndis->notify_req->buf);
-	usb_ep_free_request(rndis->notify, rndis->notify_req);
-
-	kfree(rndis);
-}
-
-int
-rndis_bind_config_vendor(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
-		u32 vendorID, const char *manufacturer, struct eth_dev *dev)
-{
-	struct f_rndis	*rndis;
-	int		status;
-
-	/* allocate and initialize one new instance */
-	status = -ENOMEM;
-	rndis = kzalloc(sizeof(*rndis), GFP_KERNEL);
-	if (!rndis)
-		goto fail;
-
-	ether_addr_copy(rndis->ethaddr, ethaddr);
-	rndis->vendorID = vendorID;
-	rndis->manufacturer = manufacturer;
-
-	rndis->port.ioport = dev;
-	/* RNDIS activates when the host changes this filter */
-	rndis->port.cdc_filter = 0;
-
-	/* RNDIS has special (and complex) framing */
-	rndis->port.header_len = sizeof(struct rndis_packet_msg_type);
-	rndis->port.wrap = rndis_add_header;
-	rndis->port.unwrap = rndis_rm_hdr;
-	rndis->port.ul_max_pkts_per_xfer = rndis_ul_max_pkt_per_xfer;
-	rndis->port.dl_max_pkts_per_xfer = rndis_dl_max_pkt_per_xfer;
-
-	rndis->port.func.name = "rndis";
-	/* descriptors are per-instance copies */
-	rndis->port.func.bind = rndis_bind;
-	/* note here use rndis_old_unbind */
-	rndis->port.func.unbind = rndis_old_unbind;
-	rndis->port.func.set_alt = rndis_set_alt;
-	rndis->port.func.setup = rndis_setup;
-	rndis->port.func.disable = rndis_disable;
-
-	status = rndis_register(rndis_response_available, rndis);
-	if (status < 0) {
-		kfree(rndis);
-		return status;
-	}
-	rndis->config = status;
-
-	status = usb_add_function(c, &rndis->port.func);
-	if (status)
-		kfree(rndis);
-fail:
 	return status;
 }
 

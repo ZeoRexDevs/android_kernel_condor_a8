@@ -18,19 +18,7 @@
 
 #include "power.h"
 
-#define HIB_PM_DEBUG 1
-#define _TAG_HIB_M "HIB/PM"
-#if (HIB_PM_DEBUG)
-#undef hib_log
-#define hib_log(fmt, ...)  pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__)
-#else
-#define hib_log(fmt, ...)
-#endif
-#undef hib_warn
-#define hib_warn(fmt, ...) pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__)
-
 DEFINE_MUTEX(pm_mutex);
-EXPORT_SYMBOL_GPL(pm_mutex);
 
 #ifdef CONFIG_PM_SLEEP
 
@@ -296,7 +284,6 @@ static inline void pm_print_times_init(void) {}
 #endif /* CONFIG_PM_SLEEP_DEBUG */
 
 struct kobject *power_kobj;
-EXPORT_SYMBOL_GPL(power_kobj);
 
 /**
  * state - control system sleep states.
@@ -361,11 +348,6 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	suspend_state_t state;
 	int error;
 
-#ifdef CONFIG_MTK_HIBERNATION
-	char *p;
-	int len;
-#endif
-
 	error = pm_autosleep_lock();
 	if (error)
 		return error;
@@ -376,35 +358,12 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	}
 
 	state = decode_state(buf, n);
-
-#ifdef CONFIG_MTK_HIBERNATION
-	p = memchr(buf, '\n', n);
-	len = p ? p - buf : n;
-	if (len == 8 && !strncmp(buf, "hibabort", len)) {
-		hib_log("abort hibernation...\n");
-		error = mtk_hibernate_abort();
-		goto out;
-	}
-#endif
-
-	pr_warn("[%s]: state = (%d)\n", __func__, state);
-
-	if (state < PM_SUSPEND_MAX) {
+	if (state < PM_SUSPEND_MAX)
 		error = pm_suspend(state);
-		pr_warn("[%s]: pm_suspend() return (%d)\n", __func__, error);
-	} else if (state == PM_SUSPEND_MAX) {
-#ifdef CONFIG_MTK_HIBERNATION
-		hib_log("trigger hibernation...\n");
-		if (!pre_hibernate()) {
-			error = 0;
-			error = mtk_hibernate();
-		}
-#else /* !CONFIG_MTK_HIBERNATION */
+	else if (state == PM_SUSPEND_MAX)
 		error = hibernate();
-#endif /* CONFIG_MTK_HIBERNATION */
-	} else {
+	else
 		error = -EINVAL;
-	}
 
  out:
 	pm_autosleep_unlock();

@@ -31,7 +31,6 @@
 #include <linux/sched.h>
 #include <linux/syscalls.h>
 
-#include <asm/arch_timer.h>
 #include <asm/atomic.h>
 #include <asm/barrier.h>
 #include <asm/debug-monitors.h>
@@ -40,7 +39,6 @@
 #include <asm/stacktrace.h>
 #include <asm/exception.h>
 #include <asm/system_misc.h>
-#include <mt-plat/mt_hooks.h>
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -63,8 +61,7 @@ static void dump_mem(const char *lvl, const char *str, unsigned long bottom,
 
 	/*
 	 * We need to switch to kernel mode so that we can use __get_user
-	 * to safely read from kernel space.  Note that we now dump the
-	 * code first, just in case the backtrace kills us.
+	 * to safely read from kernel space.
 	 */
 	fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -101,20 +98,11 @@ static void dump_backtrace_entry(unsigned long where, unsigned long stack)
 			 stack + sizeof(struct pt_regs));
 }
 
-static void dump_instr(const char *lvl, struct pt_regs *regs)
+static void __dump_instr(const char *lvl, struct pt_regs *regs)
 {
 	unsigned long addr = instruction_pointer(regs);
-	mm_segment_t fs;
 	char str[sizeof("00000000 ") * 5 + 2 + 1], *p = str;
 	int i;
-
-	/*
-	 * We need to switch to kernel mode so that we can use __get_user
-	 * to safely read from kernel space.  Note that we now dump the
-	 * code first, just in case the backtrace kills us.
-	 */
-	fs = get_fs();
-	set_fs(KERNEL_DS);
 
 	for (i = -4; i < 1; i++) {
 		unsigned int val, bad;
@@ -129,8 +117,18 @@ static void dump_instr(const char *lvl, struct pt_regs *regs)
 		}
 	}
 	printk("%sCode: %s\n", lvl, str);
+}
 
-	set_fs(fs);
+static void dump_instr(const char *lvl, struct pt_regs *regs)
+{
+	if (!user_mode(regs)) {
+		mm_segment_t fs = get_fs();
+		set_fs(KERNEL_DS);
+		__dump_instr(lvl, regs);
+		set_fs(fs);
+	} else {
+		__dump_instr(lvl, regs);
+	}
 }
 
 static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
@@ -182,11 +180,7 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 #else
 #define S_PREEMPT ""
 #endif
-#ifdef CONFIG_SMP
 #define S_SMP " SMP"
-#else
-#define S_SMP ""
-#endif
 
 static int __die(const char *str, int err, struct thread_info *thread,
 		 struct pt_regs *regs)
@@ -240,8 +234,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
-	/* keep preemption/irq disabled in KE flow to prevent context switch*/
-	/*raw_spin_unlock_irq(&die_lock);*/
+	raw_spin_unlock_irq(&die_lock);
 	oops_exit();
 
 	if (in_interrupt())
@@ -290,7 +283,7 @@ static int call_undef_hook(struct pt_regs *regs)
 	struct undef_hook *hook;
 	unsigned long flags;
 	u32 instr;
-	int (*fn)(struct pt_regs *regs, unsigned int instr) = arm_undefinstr_retry;
+	int (*fn)(struct pt_regs *regs, u32 instr) = NULL;
 	void __user *pc = (void __user *)instruction_pointer(regs);
 
 	if (!user_mode(regs))
@@ -369,7 +362,7 @@ static void cntfrq_read_handler(unsigned int esr, struct pt_regs *regs)
 	int rt = (esr & ESR_ELx_SYS64_ISS_RT_MASK) >> ESR_ELx_SYS64_ISS_RT_SHIFT;
 
 	if (rt != 31)
-		asm volatile("mrs %0, cntfrq_el0" : "=r" (regs->regs[rt]));
+		regs->regs[rt] = read_sysreg(cntfrq_el0);
 	regs->pc += 4;
 }
 
@@ -410,18 +403,50 @@ asmlinkage long do_ni_syscall(struct pt_regs *regs)
 	return sys_ni_syscall();
 }
 
-#ifdef CONFIG_MEDIATEK_SOLUTION
-static void (*async_abort_handler)(struct pt_regs *regs, void *);
-static void *async_abort_priv;
+static const char *esr_class_str[] = {
+	[0 ... ESR_ELx_EC_MAX]		= "UNRECOGNIZED EC",
+	[ESR_ELx_EC_UNKNOWN]		= "Unknown/Uncategorized",
+	[ESR_ELx_EC_WFx]		= "WFI/WFE",
+	[ESR_ELx_EC_CP15_32]		= "CP15 MCR/MRC",
+	[ESR_ELx_EC_CP15_64]		= "CP15 MCRR/MRRC",
+	[ESR_ELx_EC_CP14_MR]		= "CP14 MCR/MRC",
+	[ESR_ELx_EC_CP14_LS]		= "CP14 LDC/STC",
+	[ESR_ELx_EC_FP_ASIMD]		= "ASIMD",
+	[ESR_ELx_EC_CP10_ID]		= "CP10 MRC/VMRS",
+	[ESR_ELx_EC_CP14_64]		= "CP14 MCRR/MRRC",
+	[ESR_ELx_EC_ILL]		= "PSTATE.IL",
+	[ESR_ELx_EC_SVC32]		= "SVC (AArch32)",
+	[ESR_ELx_EC_HVC32]		= "HVC (AArch32)",
+	[ESR_ELx_EC_SMC32]		= "SMC (AArch32)",
+	[ESR_ELx_EC_SVC64]		= "SVC (AArch64)",
+	[ESR_ELx_EC_HVC64]		= "HVC (AArch64)",
+	[ESR_ELx_EC_SMC64]		= "SMC (AArch64)",
+	[ESR_ELx_EC_SYS64]		= "MSR/MRS (AArch64)",
+	[ESR_ELx_EC_IMP_DEF]		= "EL3 IMP DEF",
+	[ESR_ELx_EC_IABT_LOW]		= "IABT (lower EL)",
+	[ESR_ELx_EC_IABT_CUR]		= "IABT (current EL)",
+	[ESR_ELx_EC_PC_ALIGN]		= "PC Alignment",
+	[ESR_ELx_EC_DABT_LOW]		= "DABT (lower EL)",
+	[ESR_ELx_EC_DABT_CUR]		= "DABT (current EL)",
+	[ESR_ELx_EC_SP_ALIGN]		= "SP Alignment",
+	[ESR_ELx_EC_FP_EXC32]		= "FP (AArch32)",
+	[ESR_ELx_EC_FP_EXC64]		= "FP (AArch64)",
+	[ESR_ELx_EC_SERROR]		= "SError",
+	[ESR_ELx_EC_BREAKPT_LOW]	= "Breakpoint (lower EL)",
+	[ESR_ELx_EC_BREAKPT_CUR]	= "Breakpoint (current EL)",
+	[ESR_ELx_EC_SOFTSTP_LOW]	= "Software Step (lower EL)",
+	[ESR_ELx_EC_SOFTSTP_CUR]	= "Software Step (current EL)",
+	[ESR_ELx_EC_WATCHPT_LOW]	= "Watchpoint (lower EL)",
+	[ESR_ELx_EC_WATCHPT_CUR]	= "Watchpoint (current EL)",
+	[ESR_ELx_EC_BKPT32]		= "BKPT (AArch32)",
+	[ESR_ELx_EC_VECTOR32]		= "Vector catch (AArch32)",
+	[ESR_ELx_EC_BRK64]		= "BRK (AArch64)",
+};
 
-int register_async_abort_handler(void (*fn)(struct pt_regs *regs, void *), void *priv)
+const char *esr_get_class_string(u32 esr)
 {
-	async_abort_handler = fn;
-	async_abort_priv = priv;
-
-	return 0;
+	return esr_class_str[ESR_ELx_EC(esr)];
 }
-#endif
 
 /*
  * bad_mode handles the impossible case in the exception vector. This is always
@@ -431,17 +456,8 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 {
 	console_verbose();
 
-#ifdef CONFIG_MEDIATEK_SOLUTION
-	/*
-	 *	* reason is defined in entry.S, 3 means BAD_ERROR,
-	 *	* which would be triggered by async abort
-	 */
-	if ((reason == 3) && async_abort_handler)
-		async_abort_handler(regs, async_abort_priv);
-#endif
-
-	pr_crit("Bad mode in %s handler detected, code 0x%08x\n",
-		handler[reason], esr);
+	pr_crit("Bad mode in %s handler detected, code 0x%08x -- %s\n",
+		handler[reason], esr, esr_get_class_string(esr));
 
 	die("Oops - bad mode", regs, 0);
 	local_irq_disable();

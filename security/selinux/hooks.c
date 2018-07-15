@@ -1611,9 +1611,6 @@ static int inode_has_perm(const struct cred *cred,
 	sid = cred_sid(cred);
 	isec = inode->i_security;
 
-	if (NULL == isec)
-		return -EINVAL;
-
 	return avc_has_perm(sid, isec->sid, isec->sclass, perms, adp);
 }
 

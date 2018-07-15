@@ -59,7 +59,6 @@
 #include <linux/page-debug-flags.h>
 #include <linux/hugetlb.h>
 #include <linux/sched/rt.h>
-#include <linux/random.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -143,7 +142,6 @@ void pm_restore_gfp_mask(void)
 		saved_gfp_mask = 0;
 	}
 }
-EXPORT_SYMBOL_GPL(pm_restore_gfp_mask);
 
 void pm_restrict_gfp_mask(void)
 {
@@ -152,7 +150,6 @@ void pm_restrict_gfp_mask(void)
 	saved_gfp_mask = gfp_allowed_mask;
 	gfp_allowed_mask &= ~GFP_IOFS;
 }
-EXPORT_SYMBOL_GPL(pm_restrict_gfp_mask);
 
 bool pm_suspended_storage(void)
 {
@@ -778,8 +775,6 @@ static bool free_pages_prepare(struct page *page, unsigned int order)
 	int i;
 	int bad = 0;
 
-	unsigned long index = 1UL << order;
-
 	trace_mm_page_free(page, order);
 	kmemcheck_free_shadow(page, order);
 
@@ -796,10 +791,6 @@ static bool free_pages_prepare(struct page *page, unsigned int order)
 		debug_check_no_obj_freed(page_address(page),
 					   PAGE_SIZE << order);
 	}
-
-	for (; index; --index)
-		sanitize_highpage(page + index - 1);
-
 	arch_free_page(page, order);
 	kernel_map_pages(page, 1 << order, 0);
 
@@ -838,16 +829,6 @@ void __init __free_pages_bootmem(struct page *page, unsigned long pfn,
 	}
 	__ClearPageReserved(p);
 	set_page_count(p, 0);
-
-	if (!PageHighMem(page) && page_to_pfn(page) < 0x100000) {
-		unsigned long hash = 0;
-		size_t index, end = PAGE_SIZE * nr_pages / sizeof hash;
-		const unsigned long *data = lowmem_page_address(page);
-
-		for (index = 0; index < end; index++)
-			hash ^= hash + data[index];
-		add_device_randomness((const void *)&hash, sizeof(hash));
-	}
 
 	page_zone(page)->managed_pages += nr_pages;
 	set_page_refcounted(page);
@@ -965,8 +946,6 @@ static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags)
 {
 	int i;
 
-	unsigned long index = 1UL << order;
-
 	for (i = 0; i < (1 << order); i++) {
 		struct page *p = page + i;
 		if (unlikely(check_new_page(p)))
@@ -979,8 +958,8 @@ static int prep_new_page(struct page *page, unsigned int order, gfp_t gfp_flags)
 	arch_alloc_page(page, order);
 	kernel_map_pages(page, 1 << order, 1);
 
-	for (; index; --index)
-		sanitize_highpage_verify(page + index - 1);
+	if (gfp_flags & __GFP_ZERO)
+		prep_zero_page(page, order, gfp_flags);
 
 	if (order && (gfp_flags & __GFP_COMP))
 		prep_compound_page(page, order);
@@ -2835,21 +2814,6 @@ got_pg:
 	return page;
 }
 
-#ifdef CONFIG_MT_ENG_BUILD
-#define __LOG_PAGE_ALLOC_ORDER__
-#include <linux/stacktrace.h>
-#endif
-
-#ifdef __LOG_PAGE_ALLOC_ORDER__
-
-static int page_alloc_dump_order_threshold = 4;
-static int page_alloc_log_order_threshold = 3;
-
-/* Jack remove page_alloc_order_log array for non-used */
-module_param_named(dump_order_threshold, page_alloc_dump_order_threshold, int, S_IRUGO | S_IWUSR);
-module_param_named(log_order_threshold, page_alloc_log_order_threshold, int, S_IRUGO | S_IWUSR);
-#endif /* __LOG_PAGE_ALLOC_ORDER__ */
-
 /*
  * This is the 'heart' of the zoned buddy allocator.
  */
@@ -2865,10 +2829,6 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	unsigned int cpuset_mems_cookie;
 	int alloc_flags = ALLOC_WMARK_LOW|ALLOC_CPUSET|ALLOC_FAIR;
 	int classzone_idx;
-#ifdef __LOG_PAGE_ALLOC_ORDER__
-	struct stack_trace trace;
-	unsigned long entries[6] = {0};
-#endif
 
 	gfp_mask &= gfp_allowed_mask;
 
@@ -2887,25 +2847,8 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	if (unlikely(!zonelist->_zonerefs->zone))
 		return NULL;
 
-	/*
-	 * add special case when gfp_mask only have __GFP_HIGHMEM + __GFP_CMA,
-	 * reassign high_zoneidx to select zone_movable as first choice
-	 */
-	if ((gfp_mask & (GFP_ZONEMASK|__GFP_CMA)) == (__GFP_HIGHMEM | __GFP_CMA)) {
-		gfp_mask |= __GFP_MOVABLE;
-		high_zoneidx = gfp_zone(gfp_mask);
-		migratetype = gfpflags_to_migratetype(gfp_mask);
-	}
-
-	if (IS_ENABLED(CONFIG_CMA) && migratetype == MIGRATE_MOVABLE) {
-		if (gfp_mask & __GFP_CMA) {
-			/* Assign high watermakr for __GFP_CMA page allocation */
-
-			alloc_flags &= ~ALLOC_WMARK_MASK;
-			alloc_flags |= ALLOC_WMARK_HIGH;
-		}
+	if (IS_ENABLED(CONFIG_CMA) && migratetype == MIGRATE_MOVABLE)
 		alloc_flags |= ALLOC_CMA;
-	}
 
 retry_cpuset:
 	cpuset_mems_cookie = read_mems_allowed_begin();
@@ -2934,28 +2877,6 @@ retry_cpuset:
 				preferred_zone, classzone_idx, migratetype);
 	}
 
-#ifdef __LOG_PAGE_ALLOC_ORDER__
-
-#ifdef CONFIG_FREEZER /* Added skip debug log in IPOH */
-	if (unlikely(!atomic_read(&system_freezing_cnt))) {
-#endif
-		if (order >= page_alloc_dump_order_threshold) {
-			trace.nr_entries = 0;
-			trace.max_entries = ARRAY_SIZE(entries);
-			trace.entries = entries;
-			trace.skip = 2;
-
-			save_stack_trace(&trace);
-			trace_dump_allocate_large_pages(page, order, gfp_mask, entries);
-		} else if (order >= page_alloc_log_order_threshold) {
-			trace_debug_allocate_large_pages(page, order, gfp_mask);
-		}
-
-#ifdef CONFIG_FREEZER
-	}
-#endif
-
-#endif /* __LOG_PAGE_ALLOC_ORDER__ */
 	trace_mm_page_alloc(page, order, gfp_mask, migratetype);
 
 out:
@@ -3177,27 +3098,6 @@ static unsigned long nr_free_zone_pages(int offset)
 	return sum;
 }
 
-static unsigned long nr_unallocated_zone_pages(int offset)
-{
-	struct zoneref *z;
-	struct zone *zone;
-
-	/* Just pick one node, since fallback list is circular */
-	unsigned long sum = 0;
-
-	struct zonelist *zonelist = node_zonelist(numa_node_id(), GFP_KERNEL);
-
-	for_each_zone_zonelist(zone, z, zonelist, offset) {
-		unsigned long high = high_wmark_pages(zone);
-		unsigned long left = zone_page_state(zone, NR_FREE_PAGES);
-
-		if (left > high)
-			sum += left - high;
-	}
-
-	return sum;
-}
-
 /**
  * nr_free_buffer_pages - count number of pages beyond high watermark
  *
@@ -3209,15 +3109,6 @@ unsigned long nr_free_buffer_pages(void)
 	return nr_free_zone_pages(gfp_zone(GFP_USER));
 }
 EXPORT_SYMBOL_GPL(nr_free_buffer_pages);
-
-/*
- * Amount of free RAM allocatable within ZONE_DMA and ZONE_NORMAL
- */
-unsigned long nr_unallocated_buffer_pages(void)
-{
-	return nr_unallocated_zone_pages(gfp_zone(GFP_USER));
-}
-EXPORT_SYMBOL_GPL(nr_unallocated_buffer_pages);
 
 /**
  * nr_free_pagecache_pages - count number of pages beyond high watermark

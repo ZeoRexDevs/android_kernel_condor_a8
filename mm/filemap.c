@@ -468,7 +468,7 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 	VM_BUG_ON_PAGE(!PageLocked(new), new);
 	VM_BUG_ON_PAGE(new->mapping, new);
 
-	error = radix_tree_preload(gfp_mask & ~__GFP_HIGHMEM);
+	error = radix_tree_preload(gfp_mask & GFP_RECLAIM_MASK);
 	if (!error) {
 		struct address_space *mapping = old->mapping;
 		void (*freepage)(struct page *);
@@ -561,7 +561,7 @@ static int __add_to_page_cache_locked(struct page *page,
 			return error;
 	}
 
-	error = radix_tree_maybe_preload(gfp_mask & ~__GFP_HIGHMEM);
+	error = radix_tree_maybe_preload(gfp_mask & GFP_RECLAIM_MASK);
 	if (error) {
 		if (!huge)
 			mem_cgroup_cancel_charge(page, memcg);
@@ -1890,15 +1890,8 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		 */
 		do_async_mmap_readahead(vma, ra, file, page, offset);
 	} else if (!page) {
-		trace_mm_fmflt_op_read(0);
 		/* No page in the page cache at all */
 		do_sync_mmap_readahead(vma, ra, file, offset);
-		trace_mm_fmflt_op_read_done(0);
-
-		/* mlog */
-		count_vm_event(PGFMFAULT);
-		current->fm_flt++;
-
 		count_vm_event(PGMAJFAULT);
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
@@ -1908,16 +1901,10 @@ retry_find:
 			goto no_cached_page;
 	}
 
-	if (ret == VM_FAULT_MAJOR)
-		trace_mm_fmflt_op_wait(0);
 	if (!lock_page_or_retry(page, vma->vm_mm, vmf->flags)) {
-		if (ret == VM_FAULT_MAJOR)
-			trace_mm_fmflt_op_wait_done(0);
 		page_cache_release(page);
 		return ret | VM_FAULT_RETRY;
 	}
-	if (ret == VM_FAULT_MAJOR)
-		trace_mm_fmflt_op_wait_done(0);
 
 	/* Did it get truncated? */
 	if (unlikely(page->mapping != mapping)) {

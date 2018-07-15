@@ -7,7 +7,6 @@
 */
 
 #include "fuse_i.h"
-#include "mt_fuse.h"
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -510,21 +509,10 @@ static void __fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 	spin_unlock(&fc->lock);
 }
 
-void fuse_request_send_ex(struct fuse_conn *fc, struct fuse_req *req,
-	__u32 size)
-{
-	FUSE_IOLOG_INIT(size, req->in.h.opcode);
-	req->isreply = 1;
-	FUSE_IOLOG_START();
-	__fuse_request_send(fc, req);
-	FUSE_IOLOG_END();
-	FUSE_IOLOG_PRINT();
-}
-EXPORT_SYMBOL_GPL(fuse_request_send_ex);
-
 void fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 {
-	fuse_request_send_ex(fc, req, 0);
+	req->isreply = 1;
+	__fuse_request_send(fc, req);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send);
 
@@ -556,21 +544,10 @@ static void fuse_request_send_nowait(struct fuse_conn *fc, struct fuse_req *req)
 	}
 }
 
-void fuse_request_send_background_ex(struct fuse_conn *fc, struct fuse_req *req,
-	__u32 size)
-{
-	FUSE_IOLOG_INIT(size, req->in.h.opcode);
-	FUSE_IOLOG_START();
-	req->isreply = 1;
-	fuse_request_send_nowait(fc, req);
-	FUSE_IOLOG_END();
-	FUSE_IOLOG_PRINT();
-}
-EXPORT_SYMBOL_GPL(fuse_request_send_background_ex);
-
 void fuse_request_send_background(struct fuse_conn *fc, struct fuse_req *req)
 {
-	fuse_request_send_background_ex(fc, req, 0);
+	req->isreply = 1;
+	fuse_request_send_nowait(fc, req);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send_background);
 

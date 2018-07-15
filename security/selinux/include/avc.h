@@ -152,9 +152,6 @@ int avc_has_perm(u32 ssid, u32 tsid,
 		 u16 tclass, u32 requested,
 		 struct common_audit_data *auditdata);
 
-int avc_has_operation(u32 ssid, u32 tsid, u16 tclass, u32 requested,
-		u16 cmd, struct common_audit_data *ad);
-
 int avc_has_extended_perms(u32 ssid, u32 tsid, u16 tclass, u32 requested,
 		u8 driver, u8 perm, struct common_audit_data *ad);
 
@@ -181,11 +178,6 @@ void avc_disable(void);
 
 #ifdef CONFIG_SECURITY_SELINUX_AVC_STATS
 DECLARE_PER_CPU(struct avc_cache_stats, avc_cache_stats);
-#endif
-
-#ifdef CONFIG_MTK_AEE_FEATURE
-extern struct sk_buff *audit_get_skb(struct audit_buffer *ab);
-extern void mtk_audit_hook(char *data);
 #endif
 
 #endif /* _SELINUX_AVC_H_ */

@@ -40,9 +40,6 @@
 #include <linux/crc16.h>
 #include <linux/cleancache.h>
 #include <asm/uaccess.h>
-#ifdef CONFIG_PWR_LOSS_MTK_SPOH
-#include <mach/power_loss_test.h>
-#endif
 
 #include <linux/kthread.h>
 #include <linux/freezer.h>
@@ -1163,7 +1160,6 @@ enum {
 	Opt_noquota, Opt_barrier, Opt_nobarrier, Opt_err,
 	Opt_usrquota, Opt_grpquota, Opt_i_version,
 	Opt_stripe, Opt_delalloc, Opt_nodelalloc, Opt_mblk_io_submit,
-	Opt_lazytime, Opt_nolazytime,
 	Opt_nomblk_io_submit, Opt_block_validity, Opt_noblock_validity,
 	Opt_inode_readahead_blks, Opt_journal_ioprio,
 	Opt_dioread_nolock, Opt_dioread_lock,
@@ -1226,8 +1222,6 @@ static const match_table_t tokens = {
 	{Opt_i_version, "i_version"},
 	{Opt_stripe, "stripe=%u"},
 	{Opt_delalloc, "delalloc"},
-	{Opt_lazytime, "lazytime"},
-	{Opt_nolazytime, "nolazytime"},
 	{Opt_nodelalloc, "nodelalloc"},
 	{Opt_removed, "mblk_io_submit"},
 	{Opt_removed, "nomblk_io_submit"},
@@ -1484,12 +1478,6 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 		return 1;
 	case Opt_i_version:
 		sb->s_flags |= MS_I_VERSION;
-		return 1;
-	case Opt_lazytime:
-		sb->s_flags |= MS_LAZYTIME;
-		return 1;
-	case Opt_nolazytime:
-		sb->s_flags &= ~MS_LAZYTIME;
 		return 1;
 	}
 
@@ -1940,9 +1928,6 @@ static int ext4_setup_super(struct super_block *sb, struct ext4_super_block *es,
 	if (sbi->s_journal)
 		EXT4_SET_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_RECOVER);
 
-#ifdef CONFIG_PWR_LOSS_MTK_SPOH
-	PL_RESET_ON_CASE("EXT4", "Mount");
-#endif
 	ext4_commit_super(sb, 1);
 done:
 	if (test_opt(sb, DEBUG))
@@ -2027,24 +2012,22 @@ failed:
 static __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 				   struct ext4_group_desc *gdp)
 {
-	int offset = offsetof(struct ext4_group_desc, bg_checksum);
+	int offset;
 	__u16 crc = 0;
 	__le32 le_group = cpu_to_le32(block_group);
 
 	if (ext4_has_metadata_csum(sbi->s_sb)) {
 		/* Use new metadata_csum algorithm */
+		__le16 save_csum;
 		__u32 csum32;
-		__u16 dummy_csum = 0;
 
+		save_csum = gdp->bg_checksum;
+		gdp->bg_checksum = 0;
 		csum32 = ext4_chksum(sbi, sbi->s_csum_seed, (__u8 *)&le_group,
 				     sizeof(le_group));
-		csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp, offset);
-		csum32 = ext4_chksum(sbi, csum32, (__u8 *)&dummy_csum,
-				     sizeof(dummy_csum));
-		offset += sizeof(dummy_csum);
-		if (offset < sbi->s_desc_size)
-			csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp + offset,
-					     sbi->s_desc_size - offset);
+		csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp,
+				     sbi->s_desc_size);
+		gdp->bg_checksum = save_csum;
 
 		crc = csum32 & 0xFFFF;
 		goto out;
@@ -2054,6 +2037,8 @@ static __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 	if (!(sbi->s_es->s_feature_ro_compat &
 	      cpu_to_le32(EXT4_FEATURE_RO_COMPAT_GDT_CSUM)))
 		return 0;
+
+	offset = offsetof(struct ext4_group_desc, bg_checksum);
 
 	crc = crc16(~0, sbi->s_es->s_uuid, sizeof(sbi->s_es->s_uuid));
 	crc = crc16(crc, (__u8 *)&le_group, sizeof(le_group));
@@ -2098,6 +2083,7 @@ static int ext4_check_descriptors(struct super_block *sb,
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
 	ext4_fsblk_t first_block = le32_to_cpu(sbi->s_es->s_first_data_block);
 	ext4_fsblk_t last_block;
+	ext4_fsblk_t last_bg_block = sb_block + ext4_bg_num_gdb(sb, 0) + 1;
 	ext4_fsblk_t block_bitmap;
 	ext4_fsblk_t inode_bitmap;
 	ext4_fsblk_t inode_table;
@@ -2127,6 +2113,16 @@ static int ext4_check_descriptors(struct super_block *sb,
 			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
 				 "Block bitmap for group %u overlaps "
 				 "superblock", i);
+			if (!(sb->s_flags & MS_RDONLY))
+				return 0;
+		}
+		if (block_bitmap >= sb_block + 1 &&
+		    block_bitmap <= last_bg_block) {
+			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
+				 "Block bitmap for group %u overlaps "
+				 "block group descriptors", i);
+			if (!(sb->s_flags & MS_RDONLY))
+				return 0;
 		}
 		if (block_bitmap < first_block || block_bitmap > last_block) {
 			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
@@ -2139,6 +2135,16 @@ static int ext4_check_descriptors(struct super_block *sb,
 			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
 				 "Inode bitmap for group %u overlaps "
 				 "superblock", i);
+			if (!(sb->s_flags & MS_RDONLY))
+				return 0;
+		}
+		if (inode_bitmap >= sb_block + 1 &&
+		    inode_bitmap <= last_bg_block) {
+			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
+				 "Inode bitmap for group %u overlaps "
+				 "block group descriptors", i);
+			if (!(sb->s_flags & MS_RDONLY))
+				return 0;
 		}
 		if (inode_bitmap < first_block || inode_bitmap > last_block) {
 			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
@@ -2151,6 +2157,16 @@ static int ext4_check_descriptors(struct super_block *sb,
 			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
 				 "Inode table for group %u overlaps "
 				 "superblock", i);
+			if (!(sb->s_flags & MS_RDONLY))
+				return 0;
+		}
+		if (inode_table >= sb_block + 1 &&
+		    inode_table <= last_bg_block) {
+			ext4_msg(sb, KERN_ERR, "ext4_check_descriptors: "
+				 "Inode table for group %u overlaps "
+				 "block group descriptors", i);
+			if (!(sb->s_flags & MS_RDONLY))
+				return 0;
 		}
 		if (inode_table < first_block ||
 		    inode_table + sbi->s_itb_per_group - 1 > last_block) {
@@ -3743,11 +3759,11 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 			 le32_to_cpu(es->s_log_block_size));
 		goto failed_mount;
 	}
-
-	if (le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks) > (blocksize / 4)) {
+	if (le32_to_cpu(es->s_log_cluster_size) >
+	    (EXT4_MAX_CLUSTER_LOG_SIZE - EXT4_MIN_BLOCK_LOG_SIZE)) {
 		ext4_msg(sb, KERN_ERR,
-			 "Number of reserved GDT blocks insanely large: %d",
-			 le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks));
+			 "Invalid log cluster size: %u",
+			 le32_to_cpu(es->s_log_cluster_size));
 		goto failed_mount;
 	}
 
@@ -3755,6 +3771,13 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	    es->s_encryption_level) {
 		ext4_msg(sb, KERN_ERR, "Unsupported encryption level %d",
 			 es->s_encryption_level);
+		goto failed_mount;
+	}
+
+	if (le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks) > (blocksize / 4)) {
+		ext4_msg(sb, KERN_ERR,
+			 "Number of reserved GDT blocks insanely large: %d",
+			 le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks));
 		goto failed_mount;
 	}
 
@@ -3873,13 +3896,6 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 				 "block size (%d)", clustersize, blocksize);
 			goto failed_mount;
 		}
-		if (le32_to_cpu(es->s_log_cluster_size) >
-		    (EXT4_MAX_CLUSTER_LOG_SIZE - EXT4_MIN_BLOCK_LOG_SIZE)) {
-			ext4_msg(sb, KERN_ERR,
-				 "Invalid log cluster size: %u",
-				 le32_to_cpu(es->s_log_cluster_size));
-			goto failed_mount;
-		}
 		sbi->s_cluster_bits = le32_to_cpu(es->s_log_cluster_size) -
 			le32_to_cpu(es->s_log_block_size);
 		sbi->s_clusters_per_group =
@@ -3900,10 +3916,10 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		}
 	} else {
 		if (clustersize != blocksize) {
-			ext4_warning(sb, "fragment/cluster size (%d) != "
-				     "block size (%d)", clustersize,
-				     blocksize);
-			clustersize = blocksize;
+			ext4_msg(sb, KERN_ERR,
+				 "fragment/cluster size (%d) != "
+				 "block size (%d)", clustersize, blocksize);
+			goto failed_mount;
 		}
 		if (sbi->s_blocks_per_group > blocksize * 8) {
 			ext4_msg(sb, KERN_ERR,
@@ -3957,6 +3973,13 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 			 ext4_blocks_count(es));
 		goto failed_mount;
 	}
+	if ((es->s_first_data_block == 0) && (es->s_log_block_size == 0) &&
+	    (sbi->s_cluster_ratio == 1)) {
+		ext4_msg(sb, KERN_WARNING, "bad geometry: first data "
+			 "block is 0 with a 1k block and cluster size");
+		goto failed_mount;
+	}
+
 	blocks_count = (ext4_blocks_count(es) -
 			le32_to_cpu(es->s_first_data_block) +
 			EXT4_BLOCKS_PER_GROUP(sb) - 1);
@@ -3990,6 +4013,14 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	if (sbi->s_group_desc == NULL) {
 		ext4_msg(sb, KERN_ERR, "not enough memory");
 		ret = -ENOMEM;
+		goto failed_mount;
+	}
+	if (((u64)sbi->s_groups_count * sbi->s_inodes_per_group) !=
+	    le32_to_cpu(es->s_inodes_count)) {
+		ext4_msg(sb, KERN_ERR, "inodes count not valid: %u vs %llu",
+			 le32_to_cpu(es->s_inodes_count),
+			 ((u64)sbi->s_groups_count * sbi->s_inodes_per_group));
+		ret = -EINVAL;
 		goto failed_mount;
 	}
 
@@ -4942,8 +4973,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 #endif
 	char *orig_data = kstrdup(data, GFP_KERNEL);
 
-	sync_filesystem(sb);
-
 	/* Store the original options */
 	old_sb_flags = sb->s_flags;
 	old_opts.s_mount_opt = sbi->s_mount_opt;
@@ -5013,9 +5042,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 		ext4_init_journal_params(sb, sbi->s_journal);
 		set_task_ioprio(sbi->s_journal->j_task, journal_ioprio);
 	}
-
-	if (*flags & MS_LAZYTIME)
-		sb->s_flags |= MS_LAZYTIME;
 
 	if ((*flags & MS_RDONLY) != (sb->s_flags & MS_RDONLY)) {
 		if (sbi->s_mount_flags & EXT4_MF_FS_ABORTED) {
@@ -5140,7 +5166,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	}
 #endif
 
-	*flags = (*flags & ~MS_LAZYTIME) | (sb->s_flags & MS_LAZYTIME);
 	ext4_msg(sb, KERN_INFO, "re-mounted. Opts: %s", orig_data);
 	kfree(orig_data);
 	return 0;

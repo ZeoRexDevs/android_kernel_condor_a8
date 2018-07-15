@@ -202,6 +202,7 @@ journal_err_out:
 static int uuid_is_zero(__u8 u[16])
 {
 	int	i;
+
 	for (i = 0; i < 16; i++)
 		if (u[i])
 			return 0;

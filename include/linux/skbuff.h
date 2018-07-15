@@ -2120,11 +2120,7 @@ static inline void __skb_queue_purge(struct sk_buff_head *list)
 		kfree_skb(skb);
 }
 
-#if 0  /* memory fragement issue */
 #define NETDEV_FRAG_PAGE_MAX_ORDER get_order(32768)
-#else
-#define NETDEV_FRAG_PAGE_MAX_ORDER get_order(8192)
-#endif
 #define NETDEV_FRAG_PAGE_MAX_SIZE  (PAGE_SIZE << NETDEV_FRAG_PAGE_MAX_ORDER)
 #define NETDEV_PAGECNT_MAX_BIAS	   NETDEV_FRAG_PAGE_MAX_SIZE
 
@@ -2641,7 +2637,7 @@ unsigned int datagram_poll(struct file *file, struct socket *sock,
 int skb_copy_datagram_iovec(const struct sk_buff *from, int offset,
 			    struct iovec *to, int size);
 int skb_copy_and_csum_datagram_iovec(struct sk_buff *skb, int hlen,
-				     struct iovec *iov, int len);
+				     struct iovec *iov);
 int skb_copy_datagram_from_iovec(struct sk_buff *skb, int offset,
 				 const struct iovec *from, int from_offset,
 				 int len);

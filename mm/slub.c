@@ -1,4 +1,3 @@
-
 /*
  * SLUB: A slab allocator that limits cache line use instead of queuing
  * objects in per cpu and per node lists.
@@ -34,19 +33,10 @@
 #include <linux/stacktrace.h>
 #include <linux/prefetch.h>
 #include <linux/memcontrol.h>
-#include <linux/random.h>
 
 #include <trace/events/kmem.h>
 
-#include <asm/sections.h>
-
 #include "internal.h"
-
-#ifdef CONFIG_ARM64
-#ifdef CONFIG_MTK_MEMCFG
-#define MTK_COMPACT_SLUB_TRACK
-#endif
-#endif
 
 /*
  * Lock order:
@@ -202,20 +192,7 @@ static struct notifier_block slab_notifier;
 /*
  * Tracking user of a slab.
  */
-#define TRACK_ADDRS_COUNT 8
-
-#ifdef MTK_COMPACT_SLUB_TRACK
-struct track {
-	unsigned long addr;	/* Called from address */
-#ifdef CONFIG_STACKTRACE
-	u32 addrs[TRACK_ADDRS_COUNT];
-/* we store the offset after MODULES_VADDR for kernel module and kernel text address  */
-#endif
-	int cpu;		/* Was running on cpu */
-	int pid;		/* Pid context */
-	unsigned long when;	/* When did the operation occur */
-};
-#else
+#define TRACK_ADDRS_COUNT 16
 struct track {
 	unsigned long addr;	/* Called from address */
 #ifdef CONFIG_STACKTRACE
@@ -225,11 +202,8 @@ struct track {
 	int pid;		/* Pid context */
 	unsigned long when;	/* When did the operation occur */
 };
-#endif
 
 enum track_item { TRACK_ALLOC, TRACK_FREE };
-
-static const bool slub_cookie = true;
 
 #ifdef CONFIG_SYSFS
 static int sysfs_slab_add(struct kmem_cache *);
@@ -259,28 +233,20 @@ static inline void stat(const struct kmem_cache *s, enum stat_item si)
 
 static inline void *get_freepointer(struct kmem_cache *s, void *object)
 {
-	unsigned long freepointer_addr = (unsigned long)object + s->offset;
-	return (void *)(*(unsigned long *)freepointer_addr ^ s->random ^ freepointer_addr);
+	return *(void **)(object + s->offset);
 }
 
 static void prefetch_freepointer(const struct kmem_cache *s, void *object)
 {
-	unsigned long freepointer_addr = (unsigned long)object + s->offset;
-	if (object) {
-		void **freepointer_ptr = (void **)(*(unsigned long *)freepointer_addr ^ s->random ^ freepointer_addr);
-		prefetch(freepointer_ptr);
-	}
+	prefetch(object + s->offset);
 }
 
 static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 {
-	unsigned long __maybe_unused freepointer_addr;
 	void *p;
 
 #ifdef CONFIG_DEBUG_PAGEALLOC
-	freepointer_addr = (unsigned long)object + s->offset;
-	probe_kernel_read(&p, (void **)freepointer_addr, sizeof(p));
-	return (void *)((unsigned long)p ^ s->random ^ freepointer_addr);
+	probe_kernel_read(&p, (void **)(object + s->offset), sizeof(p));
 #else
 	p = get_freepointer(s, object);
 #endif
@@ -289,38 +255,7 @@ static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 
 static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 {
-	unsigned long freepointer_addr = (unsigned long)object + s->offset;
-	*(void **)freepointer_addr = (void *)((unsigned long)fp ^ s->random ^ freepointer_addr);
-}
-
-#ifdef CONFIG_64BIT
-static const unsigned long canary_mask = ~0xFFUL;
-#else
-static const unsigned long canary_mask = ~0UL;
-#endif
-
-static inline unsigned long *get_cookie(struct kmem_cache *s, void *object)
-{
-	if (s->offset)
-		return object + s->offset + sizeof(void *);
-	else
-		return object + s->inuse;
-}
-
-static inline void set_cookie(struct kmem_cache *s, void *object, unsigned long value)
-{
-	if (slub_cookie) {
-		unsigned long *cookie = get_cookie(s, object);
-		*cookie = (value ^ (unsigned long)cookie) & canary_mask;
-	}
-}
-
-static inline void check_cookie(struct kmem_cache *s, void *object, unsigned long value)
-{
-	if (slub_cookie) {
-		unsigned long *cookie = get_cookie(s, object);
-		BUG_ON(*cookie != ((value ^ (unsigned long)cookie) & canary_mask));
-	}
+	*(void **)(object + s->offset) = fp;
 }
 
 /* Loop over all objects in a slab */
@@ -356,7 +291,7 @@ static inline size_t slab_ksize(const struct kmem_cache *s)
 	 * back there or track user information then we can
 	 * only use the space before that information.
 	 */
-	if ((s->flags & (SLAB_DESTROY_BY_RCU | SLAB_STORE_USER)) || slub_cookie)
+	if (s->flags & (SLAB_DESTROY_BY_RCU | SLAB_STORE_USER))
 		return s->inuse;
 	/*
 	 * Else we can use all the padding etc for the allocation
@@ -575,56 +510,13 @@ static struct track *get_track(struct kmem_cache *s, void *object,
 	struct track *p;
 
 	if (s->offset)
-		p = object + s->offset + sizeof(void *) + sizeof(void *) * slub_cookie;
+		p = object + s->offset + sizeof(void *);
 	else
-		p = object + s->inuse + sizeof(void *) * slub_cookie;
+		p = object + s->inuse;
 
 	return p + alloc;
 }
-#ifdef MTK_COMPACT_SLUB_TRACK
-static void set_track(struct kmem_cache *s, void *object,
-			enum track_item alloc, unsigned long addr)
-{
-	struct track *p = get_track(s, object, alloc);
 
-	if (addr) {
-#ifdef CONFIG_STACKTRACE
-		unsigned long addrs[TRACK_ADDRS_COUNT];	/* Called from address */
-		struct stack_trace trace;
-		int i;
-
-		memset(addrs, 0, sizeof(addrs));
-		trace.nr_entries = 0;
-		trace.max_entries = TRACK_ADDRS_COUNT;
-
-		trace.entries = addrs;
-		trace.skip = 3;
-		save_stack_trace(&trace);
-
-		/* See rant in lockdep.c */
-		if (trace.nr_entries != 0 &&
-			trace.entries[trace.nr_entries - 1] == ULONG_MAX)
-			trace.nr_entries--;
-
-		for (i = trace.nr_entries; i < TRACK_ADDRS_COUNT; i++)
-			addrs[i] = 0;
-
-		for (i = 0; i < TRACK_ADDRS_COUNT; i++) {
-			if (addrs[i])
-				p->addrs[i] = addrs[i] - MODULES_VADDR;
-			else
-				p->addrs[i] = 0;
-		}
-
-#endif
-		p->addr = addr;
-		p->cpu = smp_processor_id();
-		p->pid = current->pid;
-		p->when = jiffies;
-	} else
-		memset(p, 0, sizeof(struct track));
-}
-#else
 static void set_track(struct kmem_cache *s, void *object,
 			enum track_item alloc, unsigned long addr)
 {
@@ -656,9 +548,6 @@ static void set_track(struct kmem_cache *s, void *object,
 	} else
 		memset(p, 0, sizeof(struct track));
 }
-#endif
-
-
 
 static void init_tracking(struct kmem_cache *s, void *object)
 {
@@ -668,36 +557,6 @@ static void init_tracking(struct kmem_cache *s, void *object)
 	set_track(s, object, TRACK_FREE, 0UL);
 	set_track(s, object, TRACK_ALLOC, 0UL);
 }
-#ifdef MTK_COMPACT_SLUB_TRACK
-static void print_track(const char *s, struct track *t)
-{
-	if (!t->addr)
-		return;
-
-	pr_err("INFO: %s in %pS age=%lu cpu=%u pid=%d\n",
-		s, (void *)t->addr, jiffies - t->when, t->cpu, t->pid);
-#ifdef CONFIG_STACKTRACE
-	{
-		int i;
-		unsigned long addrs[TRACK_ADDRS_COUNT];	/* Called from address */
-
-		/* we store the offset after MODULES_VADDR for kernel module and kernel text address  */
-		for (i = 0; i < TRACK_ADDRS_COUNT; i++) {
-			if (t->addrs[i])
-				addrs[i] =  MODULES_VADDR + t->addrs[i];
-			else
-				addrs[i] = 0;
-		}
-		for (i = 0; i < TRACK_ADDRS_COUNT; i++) {
-			if (addrs[i])
-				pr_err("\t%pS\n", (void *)addrs[i]);
-			else
-				break;
-		}
-	}
-#endif
-}
-#else
 
 static void print_track(const char *s, struct track *t)
 {
@@ -717,9 +576,6 @@ static void print_track(const char *s, struct track *t)
 	}
 #endif
 }
-
-#endif
-
 
 static void print_tracking(struct kmem_cache *s, void *object)
 {
@@ -793,9 +649,6 @@ static void print_trailer(struct kmem_cache *s, struct page *page, u8 *p)
 	else
 		off = s->inuse;
 
-	if (slub_cookie)
-		off += sizeof(void *);
-
 	if (s->flags & SLAB_STORE_USER)
 		off += 2 * sizeof(struct track);
 
@@ -811,7 +664,6 @@ static void object_err(struct kmem_cache *s, struct page *page,
 {
 	slab_bug(s, "%s", reason);
 	print_trailer(s, page, object);
-	BUG();
 }
 
 static void slab_err(struct kmem_cache *s, struct page *page,
@@ -826,7 +678,6 @@ static void slab_err(struct kmem_cache *s, struct page *page,
 	slab_bug(s, "%s", buf);
 	print_page_info(page);
 	dump_stack();
-	BUG();
 }
 
 static void init_object(struct kmem_cache *s, void *object, u8 val)
@@ -872,7 +723,6 @@ static int check_bytes_and_report(struct kmem_cache *s, struct page *page,
 					fault, end - 1, fault[0], value);
 	print_trailer(s, page, object);
 
-	BUG();
 	restore_bytes(s, what, value, fault, end);
 	return 0;
 }
@@ -921,9 +771,6 @@ static int check_pad_bytes(struct kmem_cache *s, struct page *page, u8 *p)
 
 	if (s->offset)
 		/* Freepointer is placed after the object. */
-		off += sizeof(void *);
-
-	if (slub_cookie)
 		off += sizeof(void *);
 
 	if (s->flags & SLAB_STORE_USER)
@@ -1555,7 +1402,6 @@ static void setup_object(struct kmem_cache *s, struct page *page,
 				void *object)
 {
 	setup_object_debug(s, page, object);
-	set_cookie(s, object, s->random_inactive);
 	if (unlikely(s->ctor))
 		s->ctor(object);
 }
@@ -2633,18 +2479,8 @@ redo:
 		stat(s, ALLOC_FASTPATH);
 	}
 
-	if (!(s->flags & (SLAB_DESTROY_BY_RCU | SLAB_POISON)) && !s->ctor && object) {
-		size_t offset = s->offset ? 0 : sizeof(void *);
-		BUG_ON(memchr_inv((void *)object + offset, 0, s->object_size - offset));
-	}
-
 	if (unlikely(gfpflags & __GFP_ZERO) && object)
 		memset(object, 0, s->object_size);
-
-	if (object) {
-		check_cookie(s, object, s->random_inactive);
-		set_cookie(s, object, s->random_active);
-	}
 
 	slab_post_alloc_hook(s, gfpflags, object);
 
@@ -2845,16 +2681,6 @@ static __always_inline void slab_free(struct kmem_cache *s,
 	unsigned long tid;
 
 	slab_free_hook(s, x);
-
-	check_cookie(s, object, s->random_active);
-	set_cookie(s, object, s->random_inactive);
-
-	if (!(s->flags & (SLAB_DESTROY_BY_RCU | SLAB_POISON))) {
-		size_t offset = s->offset ? 0 : sizeof(void *);
-		memset(x + offset, 0, s->object_size - offset);
-		if (s->ctor)
-			s->ctor(x);
-	}
 
 redo:
 	/*
@@ -3092,7 +2918,6 @@ static void early_kmem_cache_node_alloc(int node)
 	init_object(kmem_cache_node, n, SLUB_RED_ACTIVE);
 	init_tracking(kmem_cache_node, n);
 #endif
-	set_cookie(kmem_cache_node, n, kmem_cache_node->random_active);
 	init_kmem_cache_node(n);
 	inc_slabs_node(kmem_cache_node, node, page->objects);
 
@@ -3207,9 +3032,6 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 		size += sizeof(void *);
 	}
 
-	if (slub_cookie)
-		size += sizeof(void *);
-
 #ifdef CONFIG_SLUB_DEBUG
 	if (flags & SLAB_STORE_USER)
 		/*
@@ -3273,9 +3095,6 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 static int kmem_cache_open(struct kmem_cache *s, unsigned long flags)
 {
 	s->flags = kmem_cache_flags(s->size, flags, s->name, s->ctor);
-	s->random = get_random_long();
-	s->random_active = get_random_long();
-	s->random_inactive = get_random_long();
 	s->reserved = 0;
 
 	if (need_reserve_slab_rcu && (s->flags & SLAB_DESTROY_BY_RCU))
@@ -3556,8 +3375,6 @@ const char *__check_heap_object(const void *ptr, unsigned long n,
 		offset -= s->red_left_pad;
 	}
 
-	check_cookie(s, (void *)ptr - offset, s->random_active);
-
 	/* Allow address range falling entirely within object size. */
 	if (offset <= object_size && n <= object_size - offset)
 		return NULL;
@@ -3576,7 +3393,7 @@ size_t ksize(const void *object)
 	page = virt_to_head_page(object);
 
 	if (unlikely(!PageSlab(page))) {
-		BUG_ON(!PageCompound(page));
+		WARN_ON(!PageCompound(page));
 		return PAGE_SIZE << compound_order(page);
 	}
 
@@ -4128,22 +3945,9 @@ static long validate_slab_cache(struct kmem_cache *s)
  * and freed.
  */
 
-#ifdef CONFIG_MTK_MEMCFG
-#define MTK_MEMCFG_SLABTRACE_CNT 4
-/* MTK_MEMCFG_SLABTRACE_CNT should be always <= TRACK_ADDRS_COUNT */
-#if (MTK_MEMCFG_SLABTRACE_CNT > TRACK_ADDRS_COUNT)
-#error (MTK_MEMCFG_SLABTRACE_CNT > TRACK_ADDRS_COUNT)
-#endif
-#endif
-
 struct location {
 	unsigned long count;
 	unsigned long addr;
-#ifdef CONFIG_MTK_MEMCFG
-#ifdef CONFIG_STACKTRACE
-	unsigned long addrs[MTK_MEMCFG_SLABTRACE_CNT];	/* Called from address */
-#endif
-#endif
 	long long sum_time;
 	long min_time;
 	long max_time;
@@ -4172,12 +3976,6 @@ static int alloc_loc_track(struct loc_track *t, unsigned long max, gfp_t flags)
 	int order;
 
 	order = get_order(sizeof(struct location) * max);
-	/*
-	if backtrace need more page to store
-	we just ignore it in slabtrace
-	 */
-	if (order > 1)
-		return 0;
 
 	l = (void *)__get_free_pages(flags, order);
 	if (!l)
@@ -4246,7 +4044,7 @@ static int add_location(struct loc_track *t, struct kmem_cache *s,
 	/*
 	 * Not found. Insert new tracking element.
 	 */
-	if (t->count >= t->max && !alloc_loc_track(t, 2 * t->max, __GFP_NOMEMALLOC|GFP_NOWAIT|__GFP_NO_KSWAPD))
+	if (t->count >= t->max && !alloc_loc_track(t, 2 * t->max, GFP_ATOMIC))
 		return 0;
 
 	l = t->loc + pos;
@@ -4295,7 +4093,7 @@ static int list_locations(struct kmem_cache *s, char *buf,
 	struct kmem_cache_node *n;
 
 	if (!map || !alloc_loc_track(&t, PAGE_SIZE / sizeof(struct location),
-				     __GFP_NOMEMALLOC|GFP_NOWAIT|__GFP_NO_KSWAPD)) {
+				     GFP_TEMPORARY)) {
 		kfree(map);
 		return sprintf(buf, "Out of memory\n");
 	}
@@ -5540,211 +5338,4 @@ ssize_t slabinfo_write(struct file *file, const char __user *buffer,
 {
 	return -EIO;
 }
-
-#ifdef CONFIG_MTK_MEMCFG
-static int mtk_memcfg_add_location(struct loc_track *t, struct kmem_cache *s,
-				const struct track *track)
-{
-	long start, end, pos;
-	struct location *l;
-	unsigned long (*caddrs)[MTK_MEMCFG_SLABTRACE_CNT];	/* Called from addresses */
-	unsigned long taddrs[MTK_MEMCFG_SLABTRACE_CNT]
-		= { [0 ... MTK_MEMCFG_SLABTRACE_CNT - 1] = 0,};		/* Called from addresses of track */
-	unsigned long age = jiffies - track->when;
-	int i, cnt;
-
-	start = -1;
-	end = t->count;
-	/* find the index of track->addr */
-	for (i = 0; i < TRACK_ADDRS_COUNT; i++) {
-#ifdef MTK_COMPACT_SLUB_TRACK
-		/* we store the offset after MODULES_VADDR for kernel module and kernel text address  */
-		if (track->addr == ((MODULES_VADDR + track->addrs[i])) ||
-			((track->addr - 4) == (MODULES_VADDR + track->addrs[i])))
-#else
-		if ((track->addr == track->addrs[i]) ||
-			(track->addr - 4 == track->addrs[i]))
-#endif
-			break;
-	}
-	cnt = min(MTK_MEMCFG_SLABTRACE_CNT, TRACK_ADDRS_COUNT - i);
-#ifdef MTK_COMPACT_SLUB_TRACK
-	{
-		int j = 0;
-		unsigned long addrs[TRACK_ADDRS_COUNT];
-
-		for (j = 0; j < TRACK_ADDRS_COUNT; j++) {
-			/* we store the offset after MODULES_VADDR for kernel module and kernel text address  */
-			if (track->addrs[j])
-				addrs[j] = MODULES_VADDR + track->addrs[j];
-			else
-				addrs[j] = 0;
-		}
-		memcpy(taddrs, addrs + i, (cnt * sizeof(unsigned long)));
-	}
-#else
-	memcpy(taddrs, track->addrs + i, (cnt * sizeof(unsigned long)));
-#endif
-
-	for ( ; ; ) {
-		pos = start + (end - start + 1) / 2;
-
-		/*
-		 * There is nothing at "end". If we end up there
-		 * we need to add something to before end.
-		 */
-		if (pos == end)
-			break;
-
-		caddrs = &(t->loc[pos].addrs);
-		if (!memcmp(caddrs, taddrs, MTK_MEMCFG_SLABTRACE_CNT * sizeof(unsigned long))) {
-
-			l = &t->loc[pos];
-			l->count++;
-			if (track->when) {
-				l->sum_time += age;
-				if (age < l->min_time)
-					l->min_time = age;
-				if (age > l->max_time)
-					l->max_time = age;
-
-				if (track->pid < l->min_pid)
-					l->min_pid = track->pid;
-				if (track->pid > l->max_pid)
-					l->max_pid = track->pid;
-
-				cpumask_set_cpu(track->cpu,
-						to_cpumask(l->cpus));
-			}
-			node_set(page_to_nid(virt_to_page(track)), l->nodes);
-			return 1;
-		}
-
-		if (memcmp(caddrs, taddrs, MTK_MEMCFG_SLABTRACE_CNT * sizeof(unsigned long)) < 0)
-			end = pos;
-		else
-			start = pos;
-	}
-
-	/*
-	 * Not found. Insert new tracking element.
-	 */
-	if (t->count >= t->max && !alloc_loc_track(t, 2 * t->max, __GFP_NOMEMALLOC|GFP_NOWAIT|__GFP_NO_KSWAPD))
-		return 0;
-
-	l = t->loc + pos;
-	if (pos < t->count)
-		memmove(l + 1, l,
-			(t->count - pos) * sizeof(struct location));
-	t->count++;
-	l->count = 1;
-	l->addr = track->addr;
-	memcpy(l->addrs, taddrs, MTK_MEMCFG_SLABTRACE_CNT * sizeof(unsigned long));
-	l->sum_time = age;
-	l->min_time = age;
-	l->max_time = age;
-	l->min_pid = track->pid;
-	l->max_pid = track->pid;
-	cpumask_clear(to_cpumask(l->cpus));
-	cpumask_set_cpu(track->cpu, to_cpumask(l->cpus));
-	nodes_clear(l->nodes);
-	node_set(page_to_nid(virt_to_page(track)), l->nodes);
-	return 1;
-}
-
-static void mtk_memcfg_process_slab(struct loc_track *t, struct kmem_cache *s,
-		struct page *page, enum track_item alloc,
-		unsigned long *map)
-{
-	void *addr = page_address(page);
-	void *p;
-
-	bitmap_zero(map, page->objects);
-	get_map(s, page, map);
-
-	for_each_object(p, s, addr, page->objects)
-		if (!test_bit(slab_index(p, s, addr), map))
-			mtk_memcfg_add_location(t, s, get_track(s, p, alloc));
-}
-
-static int mtk_memcfg_list_locations(struct kmem_cache *s, struct seq_file *m,
-					enum track_item alloc)
-{
-	unsigned long i, j;
-	struct loc_track t = { 0, 0, NULL };
-	int node;
-	unsigned long *map = kmalloc(BITS_TO_LONGS(oo_objects(s->max)) *
-				     sizeof(unsigned long), GFP_KERNEL);
-	struct kmem_cache_node *n;
-
-	if (!map || !alloc_loc_track(&t, PAGE_SIZE / sizeof(struct location),
-				     __GFP_NOMEMALLOC|GFP_NOWAIT|__GFP_NO_KSWAPD)) {
-		kfree(map);
-		return seq_puts(m, "Out of memory\n");
-	}
-	/* Push back cpu slabs */
-	flush_all(s);
-
-	for_each_kmem_cache_node(s, node, n) {
-		unsigned long flags;
-		struct page *page;
-
-		if (!atomic_long_read(&n->nr_slabs))
-			continue;
-
-		spin_lock_irqsave(&n->list_lock, flags);
-		list_for_each_entry(page, &n->partial, lru)
-			mtk_memcfg_process_slab(&t, s, page, alloc, map);
-		list_for_each_entry(page, &n->full, lru)
-			mtk_memcfg_process_slab(&t, s, page, alloc, map);
-		spin_unlock_irqrestore(&n->list_lock, flags);
-	}
-
-	for (i = 0; i < t.count; i++) {
-		struct location *l = &t.loc[i];
-
-		seq_printf(m, "%7ld ", l->count);
-
-		if (l->addr)
-			seq_printf(m, "%pS", (void *)l->addr);
-		else
-			seq_puts(m, "<not-available>");
-
-		for (j = 0; j < MTK_MEMCFG_SLABTRACE_CNT; j++)
-			if (l->addrs[j])
-				seq_printf(m, " %p", (void *)l->addrs[j]);
-
-		seq_puts(m, "\n");
-	}
-
-	free_loc_track(&t);
-	kfree(map);
-
-	if (!t.count)
-		seq_puts(m, "No data\n");
-	return 0;
-}
-
-static int mtk_memcfg_slabtrace_show(struct seq_file *m, void *p)
-{
-	struct kmem_cache *s;
-
-	mutex_lock(&slab_mutex);
-	list_for_each_entry(s, &slab_caches, list) {
-		seq_printf(m, "========== kmem_cache: %s alloc_calls ==========\n", s->name);
-		if (!(s->flags & SLAB_STORE_USER))
-			continue;
-		else
-			mtk_memcfg_list_locations(s, m, TRACK_ALLOC);
-	}
-	mutex_unlock(&slab_mutex);
-	return 0;
-}
-
-int slabtrace_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, mtk_memcfg_slabtrace_show, NULL);
-}
-#endif
-
 #endif /* CONFIG_SLABINFO */

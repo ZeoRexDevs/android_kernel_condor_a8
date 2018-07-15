@@ -551,8 +551,8 @@ static inline void tcp_rcv_rtt_measure_ts(struct sock *sk,
 void tcp_rcv_space_adjust(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+	u32 copied;
 	int time;
-	int copied;
 
 	time = tcp_time_stamp - tp->rcvq_space.time;
 	if (time < (tp->rcv_rtt_est.rtt >> 3) || tp->rcv_rtt_est.rtt == 0)
@@ -574,12 +574,13 @@ void tcp_rcv_space_adjust(struct sock *sk)
 
 	if (sysctl_tcp_moderate_rcvbuf &&
 	    !(sk->sk_userlocks & SOCK_RCVBUF_LOCK)) {
-		int rcvwin, rcvmem, rcvbuf;
+		int rcvmem, rcvbuf;
+		u64 rcvwin;
 
 		/* minimal window to cope with packet losses, assuming
 		 * steady state. Add some cushion because of small variations.
 		 */
-		rcvwin = (copied << 1) + 16 * tp->advmss;
+		rcvwin = ((u64)copied << 1) + 16 * tp->advmss;
 
 		/* If rate increased by 25%,
 		 *	assume slow start, rcvwin = 3 * copied
@@ -599,12 +600,13 @@ void tcp_rcv_space_adjust(struct sock *sk)
 		while (tcp_win_from_space(rcvmem) < tp->advmss)
 			rcvmem += 128;
 
-		rcvbuf = min(rcvwin / tp->advmss * rcvmem, sysctl_tcp_rmem[2]);
+		do_div(rcvwin, tp->advmss);
+		rcvbuf = min_t(u64, rcvwin * rcvmem, sysctl_tcp_rmem[2]);
 		if (rcvbuf > sk->sk_rcvbuf) {
 			sk->sk_rcvbuf = rcvbuf;
 
 			/* Make the window clamp follow along.  */
-			tp->window_clamp = rcvwin;
+			tp->window_clamp = tcp_win_from_space(rcvbuf);
 		}
 	}
 	tp->rcvq_space.space = copied;
@@ -2010,7 +2012,7 @@ static bool tcp_check_sack_reneging(struct sock *sk, int flag)
 					  msecs_to_jiffies(10));
 
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-					  delay, sysctl_tcp_rto_max);
+					  delay, TCP_RTO_MAX);
 		return true;
 	}
 	return false;
@@ -2061,7 +2063,7 @@ static bool tcp_pause_early_retransmit(struct sock *sk, int flag)
 		return false;
 
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_EARLY_RETRANS, delay,
-				  sysctl_tcp_rto_max);
+				  TCP_RTO_MAX);
 	return true;
 }
 
@@ -2989,7 +2991,7 @@ void tcp_rearm_rto(struct sock *sk)
 			rto = max(delta, 1);
 		}
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS, rto,
-					  sysctl_tcp_rto_max);
+					  TCP_RTO_MAX);
 	}
 }
 
@@ -3235,10 +3237,10 @@ static void tcp_ack_probe(struct sock *sk)
 		 * This function is not for random using!
 		 */
 	} else {
-		unsigned long when = inet_csk_rto_backoff(icsk, sysctl_tcp_rto_max);
+		unsigned long when = inet_csk_rto_backoff(icsk, TCP_RTO_MAX);
 
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_PROBE0,
-					  when, sysctl_tcp_rto_max);
+					  when, TCP_RTO_MAX);
 	}
 }
 
@@ -3324,9 +3326,9 @@ static void tcp_send_challenge_ack(struct sock *sk)
 	/* unprotected vars, we dont care of overwrites */
 	static u32 challenge_timestamp;
 	static unsigned int challenge_count;
-	u32 count, now = jiffies / HZ;
+	u32 now = jiffies / HZ;
+	u32 count;
 
-	/* Then check host-wide RFC 5961 rate limit. */
 	if (now != challenge_timestamp) {
 		u32 half = (sysctl_tcp_challenge_ack_limit + 1) >> 1;
 
@@ -3733,11 +3735,8 @@ const u8 *tcp_parse_md5sig_option(const struct tcphdr *th)
 	int length = (th->doff << 2) - sizeof(*th);
 	const u8 *ptr = (const u8 *)(th + 1);
 
-	/* If the TCP option is too short, we can short cut */
-	if (length < TCPOLEN_MD5SIG)
-		return NULL;
-
-	while (length > 0) {
+	/* If not enough data remaining, we can short cut */
+	while (length >= TCPOLEN_MD5SIG) {
 		int opcode = *ptr++;
 		int opsize;
 
@@ -4966,7 +4965,7 @@ static int tcp_copy_to_iovec(struct sock *sk, struct sk_buff *skb, int hlen)
 		err = skb_copy_datagram_iovec(skb, hlen, tp->ucopy.iov, chunk);
 	else
 		err = skb_copy_and_csum_datagram_iovec(skb, hlen,
-						       tp->ucopy.iov, chunk);
+						       tp->ucopy.iov);
 
 	if (!err) {
 		tp->ucopy.len -= chunk;
@@ -5503,7 +5502,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 			inet_csk_schedule_ack(sk);
 			tcp_enter_quickack_mode(sk);
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-						  TCP_DELACK_MAX, sysctl_tcp_rto_max);
+						  TCP_DELACK_MAX, TCP_RTO_MAX);
 
 discard:
 			__kfree_skb(skb);

@@ -47,10 +47,6 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 
-#ifdef CONFIG_MTK_EXTMEM
-#include <linux/exm_driver.h>
-#endif
-
 #include "internal.h"
 
 #ifndef arch_mmap_check
@@ -92,7 +88,7 @@ static void unmap_region(struct mm_struct *mm,
  *		x: (no) no	x: (no) yes	x: (no) yes	x: (yes) yes
  *
  */
-pgprot_t protection_map[16] __ro_after_init = {
+pgprot_t protection_map[16] = {
 	__P000, __P001, __P010, __P011, __P100, __P101, __P110, __P111,
 	__S000, __S001, __S010, __S011, __S100, __S101, __S110, __S111
 };
@@ -1293,6 +1289,35 @@ static inline int mlock_future_check(struct mm_struct *mm,
 	return 0;
 }
 
+static inline u64 file_mmap_size_max(struct file *file, struct inode *inode)
+{
+	if (S_ISREG(inode->i_mode))
+		return MAX_LFS_FILESIZE;
+
+	if (S_ISBLK(inode->i_mode))
+		return MAX_LFS_FILESIZE;
+
+	/* Special "we do even unsigned file positions" case */
+	if (file->f_mode & FMODE_UNSIGNED_OFFSET)
+		return 0;
+
+	/* Yes, random drivers might want more. But I'm tired of buggy drivers */
+	return ULONG_MAX;
+}
+
+static inline bool file_mmap_ok(struct file *file, struct inode *inode,
+				unsigned long pgoff, unsigned long len)
+{
+	u64 maxsize = file_mmap_size_max(file, inode);
+
+	if (maxsize && len > maxsize)
+		return false;
+	maxsize -= len;
+	if (pgoff > maxsize >> PAGE_SHIFT)
+		return false;
+	return true;
+}
+
 /*
  * The caller must hold down_write(&current->mm->mmap_sem).
  */
@@ -1359,6 +1384,9 @@ unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 
 	if (file) {
 		struct inode *inode = file_inode(file);
+
+		if (!file_mmap_ok(file, inode, pgoff, len))
+			return -EOVERFLOW;
 
 		switch (flags & MAP_TYPE) {
 		case MAP_SHARED:
@@ -2599,12 +2627,6 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 		return 0;
 	prev = vma->vm_prev;
 	/* we have  start < vma->vm_end  */
-
-#ifdef CONFIG_MTK_EXTMEM
-	/* get correct mmap size if in mspace. */
-	if (extmem_in_mspace(vma))
-		len = extmem_get_mem_size(vma->vm_pgoff);
-#endif
 
 	/* if it doesn't overlap, we have nothing.. */
 	end = start + len;

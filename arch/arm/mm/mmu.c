@@ -37,7 +37,6 @@
 #include <asm/mach/map.h>
 #include <asm/mach/pci.h>
 #include <asm/fixmap.h>
-#include <mt-plat/mtk_memcfg.h>
 
 #include "mm.h"
 #include "tcm.h"
@@ -1394,15 +1393,11 @@ static void __init map_lowmem(void)
 		phys_addr_t start = reg->base;
 		phys_addr_t end = start + reg->size;
 		struct map_desc map;
-		MTK_MEMCFG_LOG_AND_PRINTK("[PHY layout]kernel   :   0x%08llx - 0x%08llx (0x%08llx)\n",
-						(unsigned long long)start,
-						(unsigned long long)end - 1,
-						(unsigned long long)reg->size);
 
 		if (end > arm_lowmem_limit)
 			end = arm_lowmem_limit;
 		if (start >= end)
-			continue;
+			break;
 
 		if (end < kernel_x_start) {
 			map.pfn = __phys_to_pfn(start);
@@ -1445,9 +1440,6 @@ static void __init map_lowmem(void)
 				create_mapping(&map);
 			}
 		}
-
-		if (!(end & ~SECTION_MASK))
-			memblock_set_current_limit(end);
 	}
 }
 
@@ -1479,12 +1471,6 @@ void __init early_paging_init(const struct machine_desc *mdesc,
 	/* Re-set the phys pfn offset, and the pv offset */
 	__pv_offset += offset;
 	__pv_phys_pfn_offset += PFN_DOWN(offset);
-
-	/* Run the patch stub to update the constants */
-#ifdef CONFIG_ARM_PATCH_PHYS_VIRT
-	fixup_pv_table(&__pv_table_begin,
-		(&__pv_table_end - &__pv_table_begin) << 2);
-#endif
 
 	/*
 	 * Get the address of the remap function in the 1:1 identity

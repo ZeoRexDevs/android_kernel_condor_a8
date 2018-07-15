@@ -1047,8 +1047,35 @@ int fuse_update_attributes(struct inode *inode, struct kstat *stat,
 	return err;
 }
 
-int fuse_reverse_inval_entry_child(int err, struct dentry *entry, u64 child_nodeid)
+int fuse_reverse_inval_entry(struct super_block *sb, u64 parent_nodeid,
+			     u64 child_nodeid, struct qstr *name)
 {
+	int err = -ENOTDIR;
+	struct inode *parent;
+	struct dentry *dir;
+	struct dentry *entry;
+
+	parent = ilookup5(sb, parent_nodeid, fuse_inode_eq, &parent_nodeid);
+	if (!parent)
+		return -ENOENT;
+
+	mutex_lock(&parent->i_mutex);
+	if (!S_ISDIR(parent->i_mode))
+		goto unlock;
+
+	err = -ENOENT;
+	dir = d_find_alias(parent);
+	if (!dir)
+		goto unlock;
+
+	entry = d_lookup(dir, name);
+	dput(dir);
+	if (!entry)
+		goto unlock;
+
+	fuse_invalidate_attr(parent);
+	fuse_invalidate_entry(entry);
+
 	if (child_nodeid != 0 && entry->d_inode) {
 		mutex_lock(&entry->d_inode->i_mutex);
 		if (get_node_id(entry->d_inode) != child_nodeid) {
@@ -1078,43 +1105,9 @@ int fuse_reverse_inval_entry_child(int err, struct dentry *entry, u64 child_node
 		err = 0;
 	}
 	dput(entry);
-	return err;
-}
 
-int fuse_reverse_inval_entry(struct super_block *sb, u64 parent_nodeid,
-			     u64 child_nodeid, struct qstr *name)
-{
-	int err = -ENOTDIR;
-	struct inode *parent;
-	struct dentry *dir;
-	struct dentry *entry;
-
-	parent = ilookup5(sb, parent_nodeid, fuse_inode_eq, &parent_nodeid);
-	if (!parent)
-		return -ENOENT;
-
-	lockdep_off();
-	mutex_lock(&parent->i_mutex);
-	if (!S_ISDIR(parent->i_mode))
-		goto unlock;
-
-	err = -ENOENT;
-	dir = d_find_alias(parent);
-	if (!dir)
-		goto unlock;
-
-	entry = d_lookup(dir, name);
-	dput(dir);
-	if (!entry)
-		goto unlock;
-
-	fuse_invalidate_attr(parent);
-	fuse_invalidate_entry(entry);
-
-	err = fuse_reverse_inval_entry_child(err, entry, child_nodeid);
  unlock:
 	mutex_unlock(&parent->i_mutex);
-	lockdep_on();
 	iput(parent);
 	return err;
 }
@@ -1769,8 +1762,19 @@ int fuse_do_setattr(struct dentry *dentry, struct iattr *attr,
 		return err;
 
 	if (attr->ia_valid & ATTR_OPEN) {
-		if (fc->atomic_o_trunc)
+		/* This is coming from open(..., ... | O_TRUNC); */
+		WARN_ON(!(attr->ia_valid & ATTR_SIZE));
+		WARN_ON(attr->ia_size != 0);
+		if (fc->atomic_o_trunc) {
+			/*
+			 * No need to send request to userspace, since actual
+			 * truncation has already been done by OPEN.  But still
+			 * need to truncate page cache.
+			 */
+			i_size_write(inode, 0);
+			truncate_pagecache(inode, 0);
 			return 0;
+		}
 		file = NULL;
 	}
 

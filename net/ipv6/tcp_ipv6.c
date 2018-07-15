@@ -1074,8 +1074,8 @@ static struct sock *tcp_v6_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 {
 	struct inet_request_sock *ireq;
 	struct ipv6_pinfo *newnp, *np = inet6_sk(sk);
-	struct tcp6_sock *newtcp6sk;
 	struct ipv6_txoptions *opt;
+	struct tcp6_sock *newtcp6sk;
 	struct inet_sock *newinet;
 	struct tcp_sock *newtp;
 	struct sock *newsk;
@@ -1274,7 +1274,7 @@ out:
 }
 
 /* The socket must have it's spinlock held when we get
- * here, unless it is a TCP_LISTEN socket.
+ * here.
  *
  * We have a potential double-lock case here, so even when
  * doing backlog processing we use the BH locking scheme.
@@ -1500,11 +1500,6 @@ process:
 	sk_mark_napi_id(sk, skb);
 	skb->dev = NULL;
 
-	if (sk->sk_state == TCP_LISTEN) {
-		ret = tcp_v6_do_rcv(sk, skb);
-		goto put_and_return;
-	}
-
 	bh_lock_sock_nested(sk);
 	ret = 0;
 	if (!sock_owned_by_user(sk)) {
@@ -1518,7 +1513,6 @@ process:
 	}
 	bh_unlock_sock(sk);
 
-put_and_return:
 	sock_put(sk);
 	return ret ? -1 : 0;
 

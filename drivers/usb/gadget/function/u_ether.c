@@ -75,7 +75,6 @@ struct eth_dev {
 	unsigned		header_len;
 	unsigned		ul_max_pkts_per_xfer;
 	unsigned		dl_max_pkts_per_xfer;
-	uint32_t		dl_max_xfer_size;
 	struct sk_buff		*(*wrap)(struct gether *, struct sk_buff *skb);
 	int			(*unwrap)(struct gether *,
 						struct sk_buff *skb,
@@ -691,21 +690,13 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 	spin_unlock_irqrestore(&dev->req_lock, flags);
 
 	if (dev->port_usb->multi_pkt_xfer) {
-		/* Add RNDIS Header */
-		memcpy(req->buf + req->length, dev->port_usb->header,
-						dev->header_len);
-		/* Increment req length by header size */
-		req->length += dev->header_len;
-		/* Copy received IP data from SKB */
 		memcpy(req->buf + req->length, skb->data, skb->len);
-		/* Increment req length by skb data length */
-		req->length += skb->len;
+		req->length = req->length + skb->len;
 		length = req->length;
 		dev_kfree_skb_any(skb);
 
 		spin_lock_irqsave(&dev->req_lock, flags);
-		if ((dev->tx_skb_hold_count < dev->dl_max_pkts_per_xfer)
-				&& (length < (dev->dl_max_xfer_size - dev->net->mtu))) {
+		if (dev->tx_skb_hold_count < dev->dl_max_pkts_per_xfer) {
 			if (dev->no_tx_req_used > TX_REQ_THRESHOLD) {
 				list_add(&req->list, &dev->tx_reqs);
 				spin_unlock_irqrestore(&dev->req_lock, flags);
@@ -1176,16 +1167,6 @@ int gether_get_ifname(struct net_device *net, char *name, int len)
 }
 EXPORT_SYMBOL_GPL(gether_get_ifname);
 
-void gether_update_dl_max_xfer_size(struct gether *link, uint32_t s)
-{
-	struct eth_dev		*dev = link->ioport;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dev->lock, flags);
-	dev->dl_max_xfer_size = s;
-	spin_unlock_irqrestore(&dev->lock, flags);
-}
-
 /**
  * gether_cleanup - remove Ethernet-over-USB device
  * Context: may sleep
@@ -1226,12 +1207,6 @@ struct net_device *gether_connect(struct gether *link)
 
 	if (!dev)
 		return ERR_PTR(-EINVAL);
-	link->header = kzalloc(sizeof(struct rndis_packet_msg_type),
-			GFP_ATOMIC);
-	if (!link->header) {
-		result = -ENOMEM;
-		goto fail;
-	}
 
 	link->in_ep->driver_data = dev;
 	result = usb_ep_enable(link->in_ep);
@@ -1262,7 +1237,6 @@ struct net_device *gether_connect(struct gether *link)
 		dev->wrap = link->wrap;
 		dev->ul_max_pkts_per_xfer = link->ul_max_pkts_per_xfer;
 		dev->dl_max_pkts_per_xfer = link->dl_max_pkts_per_xfer;
-		dev->dl_max_xfer_size = link->dl_max_transfer_len;
 
 		spin_lock(&dev->lock);
 		dev->tx_skb_hold_count = 0;
@@ -1288,13 +1262,10 @@ struct net_device *gether_connect(struct gether *link)
 fail1:
 		(void) usb_ep_disable(link->in_ep);
 	}
-	/* caller is responsible for cleanup on error */
-	if (result < 0) {
 fail0:
-		kfree(link->header);
-fail:
+	/* caller is responsible for cleanup on error */
+	if (result < 0)
 		return ERR_PTR(result);
-	}
 	return dev->net;
 }
 EXPORT_SYMBOL_GPL(gether_connect);
@@ -1343,8 +1314,6 @@ void gether_disconnect(struct gether *link)
 		usb_ep_free_request(link->in_ep, req);
 		spin_lock(&dev->req_lock);
 	}
-	kfree(link->header);
-	link->header = NULL;
 	spin_unlock(&dev->req_lock);
 	link->in_ep->driver_data = NULL;
 	link->in_ep->desc = NULL;

@@ -56,7 +56,6 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
-#include <linux/random.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -301,8 +300,6 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 	mm->stack_vm = mm->total_vm = 1;
 	up_write(&mm->mmap_sem);
 	bprm->p = vma->vm_end - sizeof(void *);
-	if (randomize_va_space)
-		bprm->p ^= get_random_long() & ~PAGE_MASK;
 	return 0;
 err:
 	up_write(&mm->mmap_sem);
@@ -750,9 +747,6 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	 * will align it up.
 	 */
 	rlim_stack = rlimit(RLIMIT_STACK) & PAGE_MASK;
-
-	stack_expand = rlim_stack;
-
 #ifdef CONFIG_STACK_GROWSUP
 	if (stack_size + stack_expand > rlim_stack)
 		stack_base = vma->vm_start + rlim_stack;

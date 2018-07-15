@@ -373,17 +373,18 @@ pipe_write(struct kiocb *iocb, struct iov_iter *from)
 		int offset = buf->offset + buf->len;
 
 		if (ops->can_merge && offset + chars <= PAGE_SIZE) {
-			ret = ops->confirm(pipe, buf);
-			if (ret)
+			int error = ops->confirm(pipe, buf);
+			if (error)
 				goto out;
 
 			ret = copy_page_from_iter(buf->page, offset, chars, from);
 			if (unlikely(ret < chars)) {
-				ret = -EFAULT;
+				error = -EFAULT;
 				goto out;
 			}
 			do_wakeup = 1;
-			buf->len += ret;
+			buf->len += chars;
+			ret = chars;
 			if (!iov_iter_count(from))
 				goto out;
 		}
@@ -616,6 +617,9 @@ struct pipe_inode_info *alloc_pipe_info(void)
 	if (pipe) {
 		unsigned long pipe_bufs = PIPE_DEF_BUFFERS;
 		struct user_struct *user = get_current_user();
+
+		if (pipe_bufs * PAGE_SIZE > pipe_max_size && !capable(CAP_SYS_RESOURCE))
+			pipe_bufs = pipe_max_size >> PAGE_SHIFT;
 
 		if (!too_many_pipe_buffers_hard(user)) {
 			if (too_many_pipe_buffers_soft(user))

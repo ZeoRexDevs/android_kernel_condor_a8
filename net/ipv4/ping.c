@@ -775,8 +775,10 @@ static int ping_v4_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *m
 	ipc.addr = faddr = daddr;
 
 	if (ipc.opt && ipc.opt->opt.srr) {
-		if (!daddr)
-			return -EINVAL;
+		if (!daddr) {
+			err = -EINVAL;
+			goto out_free;
+		}
 		faddr = ipc.opt->opt.faddr;
 	}
 	tos = get_rttos(&ipc, inet);
@@ -842,6 +844,7 @@ back_from_confirm:
 
 out:
 	ip_rt_put(rt);
+out_free:
 	if (free)
 		kfree(ipc.opt);
 	if (!err) {
@@ -987,11 +990,10 @@ void ping_rcv(struct sk_buff *skb)
 		pr_debug("rcv on socket %p\n", sk);
 		if (skb2)
 			ping_queue_rcv_skb(sk, skb2);
-		/*mtk_net: don't put sock here, do sock_put after free skb*/
-		/* sock_put(sk); */			
+		sock_put(sk);
 		return;
 	}
-	pr_info("[mtk_net][ping_debug]no socket, dropping\n");
+	pr_debug("no socket, dropping\n");
 
 	/* We're called from icmp_rcv(). kfree_skb() is done there. */
 }

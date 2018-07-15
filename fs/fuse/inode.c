@@ -7,7 +7,7 @@
 */
 
 #include "fuse_i.h"
-#include "mt_fuse.h"
+
 #include <linux/pagemap.h>
 #include <linux/slab.h>
 #include <linux/file.h>
@@ -1125,6 +1125,7 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
  err_put_conn:
 	fuse_bdi_destroy(fc);
 	fuse_conn_put(fc);
+	sb->s_fs_info = NULL;
  err_fput:
 	fput(file);
  err:
@@ -1319,7 +1320,7 @@ static int __init fuse_init(void)
 
 	sanitize_global_limit(&max_user_bgreq);
 	sanitize_global_limit(&max_user_congthresh);
-	fuse_iolog_init();
+
 	return 0;
 
  err_sysfs_cleanup:
@@ -1340,7 +1341,6 @@ static void __exit fuse_exit(void)
 	fuse_sysfs_cleanup();
 	fuse_fs_cleanup();
 	fuse_dev_cleanup();
-	fuse_iolog_exit();
 }
 
 module_init(fuse_init);

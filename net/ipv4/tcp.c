@@ -590,20 +590,6 @@ int tcp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 		else
 			answ = tp->write_seq - tp->snd_nxt;
 		break;
-				/* MTK_NET_CHANGES */
-case SIOCKILLSOCK:
-{
-	struct uid_err uid_e;
-
-	if (copy_from_user(&uid_e, (char __user *)arg, sizeof(uid_e)))
-		return -EFAULT;
-	pr_debug("SIOCKILLSOCK uid = %d , err = %d", uid_e.appuid, uid_e.errNum);
-	if (uid_e.errNum == 0)
-		tcp_v4_handle_retrans_time_by_uid(uid_e);
-	else
-		tcp_v4_reset_connections_by_uid(uid_e);
-	return 0;
-}
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -1120,7 +1106,7 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	lock_sock(sk);
 
 	flags = msg->msg_flags;
-	if (flags & MSG_FASTOPEN) {
+	if ((flags & MSG_FASTOPEN) && !tp->repair) {
 		err = tcp_sendmsg_fastopen(sk, msg, &copied_syn, size);
 		if (err == -EINPROGRESS && copied_syn > 0)
 			goto out;
@@ -2489,7 +2475,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 	case TCP_REPAIR_QUEUE:
 		if (!tp->repair)
 			err = -EPERM;
-		else if (val < TCP_QUEUES_NR)
+		else if ((unsigned int)val < TCP_QUEUES_NR)
 			tp->repair_queue = val;
 		else
 			err = -EINVAL;
@@ -2588,7 +2574,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		/* Translate value in seconds to number of retransmits */
 		icsk->icsk_accept_queue.rskq_defer_accept =
 			secs_to_retrans(val, TCP_TIMEOUT_INIT / HZ,
-					sysctl_tcp_rto_max / HZ);
+					TCP_RTO_MAX / HZ);
 		break;
 
 	case TCP_WINDOW_CLAMP:
@@ -2621,8 +2607,10 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 
 #ifdef CONFIG_TCP_MD5SIG
 	case TCP_MD5SIG:
-		/* Read the IP->Key mappings from userspace */
-		err = tp->af_specific->md5_parse(sk, optval, optlen);
+		if ((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN))
+			err = tp->af_specific->md5_parse(sk, optval, optlen);
+		else
+			err = -EINVAL;
 		break;
 #endif
 	case TCP_USER_TIMEOUT:
@@ -2811,7 +2799,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 	case TCP_DEFER_ACCEPT:
 		val = retrans_to_secs(icsk->icsk_accept_queue.rskq_defer_accept,
-				      TCP_TIMEOUT_INIT / HZ, sysctl_tcp_rto_max / HZ);
+				      TCP_TIMEOUT_INIT / HZ, TCP_RTO_MAX / HZ);
 		break;
 	case TCP_WINDOW_CLAMP:
 		val = tp->window_clamp;
@@ -3075,8 +3063,8 @@ EXPORT_SYMBOL_GPL(tcp_done);
 
 int tcp_abort(struct sock *sk, int err)
 {
-	if (sk->sk_state == TCP_TIME_WAIT) {
-		inet_twsk_put((struct inet_timewait_sock *)sk);
+	if (!sk_fullsock(sk)) {
+		sock_gen_put(sk);
 		return -EOPNOTSUPP;
 	}
 

@@ -2122,7 +2122,7 @@ bool tcp_schedule_loss_probe(struct sock *sk)
 	}
 
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_LOSS_PROBE, timeout,
-				  sysctl_tcp_rto_max);
+				  TCP_RTO_MAX);
 	return true;
 }
 
@@ -2193,7 +2193,7 @@ void tcp_send_loss_probe(struct sock *sk)
 rearm_timer:
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
 				  inet_csk(sk)->icsk_rto,
-				  sysctl_tcp_rto_max);
+				  TCP_RTO_MAX);
 
 	if (likely(!err))
 		NET_INC_STATS_BH(sock_net(sk),
@@ -2497,8 +2497,10 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb)
 		return -EBUSY;
 
 	if (before(TCP_SKB_CB(skb)->seq, tp->snd_una)) {
-		if (before(TCP_SKB_CB(skb)->end_seq, tp->snd_una))
-			BUG();
+		if (unlikely(before(TCP_SKB_CB(skb)->end_seq, tp->snd_una))) {
+			WARN_ON_ONCE(1);
+			return -EINVAL;
+		}
 		if (tcp_trim_head(sk, skb, tp->snd_una - TCP_SKB_CB(skb)->seq))
 			return -ENOMEM;
 	}
@@ -2726,7 +2728,7 @@ begin_fwd:
 		if (skb == tcp_write_queue_head(sk))
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
 						  inet_csk(sk)->icsk_rto,
-						  sysctl_tcp_rto_max);
+						  TCP_RTO_MAX);
 	}
 }
 
@@ -2989,6 +2991,7 @@ static void tcp_connect_init(struct sock *sk)
 	sock_reset_flag(sk, SOCK_DONE);
 	tp->snd_wnd = 0;
 	tcp_init_wl(tp, 0);
+	tcp_write_queue_purge(sk);
 	tp->snd_una = tp->write_seq;
 	tp->snd_sml = tp->write_seq;
 	tp->snd_up = tp->write_seq;
@@ -3152,7 +3155,7 @@ int tcp_connect(struct sock *sk)
 
 	/* Timer for repeating the SYN until an answer. */
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-				  inet_csk(sk)->icsk_rto, sysctl_tcp_rto_max);
+				  inet_csk(sk)->icsk_rto, TCP_RTO_MAX);
 	return 0;
 }
 EXPORT_SYMBOL(tcp_connect);
@@ -3236,7 +3239,7 @@ void tcp_send_ack(struct sock *sk)
 		inet_csk_schedule_ack(sk);
 		inet_csk(sk)->icsk_ack.ato = TCP_ATO_MIN;
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-					  TCP_DELACK_MAX, sysctl_tcp_rto_max);
+					  TCP_DELACK_MAX, TCP_RTO_MAX);
 		return;
 	}
 
@@ -3356,7 +3359,7 @@ void tcp_send_probe0(struct sock *sk)
 		if (icsk->icsk_backoff < sysctl_tcp_retries2)
 			icsk->icsk_backoff++;
 		icsk->icsk_probes_out++;
-		probe_max = sysctl_tcp_rto_max;
+		probe_max = TCP_RTO_MAX;
 	} else {
 		/* If packet was not sent due to local congestion,
 		 * do not backoff and do not remember icsk_probes_out.
@@ -3370,7 +3373,7 @@ void tcp_send_probe0(struct sock *sk)
 	}
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_PROBE0,
 				  inet_csk_rto_backoff(icsk, probe_max),
-				  sysctl_tcp_rto_max);
+				  TCP_RTO_MAX);
 }
 
 int tcp_rtx_synack(struct sock *sk, struct request_sock *req)

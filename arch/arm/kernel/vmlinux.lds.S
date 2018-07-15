@@ -120,10 +120,6 @@ SECTIONS
 			ARM_CPU_KEEP(PROC_INFO)
 	}
 
-#ifdef CONFIG_MTK_AEE_MRDUMP
-	.mrdump ALIGN (0x400): {
-	}
-#endif
 #ifdef CONFIG_DEBUG_RODATA
 	. = ALIGN(1<<SECTION_SHIFT);
 #endif
