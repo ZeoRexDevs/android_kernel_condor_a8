@@ -142,23 +142,15 @@ struct device *wmt_dev = NULL;
 
 
 /*LCM on/off ctrl for wmt varabile*/
+UINT32 hif_info = 0;
 static struct work_struct gPwrOnOffWork;
 UINT32 g_es_lr_flag_for_quick_sleep = 1;	/* for ctrl quick sleep flag */
 UINT32 g_es_lr_flag_for_lpbk_onoff = 0;	/* for ctrl lpbk on off */
 OSAL_SLEEPABLE_LOCK g_es_lr_lock;
 
-INT32 __weak wmt_plat_set_dbg_mode(UINT32 flag)
-{
-	WMT_WARN_FUNC("wmt_plat_set_dbg_mode is not define!!!\n");
 
-	return 0;
-}
-
-VOID __weak wmt_plat_set_dynamic_dumpmem(UINT32 *buf)
-{
-	WMT_WARN_FUNC("wmt_plat_set_dynamic_dumpmem is not define!!!\n");
-
-}
+/* Prevent race condition when wmt_dev_tm_temp_query is called concurrently */
+static OSAL_UNSLEEPABLE_LOCK g_temp_query_spinlock;
 
 
 #ifndef CONFIG_MTK_COMBO_COMM_APO
@@ -217,6 +209,8 @@ static INT32 wmt_fb_notifier_callback(struct notifier_block *self, ULONG event, 
 		g_es_lr_flag_for_lpbk_onoff = 1;
 		osal_unlock_sleepable_lock(&g_es_lr_lock);
 		WMT_WARN_FUNC("@@@@@@@@@@wmt enter UNBLANK @@@@@@@@@@@@@@\n");
+		if (hif_info == 0)
+			break;
 		schedule_work(&gPwrOnOffWork);
 		break;
 	case FB_BLANK_POWERDOWN:
@@ -400,140 +394,34 @@ INT32 wmt_dev_rx_timeout(P_OSAL_EVENT pEvent)
 	return lRet;
 }
 
-INT32 wmt_dev_read_file(PUINT8 pName, const PPUINT8 ppBufPtr, INT32 offset, INT32 padSzBuf)
+/* TODO: [ChangeFeature][George] refine this function name for general filesystem read operation, not patch only. */
+INT32 wmt_dev_patch_get(PUINT8 pPatchName, osal_firmware **ppPatch)
 {
 	INT32 iRet = -1;
-	struct file *fd;
-	/* ssize_t iRet; */
-	INT32 file_len;
-	INT32 read_len;
-	PVOID pBuf;
+	osal_firmware *fw = NULL;
 
-	/* struct cred *cred = get_task_cred(current); */
-	const struct cred *cred = get_current_cred();
-
-	if (!ppBufPtr) {
+	if (!ppPatch) {
 		WMT_ERR_FUNC("invalid ppBufptr!\n");
 		return -1;
 	}
-	*ppBufPtr = NULL;
-
-	fd = filp_open(pName, O_RDONLY, 0);
-	if (!fd || IS_ERR(fd) || !fd->f_op || !fd->f_op->read) {
-		WMT_ERR_FUNC("failed to open or read!(0x%p, %d, %d, %d)\n", fd, PTR_ERR(fd), cred->fsuid,
-				cred->fsgid);
-		if (IS_ERR(fd))
-			WMT_ERR_FUNC("error code:%d\n", PTR_ERR(fd));
-		return -1;
-	}
-
-	file_len = fd->f_path.dentry->d_inode->i_size;
-	pBuf = vmalloc((file_len + BCNT_PATCH_BUF_HEADROOM + 3) & ~0x3UL);
-	if (!pBuf) {
-		WMT_ERR_FUNC("failed to vmalloc(%d)\n", (INT32) ((file_len + 3) & ~0x3UL));
-		goto read_file_done;
-	}
-
-	do {
-		if (fd->f_pos != offset) {
-			if (fd->f_op->llseek) {
-				if (fd->f_op->llseek(fd, offset, 0) != offset) {
-					WMT_ERR_FUNC("failed to seek!!\n");
-					goto read_file_done;
-				}
-			} else
-				fd->f_pos = offset;
-		}
-
-		read_len = fd->f_op->read(fd, pBuf + padSzBuf, file_len, &fd->f_pos);
-		if (read_len != file_len)
-			WMT_WARN_FUNC("read abnormal: read_len(%d), file_len(%d)\n", read_len, file_len);
-	} while (false);
-
-	iRet = 0;
-	*ppBufPtr = pBuf;
-
-read_file_done:
-	if (iRet) {
-		if (pBuf)
-			vfree(pBuf);
-	}
-
-	filp_close(fd, NULL);
-
-	return (iRet) ? iRet : read_len;
-}
-
-/* TODO: [ChangeFeature][George] refine this function name for general filesystem read operation, not patch only. */
-INT32 wmt_dev_patch_get(PUINT8 pPatchName, osal_firmware **ppPatch, INT32 padSzBuf)
-{
-	INT32 iRet = -1;
-	osal_firmware *pfw;
-	uid_t orig_uid;
-	gid_t orig_gid;
-
-	/* struct cred *cred = get_task_cred(current); */
-	struct cred *cred = (struct cred *)get_current_cred();
-
-	mm_segment_t orig_fs = get_fs();
-
-	if (*ppPatch) {
-		WMT_WARN_FUNC("f/w patch already exists\n");
-		if ((*ppPatch)->data)
-			vfree((*ppPatch)->data);
-
-		kfree(*ppPatch);
-		*ppPatch = NULL;
-	}
-
-	if (!osal_strlen(pPatchName)) {
-		WMT_ERR_FUNC("empty f/w name\n");
-		osal_assert((osal_strlen(pPatchName) > 0));
-		return -1;
-	}
-
-	pfw = kzalloc(sizeof(osal_firmware), /*GFP_KERNEL */ GFP_ATOMIC);
-	if (!pfw) {
-		WMT_ERR_FUNC("kzalloc(%d) fail\n", sizeof(osal_firmware));
-		return -2;
-	}
-
-	orig_uid = cred->fsuid.val;
-	orig_gid = cred->fsgid.val;
-	cred->fsuid.val = cred->fsgid.val = 0;
-
-	set_fs(get_ds());
-
-	/* load patch file from fs */
-	iRet = wmt_dev_read_file(pPatchName, (const PPUINT8)&pfw->data, 0, padSzBuf);
-	set_fs(orig_fs);
-
-	cred->fsuid.val = orig_uid;
-	cred->fsgid.val = orig_gid;
-
-	if (iRet > 0) {
-		pfw->size = iRet;
-		*ppPatch = pfw;
-		WMT_DBG_FUNC("load (%s) to addr(0x%p) success\n", pPatchName, pfw->data);
-		return 0;
-	}
-
-	kfree(pfw);
 	*ppPatch = NULL;
-	WMT_ERR_FUNC("load file (%s) fail, iRet(%d)\n", pPatchName, iRet);
-
-	return -1;
+	iRet = request_firmware((const struct firmware **)&fw, pPatchName, NULL);
+	if (iRet != 0) {
+		WMT_ERR_FUNC("failed to open or read!(%s)\n", pPatchName);
+		return -1;
+	}
+	WMT_INFO_FUNC("loader firmware %s  ok!!\n", pPatchName);
+	iRet = 0;
+	*ppPatch = fw;
+	return iRet;
 }
 
 INT32 wmt_dev_patch_put(osal_firmware **ppPatch)
 {
-	if (NULL != *ppPatch) {
-		if ((*ppPatch)->data)
-			vfree((*ppPatch)->data);
-		kfree(*ppPatch);
+	if (*ppPatch != NULL) {
+		release_firmware((const struct firmware *)*ppPatch);
 		*ppPatch = NULL;
 	}
-
 	return 0;
 }
 
@@ -545,10 +433,8 @@ VOID wmt_dev_patch_info_free(VOID)
 
 MTK_WCN_BOOL wmt_dev_is_file_exist(PUINT8 pFileName)
 {
-	struct file *fd = NULL;
-	/* ssize_t iRet; */
-	INT32 fileLen = -1;
-	const struct cred *cred = get_current_cred();
+	INT32 iRet = 0;
+	osal_firmware *fw = NULL;
 
 	if (pFileName == NULL) {
 		WMT_ERR_FUNC("invalid file name pointer(%p)\n", pFileName);
@@ -559,25 +445,13 @@ MTK_WCN_BOOL wmt_dev_is_file_exist(PUINT8 pFileName)
 		WMT_ERR_FUNC("invalid file name(%s)\n", pFileName);
 		return MTK_WCN_BOOL_FALSE;
 	}
-	/* struct cred *cred = get_task_cred(current); */
 
-	fd = filp_open(pFileName, O_RDONLY, 0);
-	if (!fd || IS_ERR(fd) || !fd->f_op || !fd->f_op->read) {
-		WMT_ERR_FUNC("failed to open or read(%s)!(0x%p, %d, %d)\n", pFileName, fd, cred->fsuid,
-				cred->fsgid);
+	iRet = request_firmware((const struct firmware **)&fw, pFileName, NULL);
+	if (iRet != 0) {
+		WMT_ERR_FUNC("failed to open or read!(%s)\n", pFileName);
 		return MTK_WCN_BOOL_FALSE;
 	}
-
-	fileLen = fd->f_path.dentry->d_inode->i_size;
-	filp_close(fd, NULL);
-	fd = NULL;
-	if (fileLen <= 0) {
-		WMT_ERR_FUNC("invalid file(%s), length(%d)\n", pFileName, fileLen);
-		return MTK_WCN_BOOL_FALSE;
-	}
-
-	WMT_ERR_FUNC("valid file(%s), length(%d)\n", pFileName, fileLen);
-
+	release_firmware(fw);
 	return true;
 }
 
@@ -672,17 +546,30 @@ static UINT32 wmt_dev_tra_poll(VOID)
 
 LONG wmt_dev_tm_temp_query(VOID)
 {
-#define HISTORY_NUM       5
+#define HISTORY_NUM       3
 #define TEMP_THRESHOLD   65
 #define REFRESH_TIME    300	/* sec */
 
-	static INT32 temp_table[HISTORY_NUM] = { 99 };	/* not query yet. */
-	static INT32 idx_temp_table;
-	static struct timeval query_time, now_time;
-	INT8 query_cond = 0;
+	static INT32 s_temp_table[HISTORY_NUM] = { 99 };	/* not query yet. */
+	static INT32 s_idx_temp_table;
+	static struct timeval s_query_time;
+
+	INT32 temp_table[HISTORY_NUM];
+	INT32 idx_temp_table;
+	struct timeval query_time;
+
+	struct timeval now_time;
 	INT32 current_temp = 0;
 	INT32 index = 0;
 	LONG return_temp = 0;
+	INT8 query_cond = 0;
+
+	/* Let us work on the copied version of function static variables */
+	osal_lock_unsleepable_lock(&g_temp_query_spinlock);
+	osal_memcpy(temp_table, s_temp_table, sizeof(s_temp_table));
+	osal_memcpy(&query_time, &s_query_time, sizeof(struct timeval));
+	idx_temp_table = s_idx_temp_table;
+	osal_unlock_unsleepable_lock(&g_temp_query_spinlock);
 
 	/* Query condition 1: */
 	/* If we have the high temperature records on the past, we continue to query/monitor */
@@ -727,12 +614,12 @@ LONG wmt_dev_tm_temp_query(VOID)
 		/* time overflow, we refresh temp table again for simplicity! */
 		if ((now_time.tv_sec < query_time.tv_sec) ||
 		    ((now_time.tv_sec > query_time.tv_sec) &&
-			 (now_time.tv_sec - query_time.tv_sec) > REFRESH_TIME)) {
+			(now_time.tv_sec - query_time.tv_sec) > REFRESH_TIME)) {
 			query_cond = 1;
 
 			WMT_INFO_FUNC
-				("It is long time (> %d sec) not to query, we must query temp temperature..\n",
-				 REFRESH_TIME);
+				("It is long time (prev(%ld), now(%ld), > %d sec) not to query, query temp again..\n",
+				 query_time.tv_sec, now_time.tv_sec, REFRESH_TIME);
 			for (index = 0; index < HISTORY_NUM; index++)
 				temp_table[index] = 99;
 
@@ -744,26 +631,60 @@ LONG wmt_dev_tm_temp_query(VOID)
 		mtk_wcn_wmt_therm_ctrl(WMTTHERM_ENABLE);
 		current_temp = mtk_wcn_wmt_therm_ctrl(WMTTHERM_READ);
 		mtk_wcn_wmt_therm_ctrl(WMTTHERM_DISABLE);
-		idx_temp_table = (idx_temp_table + 1) % HISTORY_NUM;
-		temp_table[idx_temp_table] = current_temp;
-		do_gettimeofday(&query_time);
 
-		WMT_INFO_FUNC("[Thermal] current_temp = 0x%x\n", (current_temp & 0xFF));
+		/* Only update temperature if our index hasn't been modified by the concurrent thread */
+		osal_lock_unsleepable_lock(&g_temp_query_spinlock);
+		if (idx_temp_table == s_idx_temp_table) {
+			osal_memcpy(s_temp_table, temp_table, sizeof(s_temp_table));
+			s_idx_temp_table = (s_idx_temp_table + 1) % HISTORY_NUM;
+			s_temp_table[s_idx_temp_table] = current_temp;
+			do_gettimeofday(&s_query_time);
+			index = -1;
+		} else {
+			index = s_idx_temp_table;
+		}
+		osal_unlock_unsleepable_lock(&g_temp_query_spinlock);
+
+		if (index == -1) {
+			WMT_INFO_FUNC("[Thermal] current_temp = 0x%x\n", (current_temp & 0xFF));
+		} else {
+			WMT_ERR_FUNC("Temperature(0x%x) update failed due to modified idx_temp_table(%d, %d)",
+				(current_temp & 0xFF), idx_temp_table, index);
+		}
 	} else {
-		current_temp = temp_table[idx_temp_table];
-		idx_temp_table = (idx_temp_table + 1) % HISTORY_NUM;
-		temp_table[idx_temp_table] = current_temp;
+		/* Only update temperature if our index hasn't been modified by the concurrent thread */
+		osal_lock_unsleepable_lock(&g_temp_query_spinlock);
+		if (idx_temp_table == s_idx_temp_table) {
+			current_temp = s_temp_table[s_idx_temp_table];
+			s_idx_temp_table = (s_idx_temp_table + 1) % HISTORY_NUM;
+			s_temp_table[s_idx_temp_table] = current_temp;
+			index = -1;
+		} else {
+			/* Return the last valid temperature which has just been modified by the concurrent thread */
+			current_temp = s_temp_table[s_idx_temp_table];
+			index = s_idx_temp_table;
+		}
+		osal_unlock_unsleepable_lock(&g_temp_query_spinlock);
+		if (index != -1) {
+			WMT_DBG_FUNC("Use last valid temperature (0x%x) due to modified idx_temp_table(%d, %d)",
+				(current_temp & 0xFF), idx_temp_table, index);
+		}
 	}
 
 	/*  */
 	/* Dump information */
 	/*  */
-	WMT_DBG_FUNC("[Thermal] idx_temp_table = %d\n", idx_temp_table);
-	WMT_DBG_FUNC("[Thermal] now.time = %d, query.time = %d, REFRESH_TIME = %d\n", now_time.tv_sec,
-		     query_time.tv_sec, REFRESH_TIME);
+	if (gWmtDbgLvl >= WMT_LOG_DBG) {
+		osal_lock_unsleepable_lock(&g_temp_query_spinlock);
+		WMT_DBG_FUNC("[Thermal] s_idx_temp_table = %d, idx_temp_table = %d\n",
+			s_idx_temp_table, idx_temp_table);
+		WMT_DBG_FUNC("[Thermal] now.time = %d, s_query.time = %d, query.time = %d, REFRESH_TIME = %d\n",
+			now_time.tv_sec, s_query_time.tv_sec, query_time.tv_sec, REFRESH_TIME);
 
-	WMT_DBG_FUNC("[0] = %d, [1] = %d, [2] = %d, [3] = %d, [4] = %d\n----\n",
-		     temp_table[0], temp_table[1], temp_table[2], temp_table[3], temp_table[4]);
+		WMT_DBG_FUNC("[0] = %d, [1] = %d, [2] = %d\n----\n",
+			s_temp_table[0], s_temp_table[1], s_temp_table[2]);
+		osal_unlock_unsleepable_lock(&g_temp_query_spinlock);
+	}
 
 	return_temp = ((current_temp & 0x80) == 0x0) ? current_temp : (-1) * (current_temp & 0x7f);
 
@@ -909,6 +830,8 @@ LONG WMT_unlocked_ioctl(struct file *filp, UINT32 cmd, ULONG arg)
 			bRet = wmt_lib_put_act_op(pOp);
 			WMT_DBG_FUNC("WMT_OPID_HIF_CONF result(%d)\n", bRet);
 			iRet = (MTK_WCN_BOOL_FALSE == bRet) ? -EFAULT : 0;
+			if (iRet == 0)
+				hif_info = 1;
 		} while (0);
 		break;
 	case WMT_IOCTL_FUNC_ONOFF_CTRL:	/* test turn on/off func */
@@ -1445,6 +1368,7 @@ static INT32 WMT_init(VOID)
 		mtk_wcn_hif_sdio_update_cb_reg(wmt_dev_tra_sdio_update);
 
 	WMT_INFO_FUNC("wmt_dev register thermal cb\n");
+	osal_unsleepable_lock_init(&g_temp_query_spinlock);
 	wmt_lib_register_thermal_ctrl_cb(wmt_dev_tm_temp_query);
 
 	if (WMT_CHIP_TYPE_SOC == chip_type)
@@ -1504,6 +1428,7 @@ static VOID WMT_exit(VOID)
 	dev_t dev = MKDEV(gWmtMajor, 0);
 
 	osal_sleepable_lock_deinit(&g_es_lr_lock);
+	osal_unsleepable_lock_deinit(&g_temp_query_spinlock);
 #ifndef CONFIG_MTK_COMBO_COMM_APO
 #ifdef CONFIG_EARLYSUSPEND
 	unregister_early_suspend(&wmt_early_suspend_handler);

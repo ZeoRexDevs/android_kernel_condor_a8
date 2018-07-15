@@ -240,11 +240,6 @@ void ion_sec_heap_add_freelist(struct ion_buffer *buffer)
 {
 }
 
-int ion_sec_heap_pool_total(struct ion_heap *heap)
-{
-	return 0;
-}
-
 void *ion_sec_heap_map_kernel(struct ion_heap *heap,
 			  struct ion_buffer *buffer) {
 #if ION_RUNTIME_DEBUGGER
@@ -344,7 +339,6 @@ static struct ion_heap_ops mm_sec_heap_ops = {
 		.phys = ion_sec_heap_phys,
 		.shrink = ion_sec_heap_shrink,
 		/*.add_freelist = ion_sec_heap_add_freelist,*/
-		.page_pool_total = ion_sec_heap_pool_total,
 };
 
 /*For sec memory heap user dump*/
@@ -714,4 +708,3 @@ long ion_sec_ioctl(struct ion_client *client, unsigned int cmd, unsigned long ar
 
 }
 #endif
-

@@ -344,7 +344,11 @@ struct sock *inet_diag_find_one_icsk(struct net *net,
 		return ERR_PTR(-ENOENT);
 
 	if (sock_diag_check_cookie(sk, req->id.idiag_cookie)) {
-		sock_gen_put(sk);
+		/* NOTE: forward-ports should use sock_gen_put(sk) instead. */
+		if (sk->sk_state == TCP_TIME_WAIT)
+			inet_twsk_put((struct inet_timewait_sock *)sk);
+		else
+			sock_put(sk);
 		return ERR_PTR(-ENOENT);
 	}
 
@@ -388,9 +392,19 @@ int inet_diag_dump_one_icsk(struct inet_hashinfo *hashinfo,
 		err = 0;
 
 out:
+/* conflict here
 	if (sk)
 		sock_gen_put(sk);
 
+out_nosk:
+*/
+	if (sk) {
+		if (sk->sk_state == TCP_TIME_WAIT)
+			inet_twsk_put((struct inet_timewait_sock *)sk);
+		else
+			sock_put(sk);
+	}
+//
 	return err;
 }
 EXPORT_SYMBOL_GPL(inet_diag_dump_one_icsk);

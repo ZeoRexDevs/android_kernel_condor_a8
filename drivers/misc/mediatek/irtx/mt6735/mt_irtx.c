@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/fs.h>
@@ -244,11 +231,6 @@ static ssize_t dev_char_write(struct file *file, const char __user *buf, size_t 
 	int buf_size = (count + 3) / 4;	/* when count is 5... */
 
 	pr_warn("[IRTX] irtx write len=0x%x, pwm=%d\n", (unsigned int)count, (unsigned int)irtx_pwm_config.pwm_no);
-
-	/* fix VTS fail issue: if no valid data,just return */
-	if (count == 0)
-		return 0;
-
 	wave_vir = dma_alloc_coherent(&mt_irtx_dev.plat_dev->dev, count, &wave_phy, GFP_KERNEL);
 	if (!wave_vir) {
 		pr_err("[IRTX] alloc memory fail\n");
@@ -264,7 +246,7 @@ static ssize_t dev_char_write(struct file *file, const char __user *buf, size_t 
 	mt_set_intr_enable(1);
 	mt_pwm_26M_clk_enable_hal(1);
 	pr_warn("[IRTX] irtx before read IRTXCFG:0x%x\n", (irtx_read32(mt_irtx_dev.reg_base, IRTXCFG)));
-	irtx_pwm_config.PWM_MODE_MEMORY_REGS.BUF0_BASE_ADDR = wave_phy;
+	irtx_pwm_config.PWM_MODE_MEMORY_REGS.BUF0_BASE_ADDR = (u32 *) wave_phy;
 	irtx_pwm_config.PWM_MODE_MEMORY_REGS.BUF0_SIZE = (buf_size ? (buf_size - 1) : 0);
 
 	set_irtx_sw_mode();

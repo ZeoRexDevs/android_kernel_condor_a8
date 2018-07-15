@@ -83,6 +83,7 @@ karo	Ka-Ro electronics GmbH
 keymile	Keymile GmbH
 lacie	LaCie
 lantiq	Lantiq Semiconductor
+lego	LEGO Systems A/S
 lenovo	Lenovo Group Ltd.
 lg	LG Corporation
 linux	Linux-specific binding
@@ -94,7 +95,6 @@ mediatek	MediaTek Inc.
 micrel	Micrel Inc.
 microchip	Microchip Technology Inc.
 micron	Micron Technology Inc.
-microtrust	Microtrust Co., Ltd.
 mitsubishi	Mitsubishi Electric Corporation
 mosaixtech	Mosaix Technologies, Inc.
 moxa	Moxa

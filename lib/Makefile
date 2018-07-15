@@ -6,9 +6,6 @@ ifdef CONFIG_FUNCTION_TRACER
 ORIG_CFLAGS := $(KBUILD_CFLAGS)
 KBUILD_CFLAGS = $(subst -pg,,$(ORIG_CFLAGS))
 endif
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
-
-subdir-ccflags-y += -Werror
 
 # These files are disabled because they produce lots of non-interesting and/or
 # flaky coverage that is not a function of syscall inputs. For example,

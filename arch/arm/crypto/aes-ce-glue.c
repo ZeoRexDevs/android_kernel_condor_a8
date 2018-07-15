@@ -16,8 +16,6 @@
 #include <crypto/algapi.h>
 #include <linux/module.h>
 
-#define LINUX_CBC_CE 0 /* 0: used MTK CBC CE 1: used Linux CBC CE */
-
 MODULE_DESCRIPTION("AES-ECB/CBC/CTR/XTS using ARMv8 Crypto Extensions");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
 MODULE_LICENSE("GPL v2");
@@ -31,12 +29,10 @@ asmlinkage void ce_aes_ecb_encrypt(u8 out[], u8 const in[], u8 const rk[],
 asmlinkage void ce_aes_ecb_decrypt(u8 out[], u8 const in[], u8 const rk[],
 				   int rounds, int blocks);
 
-#if LINUX_CBC_CE
 asmlinkage void ce_aes_cbc_encrypt(u8 out[], u8 const in[], u8 const rk[],
 				   int rounds, int blocks, u8 iv[]);
 asmlinkage void ce_aes_cbc_decrypt(u8 out[], u8 const in[], u8 const rk[],
 				   int rounds, int blocks, u8 iv[]);
-#endif
 
 asmlinkage void ce_aes_ctr_encrypt(u8 out[], u8 const in[], u8 const rk[],
 				   int rounds, int blocks, u8 ctr[]);
@@ -91,8 +87,13 @@ static int ce_aes_expandkey(struct crypto_aes_ctx *ctx, const u8 *in_key,
 		u32 *rki = ctx->key_enc + (i * kwords);
 		u32 *rko = rki + kwords;
 
+#ifndef CONFIG_CPU_BIG_ENDIAN
 		rko[0] = ror32(ce_aes_sub(rki[kwords - 1]), 8);
 		rko[0] = rko[0] ^ rki[0] ^ rcon[i];
+#else
+		rko[0] = rol32(ce_aes_sub(rki[kwords - 1]), 8);
+		rko[0] = rko[0] ^ rki[0] ^ (rcon[i] << 24);
+#endif
 		rko[1] = rko[0] ^ rki[1];
 		rko[2] = rko[1] ^ rki[2];
 		rko[3] = rko[2] ^ rki[3];
@@ -213,7 +214,6 @@ static int ecb_decrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
 	return err;
 }
 
-#if LINUX_CBC_CE
 static int cbc_encrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
 		       struct scatterlist *src, unsigned int nbytes)
 {
@@ -261,7 +261,6 @@ static int cbc_decrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
 	kernel_neon_end();
 	return err;
 }
-#endif
 
 static int ctr_encrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
 		       struct scatterlist *src, unsigned int nbytes)
@@ -285,10 +284,9 @@ static int ctr_encrypt(struct blkcipher_desc *desc, struct scatterlist *dst,
 		err = blkcipher_walk_done(desc, &walk,
 					  walk.nbytes % AES_BLOCK_SIZE);
 	}
-	if (nbytes) {
+	if (walk.nbytes % AES_BLOCK_SIZE) {
 		u8 *tdst = walk.dst.virt.addr + blocks * AES_BLOCK_SIZE;
 		u8 *tsrc = walk.src.virt.addr + blocks * AES_BLOCK_SIZE;
-
 		u8 __aligned(8) tail[AES_BLOCK_SIZE];
 
 		/*
@@ -375,9 +373,7 @@ static struct crypto_alg aes_algs[] = { {
 		.encrypt	= ecb_encrypt,
 		.decrypt	= ecb_decrypt,
 	},
-},
-#if LINUX_CBC_CE
-{
+}, {
 	.cra_name		= "__cbc-aes-ce",
 	.cra_driver_name	= "__driver-cbc-aes-ce",
 	.cra_priority		= 0,
@@ -395,9 +391,7 @@ static struct crypto_alg aes_algs[] = { {
 		.encrypt	= cbc_encrypt,
 		.decrypt	= cbc_decrypt,
 	},
-},
-#endif
-{
+}, {
 	.cra_name		= "__ctr-aes-ce",
 	.cra_driver_name	= "__driver-ctr-aes-ce",
 	.cra_priority		= 0,
@@ -453,9 +447,7 @@ static struct crypto_alg aes_algs[] = { {
 		.encrypt	= ablk_encrypt,
 		.decrypt	= ablk_decrypt,
 	}
-},
-#if LINUX_CBC_CE
-{
+}, {
 	.cra_name		= "cbc(aes)",
 	.cra_driver_name	= "cbc-aes-ce",
 	.cra_priority		= 300,
@@ -475,9 +467,7 @@ static struct crypto_alg aes_algs[] = { {
 		.encrypt	= ablk_encrypt,
 		.decrypt	= ablk_decrypt,
 	}
-},
-#endif
-{
+}, {
 	.cra_name		= "ctr(aes)",
 	.cra_driver_name	= "ctr-aes-ce",
 	.cra_priority		= 300,

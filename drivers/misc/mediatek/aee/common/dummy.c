@@ -1,17 +1,4 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
-/*
  * These are dummy functions for the case that any aee config is disabled
  */
 
@@ -115,17 +102,8 @@ __weak void aee_register_api(struct aee_kernel_api *aee_api)
 {
 }
 
-__weak void aee_save_excp_regs(struct pt_regs *regs)
-{
-}
-
 __weak void aee_stop_nested_panic(struct pt_regs *regs)
 {
-}
-
-__weak int aee_nested_printf(const char *fmt, ...)
-{
-	return 0;
 }
 
 __weak int aee_in_nested_panic(void)

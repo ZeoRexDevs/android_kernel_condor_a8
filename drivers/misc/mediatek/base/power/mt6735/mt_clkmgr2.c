@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
@@ -656,7 +643,7 @@ static int sdm_pll_dump_regs_op(struct pll *pll, unsigned int *ptr)
 
 static int sdm_pll_hp_enable_op(struct pll *pll)
 {
-	int err = 0;
+	int err;
 
 	if (!pll->hp_switch || (pll->state == PWR_DOWN))
 		return 0;
@@ -670,7 +657,7 @@ static int sdm_pll_hp_enable_op(struct pll *pll)
 
 static int sdm_pll_hp_disable_op(struct pll *pll)
 {
-	int err = 0;
+	int err;
 
 	if (!pll->hp_switch || (pll->state == PWR_ON))
 		return 0;
@@ -1904,8 +1891,8 @@ static void larb_backup(int larb_idx)
 	struct larb_monitor *pos;
 
 	/* clk_info("[%s]: start to backup larb%d\n", __func__, larb_idx); */
-	/* if (larb_idx == MT_LARB_DISP)
-		clk_dbg("[%s]: backup larb%d\n", __func__, larb_idx); */
+	if (larb_idx == MT_LARB_DISP)
+		clk_dbg("[%s]: backup larb%d\n", __func__, larb_idx);
 
 	larb_clk_prepare(larb_idx);
 
@@ -1924,8 +1911,8 @@ static void larb_restore(int larb_idx)
 	struct larb_monitor *pos;
 
 	/* clk_info("[%s]: start to restore larb%d\n", __func__, larb_idx); */
-	/* if (larb_idx == MT_LARB_DISP)
-		clk_dbg("[%s]: restore larb%d\n", __func__, larb_idx); */
+	if (larb_idx == MT_LARB_DISP)
+		clk_dbg("[%s]: restore larb%d\n", __func__, larb_idx);
 
 	larb_clk_prepare(larb_idx);
 
@@ -2330,28 +2317,26 @@ static struct clkmux_ops clkmux_ops = {
 	.disable = clkmux_disable_op,
 };
 
+/*
+static struct clkmux_ops hd_audio_clkmux_ops = {
+	.enable = clkmux_enable_op,
+	.disable = clkmux_disable_op,
+};*/
+/*
 static void audio_clkmux_enable_op(struct clkmux *mux)
 {
 #ifdef MUX_LOG
-	clk_dbg("[%s]: mux->name=%s\n", __func__, mux->name);
+    //clk_info("[%s]: mux->name=%s\n", __func__, mux->name);
+    clk_dbg("[%s]: mux->name=%s\n", __func__, mux->name);
 #endif
-	/* clk_writel(mux->base_addr+8, mux->pdn_mask);//write clr reg */
+    clk_clrl(mux->base_addr, mux->pdn_mask);
 };
-
-static void audio_clkmux_disable_op(struct clkmux *mux)
-{
-#ifdef MUX_LOG
-	clk_dbg("[%s]: mux->name=%s\n", __func__, mux->name);
-#endif
-	/* clk_writel(mux->base_addr+4, mux->pdn_mask); //write set reg */
-};
-
+*/
 static struct clkmux_ops audio_clkmux_ops = {
 	.sel = clkmux_sel_op,
-	.enable = audio_clkmux_enable_op,
-	.disable = audio_clkmux_disable_op,
-	/* .enable = clkmux_enable_op, */
-	/* .disable = clkmux_disable_op, */
+	/* .enable = audio_clkmux_enable_op, */
+	.enable = clkmux_enable_op,
+	.disable = clkmux_disable_op,
 };
 
 static void clkmux_sel_locked(struct clkmux *mux, unsigned int clksrc)

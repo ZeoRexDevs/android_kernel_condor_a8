@@ -813,7 +813,7 @@ static void tcp_v4_reqsk_send_ack(struct sock *sk, struct sk_buff *skb,
 			tcp_time_stamp,
 			req->ts_recent,
 			0,
-			tcp_md5_do_lookup(sk, (union tcp_md5_addr *)&ip_hdr(skb)->daddr,
+			tcp_md5_do_lookup(sk, (union tcp_md5_addr *)&ip_hdr(skb)->saddr,
 					  AF_INET),
 			inet_rsk(req)->no_srccheck ? IP_REPLY_ARG_NOSRCCHECK : 0,
 			ip_hdr(skb)->tos);
@@ -1427,7 +1427,7 @@ static struct sock *tcp_v4_hnd_req(struct sock *sk, struct sk_buff *skb)
 }
 
 /* The socket must have it's spinlock held when we get
- * here.
+ * here, unless it is a TCP_LISTEN socket.
  *
  * We have a potential double-lock case here, so even when
  * doing backlog processing we use the BH locking scheme.
@@ -1677,6 +1677,11 @@ process:
 	sk_mark_napi_id(sk, skb);
 	skb->dev = NULL;
 
+	if (sk->sk_state == TCP_LISTEN) {
+		ret = tcp_v4_do_rcv(sk, skb);
+		goto put_and_return;
+	}
+
 	bh_lock_sock_nested(sk);
 	ret = 0;
 	if (!sock_owned_by_user(sk)) {
@@ -1690,6 +1695,7 @@ process:
 	}
 	bh_unlock_sock(sk);
 
+put_and_return:
 	sock_put(sk);
 
 	return ret;
@@ -1859,6 +1865,97 @@ void tcp_v4_destroy_sock(struct sock *sk)
 	sock_release_memcg(sk);
 }
 EXPORT_SYMBOL(tcp_v4_destroy_sock);
+
+void tcp_v4_handle_retrans_time_by_uid(struct uid_err uid_e)
+{
+	unsigned int bucket;
+	uid_t skuid = (uid_t)(uid_e.appuid);
+	struct inet_connection_sock *icsk = NULL;
+
+	for (bucket = 0; bucket < tcp_hashinfo.ehash_mask; bucket++) {
+		struct hlist_nulls_node *node;
+		struct sock *sk;
+		spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
+
+		spin_lock_bh(lock);
+		sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
+			if (sysctl_ip_dynaddr && sk->sk_state == TCP_SYN_SENT)
+				continue;
+			if (sock_flag(sk, SOCK_DEAD))
+				continue;
+
+			if (sk->sk_socket) {
+				if (SOCK_INODE(sk->sk_socket)->i_uid.val != skuid)
+					continue;
+
+			} else {
+				continue;
+			}
+
+			sock_hold(sk);
+			spin_unlock_bh(lock);
+
+			local_bh_disable();
+			bh_lock_sock(sk);
+
+			icsk = inet_csk(sk);
+			pr_debug("[mmspb] tcp_v4_handle_retrans_time_by_uid update timer\n");
+
+			sk_reset_timer(sk, &icsk->icsk_retransmit_timer, jiffies + 2);
+			bh_unlock_sock(sk);
+			local_bh_enable();
+			spin_lock_bh(lock);
+			sock_put(sk);
+		}
+		spin_unlock_bh(lock);
+	}
+}
+
+/* tcp_v4_nuke_addr_by_uid - destroy all sockets of spcial uid*/
+void tcp_v4_reset_connections_by_uid(struct uid_err uid_e)
+{
+	unsigned int bucket;
+	uid_t skuid = (uid_t)(uid_e.appuid);
+
+	for (bucket = 0; bucket < tcp_hashinfo.ehash_mask; bucket++) {
+		struct hlist_nulls_node *node;
+		struct sock *sk;
+		spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
+
+restart:
+		spin_lock_bh(lock);
+		sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
+			if (sysctl_ip_dynaddr && sk->sk_state == TCP_SYN_SENT)
+				continue;
+			if (sock_flag(sk, SOCK_DEAD))
+				continue;
+			if (sk->sk_state == TCP_TIME_WAIT)
+				continue;
+			if (sk->sk_socket) {
+				if (SOCK_INODE(sk->sk_socket)->i_uid.val != skuid)
+					continue;
+			} else {
+				continue;
+			}
+
+			sock_hold(sk);
+			spin_unlock_bh(lock);
+
+			local_bh_disable();
+			bh_lock_sock(sk);
+			sk->sk_err = uid_e.errNum;
+			pr_debug("SIOCKILLSOCK set sk err == %d!!\n", sk->sk_err);
+			sk->sk_error_report(sk);
+
+			tcp_done(sk);
+			bh_unlock_sock(sk);
+			local_bh_enable();
+			sock_put(sk);
+			goto restart;
+		}
+		spin_unlock_bh(lock);
+	}
+}
 
 #ifdef CONFIG_PROC_FS
 /* Proc filesystem TCP sock list dumping. */

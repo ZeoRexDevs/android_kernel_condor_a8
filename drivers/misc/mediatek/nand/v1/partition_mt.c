@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /******************************************************************************
 * partition_mt.c - MT6516 NAND partition management Driver
  *
@@ -447,9 +434,8 @@ void construct_mtd_partition(struct mtd_info *mtd)
 	int i, j;
 
 	for (i = 0; i < PART_MAX_COUNT; i++) {
-		if (i != 0)
-			if (!strcmp(lastest_part[i-1].name, "BMTPOOL"))
-				break;
+		if (!strcmp(lastest_part[i-1].name, "BMTPOOL"))
+			break;
 		for (j = 0; j < MAX_PARTITION_NAME_LEN; j++) {
 			if (lastest_part[i].name[j] == 0)
 				break;
@@ -528,7 +514,7 @@ void part_init_pmt(struct mtd_info *mtd, u8 *buf)
 	int i = 0;
 	int err = 0;
 
-	pr_info("part_init_pmt\n");
+	pr_info("part_init_pmt  %s\n", __TIME__);
 	page_buf = kzalloc(mtd->writesize + mtd->oobsize, GFP_KERNEL);
 	page_readbuf = kzalloc(mtd->writesize, GFP_KERNEL);
 

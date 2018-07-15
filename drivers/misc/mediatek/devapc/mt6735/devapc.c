@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -25,7 +12,6 @@
 #include <linux/cdev.h>
 #include <linux/init.h>
 #include <linux/fs.h>
-#include <linux/proc_fs.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/of_platform.h>
@@ -86,8 +72,6 @@ static struct cdev *g_devapc_ctrl;
 static unsigned int devapc_irq;
 static void __iomem *devapc_ao_base;
 static void __iomem *devapc_pd_base;
-
-static unsigned int enable_dynamic_one_core_violation_debug;
 
 #if defined(CONFIG_ARCH_MT6735)
 
@@ -784,7 +768,6 @@ static irqreturn_t devapc_violation_irq(int irq, void *dev_id)
 	unsigned int domain_id;
 	unsigned int r_w_violation;
 	int i;
-	struct pt_regs *regs;
 
 	dbg0 = readl(DEVAPC0_VIO_DBG0);
 	dbg1 = readl(DEVAPC0_VIO_DBG1);
@@ -796,34 +779,34 @@ static irqreturn_t devapc_violation_irq(int irq, void *dev_id)
 	/* violation information improvement for Denali-3 */
 	if ((domain_id >= 0) && (domain_id < ARRAY_SIZE(domain_settings))) {
 		if (1 == r_w_violation) {
-			pr_err("[DEVAPC] Device Access Permission Write Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x, Dom ID:0x%x (%s), VIO_DBG0:0x%x\n",
+			pr_debug("[DEVAPC] Device Access Permission Write Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x, Dom ID:0x%x (%s), VIO_DBG0:0x%x\n",
 				current->comm, current->pid, dbg1, master_id, domain_id,
 				domain_settings[domain_id].name, (*DEVAPC0_VIO_DBG0));
 		} else {
-			pr_err("[DEVAPC] Device Access Permission Read Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x, Dom ID:0x%x (%s), VIO_DBG0:0x%x\n",
+			pr_debug("[DEVAPC] Device Access Permission Read Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x, Dom ID:0x%x (%s), VIO_DBG0:0x%x\n",
 			current->comm, current->pid, dbg1, master_id, domain_id,
 			domain_settings[domain_id].name, (*DEVAPC0_VIO_DBG0));
 		}
 	} else {
 		if (1 == r_w_violation) {
-			pr_err("[DEVAPC] Device Access Permission Write Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x, VIO_DBG0:0x%x\n",
+			pr_debug("[DEVAPC] Device Access Permission Write Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x, VIO_DBG0:0x%x\n",
 			current->comm, current->pid, dbg1, master_id, domain_id, (*DEVAPC0_VIO_DBG0));
 		} else {
-			pr_err("[DEVAPC] Device Access Permission Read Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x, VIO_DBG0:0x%x\n",
+			pr_debug("[DEVAPC] Device Access Permission Read Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x, VIO_DBG0:0x%x\n",
 			current->comm, current->pid, dbg1, master_id, domain_id, (*DEVAPC0_VIO_DBG0));
 		}
 	}
 #else
 	if (1 == r_w_violation) {
-		pr_err("[DEVAPC] Device Access Permission Write Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x\n",
+		pr_debug("[DEVAPC] Device Access Permission Write Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x\n",
 			current->comm, current->pid, dbg1, master_id, domain_id);
 	} else {
-		pr_err("[DEVAPC] Device Access Permission Read Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x\n",
+		pr_debug("[DEVAPC] Device Access Permission Read Violation - Process:%s PID:%i Vio Addr:0x%x , Bus ID:0x%x , Dom ID:0x%x\n",
 			current->comm, current->pid, dbg1, master_id, domain_id);
 	}
 #endif
 
-	pr_err("[DEVAPC] VIO_STA 0:0x%x, 1:0x%x, 2:0x%x, 3:0x%x, 4:0x%x\n",
+	pr_debug("[DEVAPC] VIO_STA 0:0x%x, 1:0x%x, 2:0x%x, 3:0x%x, 4:0x%x\n",
 		readl(DEVAPC0_D0_VIO_STA_0), readl(DEVAPC0_D0_VIO_STA_1), readl(DEVAPC0_D0_VIO_STA_2),
 		readl(DEVAPC0_D0_VIO_STA_3), readl(DEVAPC0_D0_VIO_STA_4));
 
@@ -833,23 +816,10 @@ static irqreturn_t devapc_violation_irq(int irq, void *dev_id)
 		/* violation information improvement */
 
 		if (check_vio_status(i))
-			pr_err("[DEVAPC] Access Violation Slave: %s (index=%d)\n", devapc_devices[i].device, i);
+			pr_debug("[DEVAPC] Access Violation Slave: %s (index=%d)\n", devapc_devices[i].device, i);
 #endif
 
 		clear_vio_status(i);
-	}
-
-	if ((DEVAPC_ENABLE_ONE_CORE_VIOLATION_DEBUG) || (enable_dynamic_one_core_violation_debug)) {
-		pr_err("[DEVAPC] ====== Start dumping Device APC violation tracing ======\n");
-
-		pr_err("[DEVAPC] **************** [All IRQ Registers] ****************\n");
-		regs = get_irq_regs();
-		show_regs(regs);
-
-		pr_err("[DEVAPC] **************** [All Current Task Stack] ****************\n");
-		show_stack(current, NULL);
-
-		pr_err("[DEVAPC] ====== End of dumping Device APC violation tracing ======\n");
 	}
 
 	mt_reg_sync_writel(VIO_DBG_CLR, DEVAPC0_VIO_DBG0);
@@ -857,8 +827,8 @@ static irqreturn_t devapc_violation_irq(int irq, void *dev_id)
 	dbg1 = readl(DEVAPC0_VIO_DBG1);
 
 	if ((dbg0 != 0) || (dbg1 != 0)) {
-		pr_err("[DEVAPC] Multi-violation!\n");
-		pr_err("[DEVAPC] DBG0 = %x, DBG1 = %x\n", dbg0, dbg1);
+		pr_debug("[DEVAPC] Multi-violation!\n");
+		pr_debug("[DEVAPC] DBG0 = %x, DBG1 = %x\n", dbg0, dbg1);
 	}
 
 	return IRQ_HANDLED;
@@ -905,6 +875,7 @@ static int devapc_probe(struct platform_device *dev)
 	return 0;
 }
 
+
 static int devapc_remove(struct platform_device *dev)
 {
 	return 0;
@@ -921,55 +892,6 @@ static int devapc_resume(struct platform_device *dev)
 
 	return 0;
 }
-
-static int check_debug_input_type(const char *str)
-{
-	if (sysfs_streq(str, "1"))
-		return DAPC_INPUT_TYPE_DEBUG_ON;
-	else if (sysfs_streq(str, "0"))
-		return DAPC_INPUT_TYPE_DEBUG_OFF;
-	else
-		return 0;
-}
-
-static ssize_t devapc_dbg_write(struct file *file, const char __user *buffer, size_t count, loff_t *data)
-{
-	char desc[32];
-	int len = 0;
-	int input_type;
-
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
-	if (copy_from_user(desc, buffer, len))
-		return -EFAULT;
-
-	desc[len] = '\0';
-
-	input_type = check_debug_input_type(desc);
-	if (!input_type)
-		return -EFAULT;
-
-	if (input_type == DAPC_INPUT_TYPE_DEBUG_ON) {
-		enable_dynamic_one_core_violation_debug = 1;
-		pr_err("[DEVAPC] One-Core Debugging: Enabled\n");
-	} else if (input_type == DAPC_INPUT_TYPE_DEBUG_OFF) {
-		enable_dynamic_one_core_violation_debug = 0;
-		pr_err("[DEVAPC] One-Core Debugging: Disabled\n");
-	}
-
-	return count;
-}
-
-static int devapc_dbg_open(struct inode *inode, struct file *file)
-{
-	return 0;
-}
-
-static const struct file_operations devapc_dbg_fops = {
-	.owner = THIS_MODULE,
-	.open  = devapc_dbg_open,
-	.write = devapc_dbg_write,
-	.read = NULL,
-};
 
 struct platform_device devapc_device = {
 	.name = "devapc",
@@ -1027,9 +949,6 @@ static int __init devapc_init(void)
 		return ret;
 	}
 	g_devapc_ctrl->owner = THIS_MODULE;
-
-	proc_create("devapc_dbg", (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH), NULL,
-		&devapc_dbg_fops);
 
 	return 0;
 }

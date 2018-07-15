@@ -1,15 +1,14 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
- */
+* This program is distributed and in hope it will be useful, but WITHOUT
+* ANY WARRNTY; without even the implied warranty of MERCHANTABITLITY or
+* FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+* more details.
+*
+*
+********************************************************************************
+* Author : Chagnlei Gao (changlei.gao@mediatek.com)
+********************************************************************************
+*/
 
 #ifndef __MT_PWM_HAL_PUB_H__
 #define __MT_PWM_HAL_PUB_H__
@@ -27,7 +26,6 @@
 #define EBADADDR 4
 #define EEXCESSBITS 5
 #define EINVALID 6
-#define EEXCESS4GADDR 7
 
 #define PWM_DEBUG
 #ifdef PWM_DEBUG
@@ -82,7 +80,7 @@ void mt_pwm_dump_regs_hal(void);
 void pwm_debug_store_hal(void);
 void pwm_debug_show_hal(void);
 
-void mt_set_pwm_buf0_addr_hal(uint32_t pwm_no, dma_addr_t addr);
+void mt_set_pwm_buf0_addr_hal(uint32_t pwm_no, uint32_t *addr);
 void mt_set_pwm_buf0_size_hal(uint32_t pwm_no, uint16_t size);
 
 int mt_get_pwm_clk_src(struct platform_device *pdev);

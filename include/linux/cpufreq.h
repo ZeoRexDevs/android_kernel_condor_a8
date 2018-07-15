@@ -158,7 +158,6 @@ u64 get_cpu_idle_time(unsigned int cpu, u64 *wall, int io_busy);
 int cpufreq_get_policy(struct cpufreq_policy *policy, unsigned int cpu);
 int cpufreq_update_policy(unsigned int cpu);
 bool have_governor_per_policy(void);
-bool cpufreq_driver_is_slow(void);
 struct kobject *get_governor_parent_kobj(struct cpufreq_policy *policy);
 #else
 static inline unsigned int cpufreq_get(unsigned int cpu)
@@ -311,14 +310,6 @@ struct cpufreq_driver {
  * issuing a BUG_ON().
  */
 #define CPUFREQ_NEED_INITIAL_FREQ_CHECK	(1 << 5)
-
-/*
- * Indicates that it is safe to call cpufreq_driver_target from
- * non-interruptable context in scheduler hot paths.  Drivers must
- * opt-in to this flag, as the safe default is that they might sleep
- * or be too slow for hot path use.
- */
-#define CPUFREQ_DRIVER_FAST		(1 << 6)
 
 int cpufreq_register_driver(struct cpufreq_driver *driver_data);
 int cpufreq_unregister_driver(struct cpufreq_driver *driver_data);
@@ -616,6 +607,21 @@ int cpufreq_generic_init(struct cpufreq_policy *policy,
  *                         CPUFREQ STATS                             *
  *********************************************************************/
 
+#ifdef CONFIG_CPU_FREQ_STAT
+
 void acct_update_power(struct task_struct *p, cputime_t cputime);
+void cpufreq_task_stats_init(struct task_struct *p);
+void cpufreq_task_stats_exit(struct task_struct *p);
+void cpufreq_task_stats_remove_uids(uid_t uid_start, uid_t uid_end);
+int  proc_time_in_state_show(struct seq_file *m, struct pid_namespace *ns,
+	struct pid *pid, struct task_struct *p);
+#else
+static inline void acct_update_power(struct task_struct *p,
+	cputime_t cputime) {}
+static inline void cpufreq_task_stats_init(struct task_struct *p) {}
+static inline void cpufreq_task_stats_exit(struct task_struct *p) {}
+static inline void cpufreq_task_stats_remove_uids(uid_t uid_start,
+	uid_t uid_end) {}
+#endif
 
 #endif /* _LINUX_CPUFREQ_H */

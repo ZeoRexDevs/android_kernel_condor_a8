@@ -330,10 +330,7 @@ static void mmc_ffu_free_mem(struct mmc_ffu_mem *mem)
 		return;
 	while (mem->cnt--)
 		__free_pages(mem->arr[mem->cnt].page, mem->arr[mem->cnt].order);
-
 	kfree(mem->arr);
-
-	kfree(mem);
 }
 
 /*
@@ -518,8 +515,7 @@ static int mmc_ffu_restart(struct mmc_card *card)
 	mmc_set_bus_width(card->host, MMC_BUS_WIDTH_1);
 
 	card->state |= MMC_STATE_FFUED;
-	mmc_power_off(host);
-	mmc_power_up(host, card->ocr);
+
 	err = mmc_reinit_oldcard(host);
 	pr_err("mmc_init_card ret %d\n", err);
 	if (!err)
@@ -563,8 +559,7 @@ static int mmc_host_set_ffu(struct mmc_card *card, u32 ffu_enable)
 static int mmc_ffu_reduce_speed(struct mmc_card *card)
 {
 	int err;
-	u8 bus_width = EXT_CSD_BUS_WIDTH_1;
-	u8 timing = MMC_TIMING_LEGACY, hs_timing = 0;
+	u8 bus_width = EXT_CSD_BUS_WIDTH_4, hs_timing = 0;
 	u32 clock;
 
 	/* Reduce to safe and lower clock speed */
@@ -573,14 +568,20 @@ static int mmc_ffu_reduce_speed(struct mmc_card *card)
 	else
 		clock = card->host->ios.clock;
 
-	/* Some device does not allow FFU in 8 bit mode,
-	   so switch to 4bit mode */
-
-	if (card->host->ios.timing == MMC_TIMING_MMC_HS400 ||
-	    card->host->ios.timing == MMC_TIMING_MMC_HS200 ||
-	    card->host->ios.timing == MMC_TIMING_MMC_DDR52) {
-		timing = MMC_TIMING_MMC_HS;
+	/* 1. Don't switch between DDR and SDR */
+	/* 2. Some device does not allow FFU in 8 bit mode,
+		  so switch to 4bit mode
+	*/
+	if (card->host->ios.timing == MMC_TIMING_MMC_HS400) {
+		card->host->ios.timing = MMC_TIMING_MMC_DDR52;
+		bus_width = EXT_CSD_DDR_BUS_WIDTH_4;
+		hs_timing = 1;
+	} else  if (card->host->ios.timing == MMC_TIMING_MMC_HS200) {
+		card->host->ios.timing = MMC_TIMING_MMC_HS;
 		bus_width = EXT_CSD_BUS_WIDTH_4;
+		hs_timing = 1;
+	} else if (card->host->ios.timing == MMC_TIMING_MMC_DDR52) {
+		bus_width = EXT_CSD_DDR_BUS_WIDTH_4;
 		hs_timing = 1;
 	} else if (card->host->ios.timing == MMC_TIMING_MMC_HS) {
 		if (!(card->host->caps &
@@ -602,21 +603,13 @@ static int mmc_ffu_reduce_speed(struct mmc_card *card)
 
 	if (hs_timing == 1) {
 		pr_err("FFU switch to HS\n");
-		/* After changing timing, platform dependent HW may fail to
-		   correctly latch response of CMD13 for checking card status.
-		   Therefore __mmc_switch(..., true, false, false) is invoked
-		   to avoid using CMD13 for checking card status */
-		err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-			EXT_CSD_HS_TIMING, hs_timing,
-			card->ext_csd.generic_cmd6_time,
-			true, false, false);
+		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_HS_TIMING, hs_timing, 0);
 		if (err) {
 			pr_err("FFU: %s: error %d switch to high-speed\n",
 				mmc_hostname(card->host), err);
 			goto exit;
 		}
-
-		mmc_set_timing(card->host, timing);
 	}
 
 	mmc_set_clock(card->host, clock);
@@ -630,10 +623,114 @@ static int mmc_ffu_reduce_speed(struct mmc_card *card)
 		goto exit;
 	}
 
-	if (bus_width == EXT_CSD_BUS_WIDTH_1)
-		mmc_set_bus_width(card->host, MMC_BUS_WIDTH_1);
-	else
+	mmc_set_bus_width(card->host, MMC_BUS_WIDTH_4);
+
+
+
+exit:
+	return err;
+}
+
+static int mmc_ffu_restore_speed(struct mmc_card *card)
+{
+	int err;
+	struct mmc_host *host = card->host;
+	u8 card_type = card->ext_csd.raw_card_type;
+	u8 bus_width = EXT_CSD_BUS_WIDTH_4;
+	u8 timing = MMC_TIMING_MMC_HS, switch_timing = 1;
+	u32 clock = FFU_BUS_FREQ;
+	unsigned char *timing_str = NULL;
+
+	if (((card_type & EXT_CSD_CARD_TYPE_HS400_1_2V) &&
+	     (host->caps2 & MMC_CAP2_HS400_1_2V))
+	 || ((card_type & EXT_CSD_CARD_TYPE_HS400_1_8V) &&
+	     (host->caps2 & MMC_CAP2_HS400_1_8V))) {
+
+		bus_width = EXT_CSD_DDR_BUS_WIDTH_8;
+		timing = MMC_TIMING_MMC_HS400;
+		switch_timing = 3;
+		timing_str = "HS400";
+
+		/* Since MMC_HS400_MAX_DTR is defined as 400M,
+		   we shall assign clock as MMC_HS200_MAX_DTR */
+		clock = MMC_HS200_MAX_DTR;
+	} else if (((host->caps2 & MMC_CAP2_HS200_1_8V_SDR) &&
+		    (card_type & EXT_CSD_CARD_TYPE_HS200_1_8V))
+		|| ((host->caps2 & MMC_CAP2_HS200_1_2V_SDR) &&
+		    (card_type & EXT_CSD_CARD_TYPE_HS200_1_2V))) {
+
+		if (host->caps & MMC_CAP_8_BIT_DATA)
+			bus_width = EXT_CSD_BUS_WIDTH_8;
+		else if (host->caps & MMC_CAP_4_BIT_DATA)
+			bus_width = EXT_CSD_BUS_WIDTH_4;
+
+		timing = MMC_TIMING_MMC_HS200;
+		switch_timing = 2;
+		timing_str = "HS200";
+		clock = MMC_HS200_MAX_DTR;
+	} else if (((host->caps & MMC_CAP_1_8V_DDR) &&
+		    (card_type & EXT_CSD_CARD_TYPE_DDR_1_8V))
+		|| ((host->caps & MMC_CAP_1_2V_DDR) &&
+		    (card_type & EXT_CSD_CARD_TYPE_DDR_1_2V))) {
+
+		if (host->caps & MMC_CAP_8_BIT_DATA)
+			bus_width = EXT_CSD_DDR_BUS_WIDTH_8;
+		else if (host->caps & MMC_CAP_4_BIT_DATA)
+			bus_width = EXT_CSD_DDR_BUS_WIDTH_4;
+		timing = MMC_TIMING_UHS_DDR50;
+		switch_timing = 1;
+		timing_str = "DDR";
+		clock = MMC_HIGH_DDR_MAX_DTR;
+	} else if (host->caps & MMC_CAP_MMC_HIGHSPEED &&
+		card_type & EXT_CSD_CARD_TYPE_HS_52) {
+
+		if (host->caps & MMC_CAP_8_BIT_DATA)
+			bus_width = EXT_CSD_BUS_WIDTH_8;
+		else if (host->caps & MMC_CAP_4_BIT_DATA)
+			bus_width = EXT_CSD_BUS_WIDTH_4;
+		timing = MMC_TIMING_MMC_HS;
+		switch_timing = 1;
+		timing_str = "HS";
+		clock = MMC_HIGH_52_MAX_DTR;
+	} else if (card_type & EXT_CSD_CARD_TYPE_HS_26) {
+		switch_timing = 0;
+		clock = MMC_HIGH_26_MAX_DTR;
+	}
+
+	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_BUS_WIDTH, bus_width,
+			card->ext_csd.generic_cmd6_time);
+
+	if (err) {
+		pr_err("FFU: %s: error %d switching bus_width to %d\n",
+			mmc_hostname(card->host), err, bus_width);
+		goto exit;
+	}
+
+	if (host->caps & MMC_CAP_8_BIT_DATA)
+		mmc_set_bus_width(card->host, MMC_BUS_WIDTH_8);
+	else if (host->caps & MMC_CAP_4_BIT_DATA)
 		mmc_set_bus_width(card->host, MMC_BUS_WIDTH_4);
+	else
+		mmc_set_bus_width(card->host, MMC_BUS_WIDTH_1);
+
+	if (switch_timing) {
+		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_HS_TIMING, switch_timing, 0);
+		if (err) {
+			pr_err("FFU: %s: error %d switch to %s\n",
+				mmc_hostname(card->host), err, timing_str);
+			goto exit;
+		}
+		mmc_set_timing(card->host, timing);
+	}
+
+	mmc_set_clock(card->host, clock);
+
+	if (timing == MMC_TIMING_MMC_HS200 || timing == MMC_TIMING_MMC_HS400) {
+		err = card->host->ops->execute_tuning(card->host,
+			MMC_SEND_TUNING_BLOCK_HS200);
+	}
 
 exit:
 	return err;
@@ -645,7 +742,6 @@ int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 	u32 ffu_data_len;
 	u32 timeout;
 	u8 set = 1;
-	u8 retry = 10;
 
 	if (!FFU_FEATURES(ext_csd[EXT_CSD_FFU_FEATURES])) {
 
@@ -665,6 +761,13 @@ int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 			goto exit;
 		}
 
+		pr_err("FFU restart eMMC\n");
+		err = mmc_ffu_restart(card);
+		if (err) {
+			pr_err("FFU: %s: error %d restart\n",
+				mmc_hostname(card->host), err);
+			goto exit;
+		}
 	}
 
 	/* check mode operation */
@@ -700,31 +803,18 @@ int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 			goto exit;
 		}
 
-	}
+		/* Switching back to original bus width and timing */
+		mmc_ffu_restore_speed(card);
 
-	pr_err("FFU re-init eMMC at higher speed\n");
-	err = mmc_ffu_restart(card);
-	if (err) {
-		pr_err("FFU: %s: error %d restart\n",
-			mmc_hostname(card->host), err);
-		goto exit;
 	}
 
 	/* read ext_csd */
-	while (retry--) {
-		err = mmc_send_ext_csd(card, ext_csd);
-		if (err)
-			pr_err("FFU: %s: sending ext_csd retry times %d\n",
-				mmc_hostname(card->host), retry);
-		else
-			break;
-	}
+	err = mmc_send_ext_csd(card, ext_csd);
 	if (err) {
-		pr_err("FFU: %s: sending ext_csd error %d\n",
+		pr_err("FFU: %s: error %d sending ext_csd\n",
 			mmc_hostname(card->host), err);
 		goto exit;
 	}
-
 	/* return status */
 	err = ext_csd[EXT_CSD_FFU_STATUS];
 	if (!err) {
@@ -734,6 +824,7 @@ int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 		pr_err("FFU: %s: error %d FFU install:\n",
 			mmc_hostname(card->host), err);
 		err = -EINVAL;
+		goto exit;
 	}
 
 exit:

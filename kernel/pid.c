@@ -316,8 +316,10 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 	}
 
 	if (unlikely(is_child_reaper(pid))) {
-		if (pid_ns_prepare_proc(ns))
+		if (pid_ns_prepare_proc(ns)) {
+			disable_pid_allocation(ns);
 			goto out_free;
+		}
 	}
 
 	get_pid_ns(ns);
@@ -452,6 +454,7 @@ struct task_struct *find_task_by_pid_ns(pid_t nr, struct pid_namespace *ns)
 			   " protection");
 	return pid_task(find_pid_ns(nr, ns), PIDTYPE_PID);
 }
+EXPORT_SYMBOL_GPL(find_task_by_pid_ns);
 
 struct task_struct *find_task_by_vpid(pid_t vnr)
 {

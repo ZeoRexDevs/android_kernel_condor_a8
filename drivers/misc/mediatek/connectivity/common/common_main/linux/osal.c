@@ -120,7 +120,7 @@ INT32 osal_strncmp(const PINT8 dst, const PINT8 src, UINT32 len)
 
 PINT8 osal_strcpy(PINT8 dst, const PINT8 src)
 {
-	return strcpy(dst, src);
+	return strncpy(dst, src, strlen(src)+1);
 }
 
 PINT8 osal_strncpy(PINT8 dst, const PINT8 src, UINT32 len)
@@ -130,7 +130,7 @@ PINT8 osal_strncpy(PINT8 dst, const PINT8 src, UINT32 len)
 
 PINT8 osal_strcat(PINT8 dst, const PINT8 src)
 {
-	return strcat(dst, src);
+	return strncat(dst, src, strlen(src));
 }
 
 PINT8 osal_strncat(PINT8 dst, const PINT8 src, UINT32 len)
@@ -1200,6 +1200,15 @@ INT32 osal_printtimeofday(const PUINT8 prefix)
 	ret += osal_dbg_print("%s>sec=%d, usec=%d\n", prefix, sec, usec);
 
 	return ret;
+}
+
+VOID osal_get_local_time(PUINT64 sec, PULONG nsec)
+{
+	if (sec != NULL && nsec != NULL) {
+		*sec = local_clock();
+		*nsec = do_div(*sec, 1000000000)/1000;
+	} else
+		pr_err("The input parameters error when get local time\n");
 }
 
 VOID osal_buffer_dump(const PUINT8 buf, const PUINT8 title, const UINT32 len, const UINT32 limit)

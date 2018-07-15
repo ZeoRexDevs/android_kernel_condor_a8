@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef SEC_OSAL_H
 #define SEC_OSAL_H
 
@@ -48,7 +35,9 @@ extern void osal_msleep(unsigned int msec);
 extern void osal_assert(unsigned int val);
 extern int osal_set_kernel_fs(void);
 extern void osal_restore_fs(void);
+extern int osal_filp_open_read_only(const char *file_path);
 extern void *osal_get_filp_struct(int fp_id);
+extern int osal_filp_close(int fp_id);
 extern long long osal_filp_seek_set(int fp_id, long long off);
 extern long long osal_filp_seek_end(int fp_id, long long off);
 extern long long osal_filp_pos(int fp_id);
@@ -64,7 +53,9 @@ extern long osal_is_err(int fp_id);
 #define ASF_FILE_NULL OSAL_FILE_NULL
 #define ASF_GET_DS osal_set_kernel_fs()
 #define ASF_PUT_DS osal_restore_fs()
+#define ASF_OPEN(file_name) osal_filp_open_read_only(file_name)
 #define ASF_FILE_ERROR(fp) (fp == OSAL_FILE_NULL)
+#define ASF_CLOSE(fp) osal_filp_close(fp)
 #define ASF_SEEK_SET(fp, off) osal_filp_seek_set(fp, off)
 #define ASF_SEEK_END(fp, off) osal_filp_seek_end(fp, off)
 #define ASF_FILE_POS(fp) osal_filp_pos(fp)

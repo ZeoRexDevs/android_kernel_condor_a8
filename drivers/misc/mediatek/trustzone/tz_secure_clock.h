@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef _TZ_SECURE_CLOCK_H_INCLUDE
 #define _TZ_SECURE_CLOCK_H_INCLUDE
 #include <linux/module.h>
@@ -30,6 +17,7 @@
 #include "trustzone/kree/system.h"
 #include "kree_int.h"
 #include "tz_counter.h"
+#include "tz_fileio.h"
 #include <trustzone/kree/mem.h>
 #include "trustzone/kree/system.h"
 #include <tz_cross/ta_mem.h>
@@ -46,8 +34,7 @@
 #include "tz_cross/ta_securetime.h"
 #define GB_TIME_FILE_SAVE_PATH "/data/SecureTD"
 #define DRM_UINT64 unsigned long long
-#define UINT64 unsigned long long
-#define INT64 long long
+
 
 
 

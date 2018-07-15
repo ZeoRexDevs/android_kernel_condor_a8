@@ -174,21 +174,7 @@ static const WMT_CTRL_FUNC wmt_ctrl_func[] = {
 *                              F U N C T I O N S
 ********************************************************************************
 */
-INT32 __weak wmt_plat_soc_paldo_ctrl(ENUM_PALDO_TYPE ePt, ENUM_PALDO_OP ePo)
-{
-	return 0;
-}
 INT32 __weak mtk_wcn_consys_stp_btif_parser_wmt_evt(const PUINT8 str, UINT32 len)
-{
-	return 0;
-}
-
-INT32 __weak wmt_plat_sdio_ctrl(UINT32 sdioPortNum, ENUM_FUNC_STATE on)
-{
-	return 0;
-}
-
-INT32 __weak wmt_plat_get_tdm_antsel_index(VOID)
 {
 	return 0;
 }
@@ -787,7 +773,7 @@ INT32 wmt_ctrl_crystal_triming_get(P_WMT_CTRL_DATA pWmtCtrlData)
 		iRet = -1;
 		return iRet;
 	}
-	if (0 == wmt_dev_patch_get(pFileName, &pNvram, 0)) {
+	if (0 == wmt_dev_patch_get(pFileName, &pNvram)) {
 		*ppBuf = (PUINT8)(pNvram)->data;
 		*pSize = (pNvram)->size;
 		gDevWmt.pNvram = pNvram;
@@ -808,7 +794,7 @@ INT32 wmt_ctrl_get_patch(P_WMT_CTRL_DATA pWmtCtrlData)
 	pFullPatchName = (PUINT8) pWmtCtrlData->au4CtrlData[1];
 	WMT_DBG_FUNC("BF get patch, pPatch(%p)\n", pPatch);
 	if ((NULL != pFullPatchName)
-	    && (0 == wmt_dev_patch_get(pFullPatchName, &pPatch, BCNT_PATCH_BUF_HEADROOM))) {
+	    && (0 == wmt_dev_patch_get(pFullPatchName, &pPatch))) {
 		/*get full name patch success */
 		WMT_DBG_FUNC("get full patch name(%s) buf(0x%p) size(%zu)\n",
 			     pFullPatchName, (pPatch)->data, (pPatch)->size);
@@ -821,7 +807,7 @@ INT32 wmt_ctrl_get_patch(P_WMT_CTRL_DATA pWmtCtrlData)
 
 	pDefPatchName = (PUINT8) pWmtCtrlData->au4CtrlData[0];
 	if ((NULL != pDefPatchName)
-	    && (0 == wmt_dev_patch_get(pDefPatchName, &pPatch, BCNT_PATCH_BUF_HEADROOM))) {
+	    && (0 == wmt_dev_patch_get(pDefPatchName, &pPatch))) {
 		WMT_DBG_FUNC("get def patch name(%s) buf(0x%p) size(%zu)\n",
 			     pDefPatchName, (pPatch)->data, (pPatch)->size);
 		WMT_DBG_FUNC("AF get patch, pPatch(%p)\n", pPatch);

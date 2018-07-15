@@ -368,7 +368,6 @@ static struct kmsg_dumper pstore_dumper = {
 };
 
 #ifdef CONFIG_PSTORE_CONSOLE
-/*
 static void pstore_console_write(struct console *con, const char *s, unsigned c)
 {
 	const char *e = s + c;
@@ -393,7 +392,6 @@ static void pstore_console_write(struct console *con, const char *s, unsigned c)
 		c = e - s;
 	}
 }
-*/
 
 static void pstore_simp_console_write(struct console *con, const char *s, unsigned c)
 {

@@ -301,6 +301,7 @@ err4:
 
 err3:
 	put_device(&udc->dev);
+	device_del(&gadget->dev);
 
 err2:
 	put_device(&gadget->dev);
@@ -410,7 +411,6 @@ static int udc_bind_to_driver(struct usb_udc *udc, struct usb_gadget_driver *dri
 	 *
 	 * usb_gadget_connect(udc->gadget);
 	 */
-
 
 	kobject_uevent(&udc->dev.kobj, KOBJ_CHANGE);
 	return 0;

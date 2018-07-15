@@ -1,16 +1,3 @@
-/*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -38,7 +25,7 @@
 #include <asm/io.h>
 /* #include <mach/dma.h> */
 /* #include <mach/mt_reg_base.h> */
-#include "mt_i2c.h"
+#include <mt_i2c.h>
 #include <mt-plat/sync_write.h>
 #include "../../base/power/mt6735/mt_pm_init.h"
 /* #include "mach/memory.h" */
@@ -192,6 +179,14 @@ static s32 i2c_set_speed(struct mt_i2c_t *i2c)
 	/* I2CLOG("i2c_set_speed=================\n"); */
 	/* compare the current speed with the latest mode */
 
+	if ((i2c->speed == i2c->last_speed) && (i2c->mode == i2c->last_mode)) {
+		/* I2CLOG(  " i2c_set_speed,i2c->speed=%d, i2c->last_speed=%d,
+			i2c->timing_reg =0x%x\n",i2c->speed, i2c->last_speed,i2c->timing_reg); */
+		/* I2CLOG(  " i2c_set_speed,i2c->mode=%d, i2c->last_mode=%d,
+			high_speed_reg =0x%x\n",i2c->mode, i2c->last_mode,i2c->high_speed_reg); */
+		ret = 0;
+		goto end;
+	}
 
 	mode = i2c->mode;
 	khz = i2c->speed;
@@ -381,6 +376,7 @@ void _i2c_dump_info(struct mt_i2c_t *i2c)
 	       mt_get_gpio_in(GPIO_I2C2_SDA_PIN), mt_get_gpio_in(GPIO_I2C2_SCA_PIN),
 	       mt_get_gpio_in(GPIO_I2C3_SDA_PIN), mt_get_gpio_in(GPIO_I2C3_SCA_PIN));
 #endif
+	msleep(10);//added by ly for tpd
 	I2CLOG("I2C(%d) dump info------------------------------\n", i2c->id);
 }
 
@@ -479,10 +475,8 @@ static s32 _i2c_deal_result(struct mt_i2c_t *i2c)
 		/*Transfer success ,we need to get data from fifo */
 		if ((!i2c->dma_en) && (i2c->op == I2C_MASTER_RD || i2c->op == I2C_MASTER_WRRD)) {
 			data_size = (i2c_readl(i2c, OFFSET_FIFO_STAT) >> 4) & 0x000F;
-			if (data_size > i2c->msg_len) {
-				I2CERR("data_size=%d,msg_len=%d\n", data_size, i2c->msg_len);
-				BUG_ON(data_size > i2c->msg_len);
-			}
+			BUG_ON(data_size > i2c->msg_len);
+			/* I2CLOG("data_size=%d\n",data_size); */
 			while (data_size--) {
 				*ptr = i2c_readl(i2c, OFFSET_DATA_PORT);
 				/* I2CLOG("addr %x read byte = 0x%x\n", i2c->addr, *ptr); */
@@ -1263,7 +1257,6 @@ static void mt_i2c_clock_enable(struct mt_i2c_t *i2c)
 {
 #if (!defined(CONFIG_MT_I2C_FPGA_ENABLE))
 #if defined(CONFIG_MTK_CLKMGR)
-
 	if (i2c->dma_en) {
 		I2CINFO(I2C_T_TRANSFERFLOW, "Before dma clock enable .....\n");
 		enable_clock(MT_CG_PERI_APDMA, "i2c");
@@ -1274,12 +1267,10 @@ static void mt_i2c_clock_enable(struct mt_i2c_t *i2c)
 #else
 	if (i2c->dma_en) {
 		I2CINFO(I2C_T_TRANSFERFLOW, "Before dma clock enable .....\n");
-		if (clk_prepare_enable(i2c->clk_dma))
-			pr_err("clk_prepare_enable: i2c->clk_dma fail\n");
+		clk_prepare_enable(i2c->clk_dma);
 	}
 	I2CINFO(I2C_T_TRANSFERFLOW, "Before i2c clock enable .....\n");
-	if (clk_prepare_enable(i2c->clk_main))
-		pr_err("clk_prepare_enable: i2c->clk_main fail\n");
+	clk_prepare_enable(i2c->clk_main);
 	I2CINFO(I2C_T_TRANSFERFLOW, "clock enable done.....\n");
 #endif
 #endif
@@ -1316,7 +1307,7 @@ int i2c_tui_enable_clock(void)
 	enable_clock(MT_CG_PERI_APDMA, "i2c");
 #else
 	struct i2c_adapter *adap;
-	struct mt_i2c_t *i2c;
+	struct mt_i2c *i2c;
 
 	adap = i2c_get_adapter(1);
 	if (!adap) {
@@ -1339,7 +1330,7 @@ int i2c_tui_disable_clock(void)
 	disable_clock(MT_CG_PERI_APDMA, "i2c");
 #else
 	struct i2c_adapter *adap;
-	struct mt_i2c_t *i2c;
+	struct mt_i2c *i2c;
 
 	adap = i2c_get_adapter(1);
 	if (!adap) {
@@ -1485,7 +1476,7 @@ static s32 mt_i2c_probe(struct platform_device *pdev)
 	if (!request_mem_region(res->start, resource_size(res), pdev->name))
 		return -ENOMEM;
 
-	i2c = devm_kzalloc(&pdev->dev, sizeof(struct mt_i2c_t), GFP_KERNEL);
+	i2c = kzalloc(sizeof(struct mt_i2c_t), GFP_KERNEL);
 	if (NULL == i2c)
 		return -ENOMEM;
 

@@ -1,16 +1,3 @@
-/*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
-
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/i2c.h>
@@ -21,7 +8,7 @@
 #include <linux/err.h>
 /* #include <mach/mt_pm_ldo.h> */
 #include <asm/memory.h>
-#include "mt_i2c.h"
+#include <mt_i2c.h>
 
 static char data_buffer[256 * 4];
 
@@ -234,6 +221,8 @@ static ssize_t set_config(struct device *dev, struct device_attribute *attr, con
 	int timing;
 	int trans_num;
 	int trans_auxlen;
+	int dir = 0;
+
 	int data_len;
 	int number = 0;
 	int length = 0;
@@ -256,6 +245,7 @@ static ssize_t set_config(struct device *dev, struct device_attribute *attr, con
 		if ((address != 0) && (operation <= 2)) {
 			/* data_len is transfer bytes, offset address + write data */
 			length = 2 * data_len;
+
 			if (operation == 0) {
 				ext_flag |= I2C_WR_FLAG;
 				number = (trans_auxlen << 8) | (length >> 1);	/* /TODO:need to confitm 8 Or 16 */
@@ -270,6 +260,8 @@ static ssize_t set_config(struct device *dev, struct device_attribute *attr, con
 				I2CERR("invalid operation\n");
 				goto err;
 			}
+			if (dir > 0)
+				ext_flag |= I2C_DIRECTION_FLAG;
 
 			if (trans_mode == 0) {
 				/* default is fifo */
@@ -367,26 +359,26 @@ static ssize_t set_config(struct device *dev, struct device_attribute *attr, con
 
 				if (operation == 1) {
 					hex2string(vir_addr, tmpbuffer, length >> 1);
-					snprintf(data_buffer, sizeof(data_buffer), "1 %s", tmpbuffer);
+					sprintf(data_buffer, "1 %s", tmpbuffer);
 					I2CLOG("received data: %s\n", tmpbuffer);
 				} else if (operation == 0) {
 					hex2string(vir_addr, tmpbuffer, trans_auxlen);
-					snprintf(data_buffer, sizeof(data_buffer), "1 %s", tmpbuffer);
+					sprintf(data_buffer, "1 %s", tmpbuffer);
 					I2CLOG("received data: %s\n", tmpbuffer);
 				} else {
-					snprintf(data_buffer, sizeof(data_buffer), "1 %s", "00");
+					sprintf(data_buffer, "1 %s", "00");
 				}
 				I2CLOG("Actual return Value:%d 0x%p\n", ret, vir_addr);
 			} else if (ret < 0) {
 
 				if (ret == -EINVAL)
-					snprintf(data_buffer, sizeof(data_buffer), "0 %s", "Invalid Parameter");
+					sprintf(data_buffer, "0 %s", "Invalid Parameter");
 				else if (ret == -ETIMEDOUT)
-					snprintf(data_buffer, sizeof(data_buffer), "0 %s", "Transfer Timeout");
+					sprintf(data_buffer, "0 %s", "Transfer Timeout");
 				else if (ret == -EREMOTEIO)
-					snprintf(data_buffer, sizeof(data_buffer), "0 %s", "Ack Error");
+					sprintf(data_buffer, "0 %s", "Ack Error");
 				else
-					snprintf(data_buffer, sizeof(data_buffer), "0 %s", "unknown error");
+					sprintf(data_buffer, "0 %s", "unknown error");
 				I2CLOG("Actual return Value:%d 0x%p\n", ret, vir_addr);
 			}
 
@@ -397,24 +389,14 @@ static ssize_t set_config(struct device *dev, struct device_attribute *attr, con
 			}
 			/* log for UT test. */
 			{
-				struct mt_i2c_t *i2c = NULL;
 				struct i2c_adapter *adap = i2c_get_adapter(bus_id);
-				if (adap == NULL) {
-					I2CERR("I2C  get adapter failed 0\n");
-					goto err;
-				}
-				i2c = i2c_get_adapdata(adap);
+				struct mt_i2c_t *i2c = i2c_get_adapdata(adap);
 
 				_i2c_dump_info(i2c);
 			}
 		} else {
-			struct mt_i2c_t *i2c = NULL;
 			struct i2c_adapter *adap = i2c_get_adapter(bus_id);
-				if (adap == NULL) {
-					I2CERR("I2C  get adapter failed 1\n");
-					goto err;
-				}
-			i2c = i2c_get_adapdata(adap);
+			struct mt_i2c_t *i2c = i2c_get_adapdata(adap);
 
 			if (operation == 3) {
 				_i2c_dump_info(i2c);
@@ -459,7 +441,7 @@ static DEVICE_ATTR(ut, 0660, show_config, set_config);
 static int i2c_common_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-	/* your code here£¬your should save client in your own way */
+	/* your code here��your should save client in your own way */
 	I2CLOG("i2c_common device probe\n");
 	ret = device_create_file(&pdev->dev, &dev_attr_ut);
 	return ret;
@@ -494,11 +476,8 @@ static struct platform_device i2c_common_device = {
 
 static int __init xxx_init(void)
 {
-	int ret;
 	I2CLOG("i2c_common device init\n");
-	ret = platform_device_register(&i2c_common_device);
-	if (ret)
-		return ret;
+	platform_device_register(&i2c_common_device);
 	return platform_driver_register(&i2c_common_driver);
 }
 

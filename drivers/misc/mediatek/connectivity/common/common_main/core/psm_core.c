@@ -22,6 +22,7 @@
 #include "stp_core.h"
 #include "stp_dbg.h"
 #include "wmt_detect.h"
+#include "wmt_exp.h"
 #include <mtk_wcn_cmb_stub.h>
 #include <linux/timer.h>
 
@@ -709,39 +710,55 @@ INT32 _stp_psm_release_data(MTKSTP_PSM_T *stp_psm)
 	INT32 ret = 0;
 	UINT8 type = 0;
 	UINT32 len = 0;
-	UINT8 delimiter[2];
+	UINT8 delimiter[2] = {0};
+	INT32 winspace_flag = 0;
 
 	/* STP_PSM_ERR_FUNC("++++++++++release data++len=%d\n", osal_fifo_len(&stp_psm->hold_fifo)); */
-	while (osal_fifo_len(&stp_psm->hold_fifo) && i > 0) {
+	while ((osal_fifo_len(&stp_psm->hold_fifo) && i > 0) || winspace_flag > 0) {
 		/* acquire spinlock */
 		/* psm_fifo_lock(stp_psm); */
 		osal_lock_sleepable_lock(&stp_psm->hold_fifo_spinlock_global);
 
-		ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8) &type, sizeof(UINT8));
-		ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8) &len, sizeof(UINT32));
+		if (winspace_flag == 0) {
+			ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8)&type, sizeof(UINT8));
+			ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8)&len, sizeof(UINT32));
 
-		if (len > STP_PSM_PACKET_SIZE_MAX) {
-			STP_PSM_ERR_FUNC("***psm packet's length too Long!****\n");
-			STP_PSM_INFO_FUNC("***reset psm's fifo***\n");
-		} else {
-			osal_memset(stp_psm->out_buf, 0, STP_PSM_TX_SIZE);
-			ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8) stp_psm->out_buf, len);
+			if (len > STP_PSM_PACKET_SIZE_MAX) {
+				STP_PSM_ERR_FUNC("***psm packet's length too Long!****\n");
+				STP_PSM_INFO_FUNC("***reset psm's fifo***\n");
+			} else {
+				osal_memset(stp_psm->out_buf, 0, STP_PSM_TX_SIZE);
+				ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8) stp_psm->out_buf, len);
+			}
+
+			ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8)delimiter, 2);
 		}
-
-		ret = osal_fifo_out(&stp_psm->hold_fifo, (PUINT8) delimiter, 2);
 
 		if (delimiter[0] == 0xbb && delimiter[1] == 0xbb) {
 			/* osal_buffer_dump(stp_psm->out_buf, "psm->out_buf", len, 32); */
-			stp_send_data_no_ps(stp_psm->out_buf, len, type);
+			ret = stp_send_data_no_ps(stp_psm->out_buf, len, type);
+			if (ret == 0)
+				winspace_flag++;
+			else
+				winspace_flag = 0;
 		} else {
 			STP_PSM_ERR_FUNC("***psm packet fifo parsing fail****\n");
 			STP_PSM_INFO_FUNC("***reset psm's fifo***\n");
 
 			osal_fifo_reset(&stp_psm->hold_fifo);
 		}
-		i--;
+
+		if (winspace_flag == 0)
+			i--;
 		/* psm_fifo_unlock(stp_psm); */
 		osal_unlock_sleepable_lock(&stp_psm->hold_fifo_spinlock_global);
+
+		if (winspace_flag > 0 && winspace_flag < 10)
+			osal_sleep_ms(2);
+		else if (winspace_flag >= 10) {
+			STP_PSM_ERR_FUNC("***More than 20ms no winspace available***\n");
+			break;
+		}
 	}
 	return STP_PSM_OPERATION_SUCCESS;
 }
@@ -959,6 +976,7 @@ static inline INT32 _stp_psm_wait_wmt_event_wq(MTKSTP_PSM_T *stp_psm)
 	} else {
 		STP_PSM_ERR_FUNC("flag = %ld<== Abnormal flag be set!!\n\r", stp_psm->flag.data);
 		STP_PSM_ERR_FUNC("state = %d, flag = %ld\n", stp_psm->work_state, stp_psm->flag.data);
+		mtk_wcn_wmt_dump_wmtd_backtrace();
 		/* wcn_psm_flag_trigger_collect_ftrace(); */	/* trigger collect SYS_FTRACE */
 		pbuf = "Abnormal PSM flag be set, just collect SYS_FTRACE to DB";
 		len = osal_strlen(pbuf);
@@ -1305,6 +1323,7 @@ static inline INT32 _stp_psm_do_wait(MTKSTP_PSM_T *stp_psm, MTKSTP_PSM_STATE_T s
 	}
 	if (i == limit) {
 		STP_PSM_WARN_FUNC("-Wait for %s takes %d msec\n", g_psm_state[state], i * POLL_WAIT);
+		mtk_wcn_wmt_dump_wmtd_backtrace();
 		_stp_psm_opid_dbg_out_printk(g_stp_psm_opid_dbg);
 		return STP_PSM_OPERATION_FAIL;
 	}
@@ -1540,6 +1559,7 @@ INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir, INT32 l
 				stp_psm->idle_time_to_sleep = STP_PSM_IDLE_TIME_SLEEP;
 				osal_clear_bit(STP_PSM_WMT_EVENT_DISABLE_MONITOR_TX_HIGH_DENSITY, &stp_psm->flag);
 			}
+			wmt_lib_ps_set_idle_time(stp_psm->idle_time_to_sleep);
 			sample_start = 0;
 			rx_sum_len = 0;
 			tx_sum_len = 0;

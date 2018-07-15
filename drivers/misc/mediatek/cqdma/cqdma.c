@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
@@ -32,10 +19,9 @@
 #include <mt-plat/mt_io.h>
 #include <mt-plat/dma.h>
 #include <mt-plat/sync_write.h>
-#include <mt-plat/mt_lpae.h>
-#include <linux/clk.h>
 
-struct clk *clk_cqdma;
+/*#include <mach/mt_clkmgr.h>*/
+/*#include <mach/emi_mpu.h>*/
 
 struct cqdma_env_info {
 	void __iomem *base;
@@ -160,7 +146,6 @@ static DEFINE_SPINLOCK(dma_drv_lock);
 #define PDN_APDMA_MODULE_NAME ("CQDMA")
 #define GDMA_WARM_RST_TIMEOUT   (100)	/* ms */
 volatile unsigned int DMA_INT_DONE;
-
 /*
  * mt_req_gdma: request a general DMA.
  * @chan: specify a channel or not
@@ -170,13 +155,6 @@ int mt_req_gdma(DMA_CHAN chan)
 {
 	unsigned long flags;
 	int i;
-
-	if (clk_cqdma) {
-		if (clk_prepare_enable(clk_cqdma)) {
-			pr_err("enable CQDMA clk fail!\n");
-			return -DMA_ERR_NO_FREE_CH;
-		}
-	}
 
 	spin_lock_irqsave(&dma_drv_lock, flags);
 
@@ -204,10 +182,6 @@ int mt_req_gdma(DMA_CHAN chan)
 		mt_reset_gdma_conf(i);
 		return i;
 	} else {
-		/* disable cqdma clock */
-		if (clk_cqdma)
-			clk_disable_unprepare(clk_cqdma);
-
 		return -DMA_ERR_NO_FREE_CH;
 	}
 }
@@ -337,7 +311,6 @@ int mt_config_gdma(int channel, struct mt_gdma_conf *config, DMA_CONF_FLAG flag)
 		/* Control Register */
 		mt_reg_sync_writel((u32) config->src, DMA_SRC(channel));
 		mt_reg_sync_writel((u32) config->dst, DMA_DST(channel));
-
 		mt_reg_sync_writel((config->wplen) & DMA_GDMA_LEN_MAX_MASK, DMA_LEN2(channel));
 		mt_reg_sync_writel(config->wpto, DMA_JUMP_ADDR(channel));
 		mt_reg_sync_writel((config->count) & DMA_GDMA_LEN_MAX_MASK, DMA_LEN1(channel));
@@ -367,25 +340,34 @@ int mt_config_gdma(int channel, struct mt_gdma_conf *config, DMA_CONF_FLAG flag)
 			pr_debug("2:Domain_cfg:%x\n", readl(DMA_GDMA_SEC_EN(channel)));
 		}
 
-		if (enable_4G()) {
+		/*LPAE for 4GB mode*/
+		if (config->LPAE_en) {
+			pr_debug("1:ADDR2_cfg:%x %x %x\n",
+					readl(DMA_SRC_4G_SUPPORT(channel)),
+					readl(DMA_DST_4G_SUPPORT(channel)),
+					readl(DMA_JUMP_4G_SUPPORT(channel)));
 			mt_reg_sync_writel((DMA_ADDR2_EN_BIT | readl(DMA_SRC_4G_SUPPORT(channel))),
 					   DMA_SRC_4G_SUPPORT(channel));
 			mt_reg_sync_writel((DMA_ADDR2_EN_BIT | readl(DMA_DST_4G_SUPPORT(channel))),
 					   DMA_DST_4G_SUPPORT(channel));
 			mt_reg_sync_writel((DMA_ADDR2_EN_BIT | readl(DMA_JUMP_4G_SUPPORT(channel))),
 					   DMA_JUMP_4G_SUPPORT(channel));
-			pr_debug("2:ADDR2_cfg(4GB):%x %x %x\n",
+			pr_debug("2:ADDR2_cfg:%x %x %x\n",
 					readl(DMA_SRC_4G_SUPPORT(channel)),
 					readl(DMA_DST_4G_SUPPORT(channel)),
 					readl(DMA_JUMP_4G_SUPPORT(channel)));
 		} else {
+			pr_debug("1:ADDR2_cfg:%x %x %x\n",
+					readl(DMA_SRC_4G_SUPPORT(channel)),
+					readl(DMA_DST_4G_SUPPORT(channel)),
+					readl(DMA_JUMP_4G_SUPPORT(channel)));
 			mt_reg_sync_writel(((~DMA_ADDR2_EN_BIT) & readl(DMA_SRC_4G_SUPPORT(channel))),
 					   DMA_SRC_4G_SUPPORT(channel));
 			mt_reg_sync_writel(((~DMA_ADDR2_EN_BIT) & readl(DMA_DST_4G_SUPPORT(channel))),
 					   DMA_DST_4G_SUPPORT(channel));
 			mt_reg_sync_writel(((~DMA_ADDR2_EN_BIT) & readl(DMA_JUMP_4G_SUPPORT(channel))),
 					   DMA_JUMP_4G_SUPPORT(channel));
-			pr_debug("2:ADDR2_cfg(4GB):%x %x %x\n",
+			pr_debug("2:ADDR2_cfg:%x %x %x\n",
 					readl(DMA_SRC_4G_SUPPORT(channel)),
 					readl(DMA_DST_4G_SUPPORT(channel)),
 					readl(DMA_JUMP_4G_SUPPORT(channel)));
@@ -473,10 +455,6 @@ int mt_free_gdma(int channel)
 		return -DMA_ERR_CH_FREE;
 
 	mt_stop_gdma(channel);
-
-	/* disable cqdma clock */
-	if (clk_cqdma)
-		clk_disable_unprepare(clk_cqdma);
 
 	dma_ctrl[channel].isr_cb = NULL;
 	dma_ctrl[channel].data = NULL;
@@ -662,7 +640,8 @@ static int cqdma_probe(struct platform_device *pdev)
 			pr_err("unable to map CQDMA%d base registers and irq=%d!!!\n", i, irq);
 			return -EINVAL;
 		}
-		pr_debug("[CQDMA%d] vbase = 0x%p, irq = %d\n", i, env_info[i].base, env_info[i].irq);
+		/*pr_debug("[CQDMA%d] vbase = 0x%p, irq = %d\n", i, env_info[i].base, env_info[i].irq);*/
+		pr_err("[CQDMA%d] vbase = 0x%p, irq = %d\n", i, env_info[i].base, env_info[i].irq);
 	}
 
 	cqdma_reset(nr_cqdma_channel);
@@ -673,11 +652,13 @@ static int cqdma_probe(struct platform_device *pdev)
 			pr_err("GDMA%d IRQ LINE NOT AVAILABLE,ret 0x%x!!\n", i, ret);
 	}
 
-	clk_cqdma = devm_clk_get(&pdev->dev, "cqdma");
-	if (IS_ERR(clk_cqdma)) {
-		pr_err("can not get CQDMA clock fail!\n");
-		return PTR_ERR(clk_cqdma);
+#ifdef CONFIG_ARM_LPAE
+	for (i = 0; i < nr_cqdma_channel; i++) {
+		mt_reg_sync_writel(DMA_ADDR2_EN_BIT, DMA_SRC_4G_SUPPORT(i));
+		mt_reg_sync_writel(DMA_ADDR2_EN_BIT, DMA_DST_4G_SUPPORT(i));
+		mt_reg_sync_writel(DMA_ADDR2_EN_BIT, DMA_JUMP_4G_SUPPORT(i));
 	}
+#endif
 
 	return ret;
 }

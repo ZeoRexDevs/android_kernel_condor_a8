@@ -24,7 +24,6 @@
 #include <linux/version.h>
 #include <linux/spinlock.h>
 #include <linux/semaphore.h>
-#include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/errno.h>
@@ -64,9 +63,6 @@ do { \
 
 #define MSG_FUNC() MSG(FUNC, "%s\n", __func__)
 
-#define INFO(fmt, args...) \
-	pr_info("[%s] %s:%d "fmt, SECMEM_NAME, __func__, __LINE__, ##args)
-
 struct secmem_handle {
 	u32 id;
 	u32 type;
@@ -83,34 +79,9 @@ static const struct mc_uuid_t secmem_uuid = { TL_SECMEM_UUID };
 static struct mc_session_handle secmem_session = { 0 };
 
 static u32 secmem_session_ref;
+static u32 secmem_k_session_opened;
 static u32 secmem_devid = MC_DEVICE_ID_DEFAULT;
 static tciMessage_t *secmem_tci;
-
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-#define SECMEM_RECLAIM_DELAY 1000 /* ms */
-
-static u32 secmem_region_ref;
-static u32 secmem_region_online;
-
-static DEFINE_MUTEX(secmem_region_lock);
-
-static int secmem_enable(u32 addr, u32 size);
-static int secmem_disable(void);
-static int secmem_region_release(void);
-static int secmem_session_close(void);
-
-static struct workqueue_struct *secmem_reclaim_wq;
-static void secmem_reclaim_handler(struct work_struct *work);
-static DECLARE_DELAYED_WORK(secmem_reclaim_work, secmem_reclaim_handler);
-
-static void secmem_reclaim_handler(struct work_struct *work)
-{
-	mutex_lock(&secmem_region_lock);
-	INFO("triggered!!\n");
-	secmem_region_release();
-	mutex_unlock(&secmem_region_lock);
-}
-#endif
 
 static int secmem_execute(u32 cmd, struct secmem_param *param)
 {
@@ -121,7 +92,7 @@ static int secmem_execute(u32 cmd, struct secmem_param *param)
 
 	mutex_lock(&secmem_lock);
 
-	if (secmem_tci == NULL) {
+	if (NULL == secmem_tci) {
 		mutex_unlock(&secmem_lock);
 		MSG(ERR, "secmem_tci not exist\n");
 		return -ENODEV;
@@ -145,14 +116,14 @@ static int secmem_execute(u32 cmd, struct secmem_param *param)
 
 	mc_ret = mc_notify(&secmem_session);
 
-	if (mc_ret != MC_DRV_OK) {
+	if (MC_DRV_OK != mc_ret) {
 		MSG(ERR, "mc_notify failed: %d\n", mc_ret);
 		goto exit;
 	}
 
 	mc_ret = mc_wait_notification(&secmem_session, -1);
 
-	if (mc_ret != MC_DRV_OK) {
+	if (MC_DRV_OK != mc_ret) {
 		MSG(ERR, "mc_wait_notification failed: %d\n", mc_ret);
 		goto exit;
 	}
@@ -165,14 +136,14 @@ static int secmem_execute(u32 cmd, struct secmem_param *param)
 
 	if (RSP_ID(cmd) != secmem_tci->rsp_secmem.header.responseId) {
 		MSG(ERR, "trustlet did not send a response: %d\n",
-			secmem_tci->rsp_secmem.header.responseId);
+		    secmem_tci->rsp_secmem.header.responseId);
 		mc_ret = MC_DRV_ERR_INVALID_RESPONSE;
 		goto exit;
 	}
 
-	if (secmem_tci->rsp_secmem.header.returnCode != MC_DRV_OK) {
+	if (MC_DRV_OK != secmem_tci->rsp_secmem.header.returnCode) {
 		MSG(ERR, "trustlet did not send a valid return code: %d\n",
-			secmem_tci->rsp_secmem.header.returnCode);
+		    secmem_tci->rsp_secmem.header.returnCode);
 		mc_ret = secmem_tci->rsp_secmem.header.returnCode;
 	}
 
@@ -180,7 +151,7 @@ exit:
 
 	mutex_unlock(&secmem_lock);
 
-	if (mc_ret != MC_DRV_OK)
+	if (MC_DRV_OK != mc_ret)
 		return -ENOSPC;
 
 	return 0;
@@ -202,11 +173,6 @@ static int secmem_handle_register(struct secmem_context *ctx, u32 type, u32 id)
 			handle->id = id;
 			handle->type = type;
 			spin_unlock(&ctx->lock);
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-			mutex_lock(&secmem_region_lock);
-			secmem_region_ref++;
-			mutex_unlock(&secmem_region_lock);
-#endif
 			return 0;
 		}
 	}
@@ -249,9 +215,9 @@ static void secmem_handle_unregister_check(struct secmem_context *ctx, u32 type,
 	for (i = 0; i < num; i++, handle++) {
 		if (handle->id == id) {
 			if (handle->type != type) {
-				MSG(WRN,
-					"unref check result: type mismatched (%d!=%d), handle=0x%x\n",
-					_IOC_NR(handle->type), _IOC_NR(type), handle->id);
+				MSG(ERR,
+				    "unref check failed, type mismatched (%d!=%d), handle=0x%x\n",
+				    _IOC_NR(handle->type), _IOC_NR(type), handle->id);
 			}
 			break;
 		}
@@ -270,7 +236,7 @@ static int secmem_handle_unregister(struct secmem_context *ctx, u32 id)
 	num = ctx->handle_num;
 	handle = ctx->handles;
 
-	/* find the match handle */
+	/* find empty space. */
 	for (i = 0; i < num; i++, handle++) {
 		if (handle->id == id) {
 			memset(handle, 0, sizeof(struct secmem_handle));
@@ -279,15 +245,6 @@ static int secmem_handle_unregister(struct secmem_context *ctx, u32 id)
 	}
 
 	spin_unlock(&ctx->lock);
-
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	/* found a match */
-	if (i != num) {
-		mutex_lock(&secmem_region_lock);
-		secmem_region_ref--;
-		mutex_unlock(&secmem_region_lock);
-	}
-#endif
 
 	return 0;
 }
@@ -319,13 +276,13 @@ static int secmem_handle_cleanup(struct secmem_context *ctx)
 				break;
 			default:
 				MSG(ERR, "secmem_handle_cleanup: incorrect type=%d (ioctl:%d)\n",
-					handle->type, _IOC_NR(handle->type));
+				    handle->type, _IOC_NR(handle->type));
 				goto error;
 			}
 			spin_unlock(&ctx->lock);
 			ret = secmem_execute(cmd, &param);
 			MSG(INFO, "secmem_handle_cleanup: id=0x%x type=%d (ioctl:%d)\n",
-				handle->id, handle->type, _IOC_NR(handle->type));
+			    handle->id, handle->type, _IOC_NR(handle->type));
 			spin_lock(&ctx->lock);
 		}
 	}
@@ -356,15 +313,15 @@ static int secmem_session_open(void)
 
 		/* open device */
 		mc_ret = mc_open_device(secmem_devid);
-		if (mc_ret != MC_DRV_OK) {
+		if (MC_DRV_OK != mc_ret) {
 			MSG(ERR, "mc_open_device failed: %d\n", mc_ret);
 			break;
 		}
 
 		/* allocating WSM for DCI */
 		mc_ret = mc_malloc_wsm(secmem_devid, 0, sizeof(tciMessage_t),
-					   (uint8_t **) &secmem_tci, 0);
-		if (mc_ret != MC_DRV_OK) {
+				       (uint8_t **) &secmem_tci, 0);
+		if (MC_DRV_OK != mc_ret) {
 			mc_close_device(secmem_devid);
 			MSG(ERR, "mc_malloc_wsm failed: %d\n", mc_ret);
 			break;
@@ -375,7 +332,7 @@ static int secmem_session_open(void)
 		mc_ret = mc_open_session(&secmem_session, &secmem_uuid,
 					 (uint8_t *) secmem_tci, sizeof(tciMessage_t));
 
-		if (mc_ret != MC_DRV_OK) {
+		if (MC_DRV_OK != mc_ret) {
 			mc_free_wsm(secmem_devid, (uint8_t *) secmem_tci);
 			mc_close_device(secmem_devid);
 			secmem_tci = NULL;
@@ -390,7 +347,7 @@ static int secmem_session_open(void)
 
 	mutex_unlock(&secmem_lock);
 
-	if (mc_ret != MC_DRV_OK)
+	if (MC_DRV_OK != mc_ret)
 		return -ENXIO;
 
 	return 0;
@@ -416,14 +373,14 @@ static int secmem_session_close(void)
 
 		/* close session */
 		mc_ret = mc_close_session(&secmem_session);
-		if (mc_ret != MC_DRV_OK) {
+		if (MC_DRV_OK != mc_ret) {
 			MSG(ERR, "mc_close_session failed: %d\n", mc_ret);
 			break;
 		}
 
 		/* free WSM for DCI */
 		mc_ret = mc_free_wsm(secmem_devid, (uint8_t *) secmem_tci);
-		if (mc_ret != MC_DRV_OK) {
+		if (MC_DRV_OK != mc_ret) {
 			MSG(ERR, "mc_free_wsm failed: %d\n", mc_ret);
 			break;
 		}
@@ -432,7 +389,7 @@ static int secmem_session_close(void)
 
 		/* close device */
 		mc_ret = mc_close_device(secmem_devid);
-		if (mc_ret != MC_DRV_OK)
+		if (MC_DRV_OK != mc_ret)
 			MSG(ERR, "mc_close_device failed: %d\n", mc_ret);
 
 	} while (0);
@@ -441,7 +398,7 @@ static int secmem_session_close(void)
 
 	mutex_unlock(&secmem_lock);
 
-	if (mc_ret != MC_DRV_OK)
+	if (MC_DRV_OK != mc_ret)
 		return -ENXIO;
 
 	return 0;
@@ -496,95 +453,6 @@ static int secmem_release(struct inode *inode, struct file *file)
 	return ret;
 }
 
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-static int secmem_region_alloc(void)
-{
-	int ret;
-	phys_addr_t pa = 0;
-	unsigned long size = 0;
-
-	/* already online */
-	if (secmem_region_online) {
-		MSG(INFO, "%s: secure memory already online\n", __func__);
-		return 0;
-	}
-
-	/* allocate secure memory region */
-	ret = svp_region_offline(&pa, &size);
-	if (ret) {
-		MSG(ERR, "%s: svp_region_offline failed! ret=%d\n", __func__, ret);
-		return -1;
-	}
-
-	if (pa == 0 || size == 0) {
-		MSG(ERR, "%s: invalid pa(0x%llx) or size(0x%lx)\n", __func__, (u64)pa, size);
-		return -1;
-	}
-
-	/* setup secure memory and enable protection */
-	ret = secmem_enable(pa, size);
-	if (ret) {
-		/* free secure memory */
-		svp_region_online();
-		MSG(ERR, "%s: secmem_enable failed! ret=%d\n", __func__, ret);
-		return -1;
-	}
-
-	secmem_region_online = 1;
-	secmem_region_ref = 0;
-
-#if defined(CONFIG_MTK_SVP_DISABLE_SODI)
-	spm_enable_sodi(false);
-#endif
-
-	INFO("phyaddr=0x%llx sz=0x%lx region_online=%u region_ref=%u\n",
-			(u64)pa, size, secmem_region_online, secmem_region_ref);
-
-	return 0;
-}
-
-static int secmem_region_release(void)
-{
-	int ret;
-
-	/* already offline */
-	if (secmem_region_online == 0) {
-		MSG(INFO, "%s: secure memory already offline\n", __func__);
-		return 0;
-	}
-
-	/* region has reference so abort the release */
-	if (secmem_region_ref > 0) {
-		MSG(ERR, "%s: aborted due to secmem_region_ref != 0 (%d)\n",
-			__func__, secmem_region_ref);
-		return -1;
-	}
-
-	/* disable protection and recalim secure memory */
-	ret = secmem_disable();
-	if (ret) {
-		MSG(ERR, "%s: secmem_disable failed! ret=%d\n", __func__, ret);
-		return -1;
-	}
-
-	ret = svp_region_online();
-	if (ret) {
-		MSG(ERR, "%s: svp_region_online failed! ret=%d\n", __func__, ret);
-		return -1;
-	}
-
-	secmem_region_online = 0;
-
-#if defined(CONFIG_MTK_SVP_DISABLE_SODI)
-	spm_enable_sodi(true);
-#endif
-
-	MSG(INFO, "%s: done, region_online=%u\n", __func__, secmem_region_online);
-
-	return 0;
-}
-#endif
-
 static long secmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int err = 0;
@@ -614,18 +482,6 @@ static long secmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case SECMEM_MEM_ALLOC:
 		if (!(file->f_mode & FMODE_WRITE))
 			return -EROFS;
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-		cancel_delayed_work_sync(&secmem_reclaim_work);
-		mutex_lock(&secmem_region_lock);
-		if (!secmem_region_online) {
-			err = secmem_region_alloc();
-			if (err) {
-				mutex_unlock(&secmem_region_lock);
-				break;
-			}
-		}
-		mutex_unlock(&secmem_region_lock);
-#endif
 		err = secmem_execute(CMD_SEC_MEM_ALLOC, &param);
 		if (!err)
 			secmem_handle_register(ctx, SECMEM_MEM_ALLOC, param.sec_handle);
@@ -645,20 +501,6 @@ static long secmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case SECMEM_MEM_ALLOC_TBL:
 		if (!(file->f_mode & FMODE_WRITE))
 			return -EROFS;
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-		cancel_delayed_work_sync(&secmem_reclaim_work);
-		mutex_lock(&secmem_region_lock);
-		if (!secmem_region_online) {
-			err = secmem_region_alloc();
-			if (err) {
-				mutex_unlock(&secmem_region_lock);
-				break;
-			}
-		}
-		INFO("region_online=%u region_ref=%u\n",
-				secmem_region_online, secmem_region_ref);
-		mutex_unlock(&secmem_region_lock);
-#endif
 		err = secmem_execute(CMD_SEC_MEM_ALLOC_TBL, &param);
 		if (!err)
 			secmem_handle_register(ctx, SECMEM_MEM_ALLOC_TBL, param.sec_handle);
@@ -686,93 +528,76 @@ static long secmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return -ENOTTY;
 	}
 
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	mutex_lock(&secmem_region_lock);
-	if (secmem_region_online == 1 && secmem_region_ref == 0) {
-		INFO("queue secmem_reclaim_work!!\n");
-		queue_delayed_work(secmem_reclaim_wq, &secmem_reclaim_work,
-			msecs_to_jiffies(SECMEM_RECLAIM_DELAY));
-	} else {
-		INFO("cmd=%u region_online=%u region_ref=%u!!\n",
-				_IOC_NR(cmd), secmem_region_online, secmem_region_ref);
-	}
-	mutex_unlock(&secmem_region_lock);
-#endif
-
 	if (!err)
 		err = copy_to_user((void *)arg, &param, sizeof(param));
 
 	return err;
 }
 
+static inline int secmem_kernel_open(void)
+{
+	if (!secmem_k_session_opened) {
+		if (secmem_session_open() < 0)
+			return -ENXIO;
+		secmem_k_session_opened = 1;
+	}
+
+	return 0;
+}
+
+
+
 #if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-static int secmem_enable(u32 addr, u32 size)
+int secmem_api_enable(u32 start, u32 size)
 {
 	int err = 0;
 	struct secmem_param param = { 0 };
 
-	if (secmem_session_open() < 0) {
-		err = -ENXIO;
-		goto end;
-	}
+	secmem_kernel_open();
 
-	param.sec_handle = addr;
+	param.sec_handle = start;
 	param.size = size;
 	err = secmem_execute(CMD_SEC_MEM_ENABLE, &param);
 
-	secmem_session_close();
-
-end:
-	MSG(INFO, "%s ret = %d\n", __func__, err);
+	if (err)
+		MSG(ERR, "secmem_api_enable failed: %d\n", err);
 
 	return err;
 }
+EXPORT_SYMBOL(secmem_api_enable);
 
-static int secmem_disable(void)
+int secmem_api_disable(void)
 {
 	int err = 0;
 	struct secmem_param param = { 0 };
 
-	if (secmem_session_open() < 0) {
-		err = -ENXIO;
-		goto end;
-	}
+	secmem_kernel_open();
 
 	err = secmem_execute(CMD_SEC_MEM_DISABLE, &param);
-
-	secmem_session_close();
-
-end:
-	MSG(INFO, "%s ret = %d\n", __func__, err);
+	if (err)
+		MSG(ERR, "secmem_api_disable failed: %d\n", err);
 
 	return err;
 }
+EXPORT_SYMBOL(secmem_api_disable);
 
 int secmem_api_query(u32 *allocate_size)
 {
 	int err = 0;
 	struct secmem_param param = { 0 };
 
-	if (secmem_session_open() < 0) {
-		err = -ENXIO;
-		goto end;
-	}
+	secmem_kernel_open();
 
 	err = secmem_execute(CMD_SEC_MEM_ALLOCATED, &param);
 	if (err) {
+		MSG(ERR, "secmem_api_query failed: %d\n", err);
 		*allocate_size = -1;
 	} else {
 		*allocate_size = param.size;
-#ifdef CONFIG_MT_ENG_BUILD
-		if (*allocate_size)
-			secmem_execute(CMD_SEC_MEM_DUMP_INFO, &param);
-#endif
 	}
 
-	secmem_session_close();
-
-end:
-	MSG(INFO, "%s ret = %d\n", __func__, err);
+	if (*allocate_size)
+		secmem_execute(CMD_SEC_MEM_DUMP_INFO, &param);
 
 	return err;
 }
@@ -780,33 +605,13 @@ EXPORT_SYMBOL(secmem_api_query);
 #endif
 
 #ifdef SECMEM_KERNEL_API
-static int secmem_api_alloc_internal(u32 alignment, u32 size, u32 *refcount,
-	u32 *sec_handle, uint8_t *owner, uint32_t id, uint32_t clean, uint32_t is_pa)
+int secmem_api_alloc(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle, uint8_t *owner,
+		     uint32_t id)
 {
 	int ret = 0;
 	struct secmem_param param;
-	u32 cmd = is_pa ? CMD_SEC_MEM_ALLOC_PA : (clean ? CMD_SEC_MEM_ALLOC_ZERO : CMD_SEC_MEM_ALLOC);
 
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	cancel_delayed_work_sync(&secmem_reclaim_work);
-	mutex_lock(&secmem_region_lock);
-	if (!secmem_region_online)
-		ret = secmem_region_alloc();
-
-	if (secmem_region_online)
-		secmem_region_ref++;
-
-	INFO("region_online=%u region_ref=%u\n",
-			secmem_region_online, secmem_region_ref);
-	mutex_unlock(&secmem_region_lock);
-	if (ret != 0)
-		goto end;
-#endif
-
-	if (secmem_session_open() < 0) {
-		ret = -ENXIO;
-		goto end;
-	}
+	secmem_kernel_open();
 
 	memset(&param, 0, sizeof(param));
 	param.alignment = alignment;
@@ -820,66 +625,25 @@ static int secmem_api_alloc_internal(u32 alignment, u32 size, u32 *refcount,
 		param.owner[MAX_NAME_SZ - 1] = 0;
 	}
 
-	ret = secmem_execute(cmd, &param);
-
-	secmem_session_close();
-
-end:
-
-	if (ret == 0) {
-		*refcount = param.refcount;
-		*sec_handle = param.sec_handle;
-	} else {
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-		mutex_lock(&secmem_region_lock);
-		/* decrease region_ref when session_open() and execute() failed. */
-		if (secmem_region_online)
-			secmem_region_ref--;
-		mutex_unlock(&secmem_region_lock);
-#endif
+	ret = secmem_execute(CMD_SEC_MEM_ALLOC, &param);
+	if (ret != 0) {
+		MSG(ERR, "%s: secmem_execute alloc failed!\n", __func__);
+		return ret;
 	}
 
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	INFO("align=0x%x size=0x%x id=0x%x clean=%d ret=%d refcnt=0x%x shndl=0x%x region_online=%u region_ref=%u\n",
-		alignment, size, id, clean, ret, *refcount, *sec_handle, secmem_region_online, secmem_region_ref);
-#else
-	MSG(INFO, "%s: align: 0x%x, size 0x%x, id 0x%x, clean(%d), ret(%d), refcnt 0x%x, sec_handle 0x%x\n",
-		__func__, alignment, size, id, clean, ret, *refcount, *sec_handle);
-#endif
+	*refcount = param.refcount;
+	*sec_handle = param.sec_handle;
 
-	return ret;
-}
-int secmem_api_alloc(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle,
-	uint8_t *owner, uint32_t id)
-{
-	return secmem_api_alloc_internal(alignment, size, refcount, sec_handle, owner, id, 0, 0);
+	return 0;
 }
 EXPORT_SYMBOL(secmem_api_alloc);
 
-int secmem_api_alloc_zero(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle,
-	uint8_t *owner,	uint32_t id)
-{
-	return secmem_api_alloc_internal(alignment, size, refcount, sec_handle, owner, id, 1, 0);
-}
-EXPORT_SYMBOL(secmem_api_alloc_zero);
-
-int secmem_api_alloc_pa(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle, uint8_t *owner,
-	uint32_t id)
-{
-	return secmem_api_alloc_internal(alignment, size, refcount, sec_handle, owner, id, 1, 1);
-}
-EXPORT_SYMBOL(secmem_api_alloc_pa);
-
-static int secmem_api_unref_internal(u32 sec_handle, uint8_t *owner, uint32_t id, uint32_t is_pa)
+int secmem_api_unref(u32 sec_handle, uint8_t *owner, uint32_t id)
 {
 	int ret = 0;
 	struct secmem_param param;
-	u32 cmd = is_pa ? CMD_SEC_MEM_UNREF_PA : CMD_SEC_MEM_UNREF;
 
-	if (secmem_session_open() < 0) {
-		ret = -ENXIO;
-		goto end;
-	}
+	secmem_kernel_open();
 
 	memset(&param, 0, sizeof(param));
 	param.sec_handle = sec_handle;
@@ -890,57 +654,80 @@ static int secmem_api_unref_internal(u32 sec_handle, uint8_t *owner, uint32_t id
 		param.owner[MAX_NAME_SZ - 1] = 0;
 	}
 
-	ret = secmem_execute(cmd, &param);
-
-	secmem_session_close();
-
-end:
-
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	if (ret == 0) {
-		mutex_lock(&secmem_region_lock);
-		if (secmem_region_online == 1 && --secmem_region_ref == 0) {
-			INFO("queue secmem_reclaim_work!!\n");
-			queue_delayed_work(secmem_reclaim_wq, &secmem_reclaim_work,
-					msecs_to_jiffies(SECMEM_RECLAIM_DELAY));
-		} else {
-			INFO("region_online=%u region_ref=%u\n",
-			secmem_region_online, secmem_region_ref);
-		}
-		mutex_unlock(&secmem_region_lock);
+	ret = secmem_execute(CMD_SEC_MEM_UNREF, &param);
+	if (ret != 0) {
+		MSG(ERR, "%s: secmem_execute unref failed!\n", __func__);
+		return ret;
 	}
-#endif
 
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	INFO("ret=%d shndl=0x%x owner=%p id=0x%x region_online=%u region_ref=%u\n",
-		ret, sec_handle, owner, id, secmem_region_online, secmem_region_ref);
-#else
-	MSG(INFO, "%s: ret %d, sec_handle 0x%x, owner %p, id 0x%x\n",
-		__func__, ret, sec_handle, owner, id);
-#endif
-
-	return ret;
-}
-
-int secmem_api_unref(u32 sec_handle, uint8_t *owner, uint32_t id)
-{
-	return secmem_api_unref_internal(sec_handle, owner, id, 0);
+	return 0;
 }
 EXPORT_SYMBOL(secmem_api_unref);
 
+int secmem_api_alloc_pa(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle, uint8_t *owner,
+	uint32_t id)
+{
+	int ret = 0;
+	struct secmem_param param;
+
+	secmem_kernel_open();
+
+	memset(&param, 0, sizeof(param));
+	param.alignment = alignment;
+	param.size = size;
+	param.refcount = 0;
+	param.sec_handle = 0;
+	param.id = id;
+	if (owner) {
+		param.owner_len = strlen(owner) > MAX_NAME_SZ ? MAX_NAME_SZ : strlen(owner);
+		memcpy(param.owner, owner, param.owner_len);
+		param.owner[MAX_NAME_SZ - 1] = 0;
+	}
+
+	ret = secmem_execute(CMD_SEC_MEM_ALLOC_PA, &param);
+	if (ret != 0) {
+		MSG(ERR, "%s: secmem_execute alloc failed!\n", __func__);
+		return ret;
+	}
+
+	*refcount = param.refcount;
+	*sec_handle = param.sec_handle;
+
+	return 0;
+}
+EXPORT_SYMBOL(secmem_api_alloc_pa);
 
 int secmem_api_unref_pa(u32 sec_handle, uint8_t *owner, uint32_t id)
 {
-	return secmem_api_unref_internal(sec_handle, owner, id, 1);
+	int ret = 0;
+	struct secmem_param param;
+
+	secmem_kernel_open();
+
+	memset(&param, 0, sizeof(param));
+	param.sec_handle = sec_handle;
+	param.id = id;
+	if (owner) {
+		param.owner_len = strlen(owner) > MAX_NAME_SZ ? MAX_NAME_SZ : strlen(owner);
+		memcpy(param.owner, owner, param.owner_len);
+		param.owner[MAX_NAME_SZ - 1] = 0;
+	}
+
+	ret = secmem_execute(CMD_SEC_MEM_UNREF_PA, &param);
+	if (ret != 0) {
+		MSG(ERR, "%s: secmem_execute unref failed!\n", __func__);
+		return ret;
+	}
+
+	return 0;
 }
 EXPORT_SYMBOL(secmem_api_unref_pa);
+#endif
 
-#endif /* END OF SECMEM_KERNEL_API */
-
-#ifdef CONFIG_MT_ENG_BUILD
+#ifdef SECMEM_DEBUG_INTERFACE
 #include <mach/emi_mpu.h>
 #include <mach/mt_secure_api.h>
-static ssize_t secmem_write(struct file *file, const char __user *buffer, size_t count, loff_t *data)
+static int secmem_write(struct file *file, const char __user *buffer, size_t count, loff_t *data)
 {
 	char desc[32];
 	int len = 0;
@@ -949,54 +736,14 @@ static ssize_t secmem_write(struct file *file, const char __user *buffer, size_t
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
 	if (copy_from_user(desc, buffer, len))
 		return 0;
-
 	desc[len] = '\0';
 
-	if (sscanf(desc, "%1s", cmd) == 1) {
-		if (!strcmp(cmd, "0")) {
-			MSG(ERR, "[SECMEM] - test for secmem_region_release()\n");
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-			mutex_lock(&secmem_region_lock);
-			secmem_region_ref--;
-			secmem_region_release();
-			mutex_unlock(&secmem_region_lock);
-#endif
-		} else if (!strcmp(cmd, "1")) {
-			MSG(ERR, "[SECMEM] - test for secmem_region_alloc()\n");
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-			mutex_lock(&secmem_region_lock);
-			secmem_region_alloc();
-			secmem_region_ref++;
-			mutex_unlock(&secmem_region_lock);
-#endif
-		} else if (!strcmp(cmd, "2")) {
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-			u32 size = 0;
-
-			MSG(ERR, "[SECMEM] - test for secmem_api_query()\n");
-			secmem_api_query(&size);
-			MSG(ERR, "[SECMEM] - allocated : 0x%x\n", size);
-#endif
-		} else if (!strcmp(cmd, "3")) {
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-			u32 size = 0;
-			u32 refcount = 0;
-			u32 sec_handle = 0;
-			char owner[] = "secme_ut";
-
-			MSG(ERR, "[SECMEM] - test for alloc-free\n");
-			secmem_api_alloc(0x1000, 0x1000, &refcount, &sec_handle, owner, 0);
-			secmem_api_query(&size);
-			MSG(ERR, "[SECMEM] - after alloc : 0x%x\n", size);
-			secmem_api_unref(sec_handle, owner, 0);
-			secmem_api_query(&size);
-			MSG(ERR, "[SECMEM] - after free : 0x%x\n", size);
-#endif
-		} else if (!strcmp(cmd, "4")) {
-#if defined(CONFIG_ARM_PSCI) || defined(CONFIG_MTK_PSCI)
-			MSG(ERR, "[SECMEM] - test for command 2\n");
+	if (sscanf(desc, "%s", cmd) == 1) {
+		if (!strcmp(cmd, "1")) {
+			pr_debug("[SECMEM] - test for command 1\n");
 			tbase_trigger_aee_dump();
-#endif
+		} else if (!strcmp(cmd, "2")) {
+			pr_debug("[SECMEM] - test for command 2\n");
 		}
 	}
 
@@ -1012,7 +759,7 @@ static const struct file_operations secmem_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = secmem_ioctl,
 #endif
-#ifdef CONFIG_MT_ENG_BUILD
+#ifdef SECMEM_DEBUG_INTERFACE
 	.write = secmem_write,
 #else
 	.write = NULL,
@@ -1023,21 +770,16 @@ static const struct file_operations secmem_fops = {
 static int __init secmem_init(void)
 {
 	proc_create("secmem0", (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH), NULL,
-			&secmem_fops);
-
-#if defined(CONFIG_CMA) && defined(CONFIG_MTK_SVP)
-	if (!secmem_reclaim_wq)
-		secmem_reclaim_wq = create_singlethread_workqueue("secmem_reclaim");
-#endif
+		    &secmem_fops);
 
 #ifdef SECMEM_DEBUG_INTERFACE
 	{
 		unsigned int sec_mem_mpu_attr =
-			SET_ACCESS_PERMISSON(FORBIDDEN, SEC_RW, SEC_RW, FORBIDDEN);
+		    SET_ACCESS_PERMISSON(FORBIDDEN, SEC_RW, SEC_RW, FORBIDDEN);
 		unsigned int set_mpu_ret = 0;
 
 		set_mpu_ret =
-			emi_mpu_set_region_protection(0xF6000000, 0xFFFFFFFF, 0, sec_mem_mpu_attr);
+		    emi_mpu_set_region_protection(0xF6000000, 0xFFFFFFFF, 0, sec_mem_mpu_attr);
 		pr_debug("[SECMEM] - test for set EMI MPU on region 0, ret:%d\n", set_mpu_ret);
 	}
 #endif

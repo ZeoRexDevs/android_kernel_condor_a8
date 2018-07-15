@@ -1,16 +1,3 @@
-/*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
-
 #include <linux/init.h>        /* For init/exit macros */
 #include <linux/module.h>      /* For MODULE_ marcros  */
 #include <linux/kernel.h>
@@ -21,11 +8,10 @@
 #include <linux/spinlock.h>
 #include <linux/watchdog.h>
 #include <linux/platform_device.h>
-#include <linux/cpu.h>
 
 #include <asm/uaccess.h>
 #include <linux/types.h>
-#include "mt_wdt.h"
+#include <mt_wdt.h>
 #include <linux/delay.h>
 
 #include <linux/device.h>
@@ -80,7 +66,7 @@ static DEFINE_SPINLOCK(rgu_reg_operation_spinlock);
 #ifndef CONFIG_KICK_SPM_WDT
 static unsigned int timeout;
 #endif
-static bool  rgu_wdt_intr_has_trigger; /* For test use */
+static volatile bool  rgu_wdt_intr_has_trigger; /* For test use */
 static int g_last_time_time_out_value;
 static int g_wdt_enable = 1;
 #ifdef CONFIG_KICK_SPM_WDT
@@ -272,7 +258,7 @@ void mtk_wdt_restart(enum wd_restart_type type)
 	#ifdef CONFIG_KICK_SPM_WDT
 		spm_wdt_restart_timer_nolock();
 	#else
-		*(u32 *)(MTK_WDT_RESTART) = MTK_WDT_RESTART_KEY;
+		*(volatile u32 *)(MTK_WDT_RESTART) = MTK_WDT_RESTART_KEY;
 	#endif
 	} else
 		pr_debug("WDT:[mtk_wdt_restart] type=%d error pid =%d\n", type, current->pid);
@@ -324,7 +310,8 @@ void wdt_arch_reset(char mode)
 	pr_debug("wdt_arch_reset called@Kernel mode =%c\n", mode);
 
 #ifdef CONFIG_MTK_MULTIBRIDGE_SUPPORT
-	mt8193_bus_clk_switch(false);
+	if (!multibridge_exit)
+		mt8193_bus_clk_switch(false);
 #endif
 
 #ifdef CONFIG_OF
@@ -368,7 +355,7 @@ void wdt_arch_reset(char mode)
 
 int mtk_rgu_dram_reserved(int enable)
 {
-	unsigned int tmp;
+	volatile unsigned int tmp;
 
 	if (1 == enable) {
 		/* enable ddr reserved mode */
@@ -417,7 +404,6 @@ int mtk_wdt_swsysret_config(int bit, int set_value)
 	pr_debug("after set wdt_sys_val =%x,wdt_sys_val=%x\n", __raw_readl(MTK_WDT_SWSYSRST), wdt_sys_val);
 	return 0;
 }
-EXPORT_SYMBOL(mtk_wdt_swsysret_config);
 
 int mtk_wdt_request_en_set(int mark_bit, WD_REQ_CTL en)
 {
@@ -533,7 +519,6 @@ void mtk_wd_suspend(void){}
 void mtk_wd_resume(void){}
 void wdt_dump_reg(void){}
 int mtk_wdt_swsysret_config(int bit, int set_value) { return 0; }
-EXPORT_SYMBOL(mtk_wdt_swsysret_config);
 int mtk_wdt_request_mode_set(int mark_bit, WD_REQ_MODE mode) {return 0; }
 int mtk_wdt_request_en_set(int mark_bit, WD_REQ_CTL en) {return 0; }
 void mtk_wdt_set_c2k_sysrst(unsigned int flag) {}
@@ -581,12 +566,12 @@ get_wd_api(&wd_api);
 
 	aee_wdt_fiq_info(arg, regs, svc_sp);
 #if 0
-	asm ("mov %0, %1\n\t"
+	asm volatile("mov %0, %1\n\t"
 		  "mov fp, %2\n\t"
 		 : "=r" (sp)
 		 : "r" (svc_sp), "r" (preg[11])
 		 );
-	*((unsigned int *)(0x00000000)); /* trigger exception */
+	*((volatile unsigned int *)(0x00000000)); /* trigger exception */
 #endif
 }
 #else /* CONFIG_FIQ_GLUE */

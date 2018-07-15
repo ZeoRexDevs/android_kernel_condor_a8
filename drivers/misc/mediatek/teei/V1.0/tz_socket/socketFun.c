@@ -1,17 +1,3 @@
-/*
- * Copyright (c) 2015-2017 MICROTRUST Incorporated
- * All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/module.h>
@@ -22,8 +8,8 @@
 #include <linux/sched.h>
 #include <linux/init.h>
 #include <linux/cdev.h>
-#include <linux/io.h>
-#include <linux/uaccess.h>
+#include <asm/io.h>
+#include <asm/uaccess.h>
 #include <linux/semaphore.h>
 #include <linux/slab.h>
 #include "TEEI.h"
@@ -33,10 +19,6 @@
 #define SOCKET_MAJOR	253
 #define SHMEM_ENABLE    0
 #define SHMEM_DISABLE   1
-#define SEMA_INIT_ZERO	0
-
-#define IMSG_TAG "[tz_socket]"
-#include <imsg_log.h>
 
 static int socket_major = SOCKET_MAJOR;
 static struct class *driver_class;
@@ -53,7 +35,7 @@ EXPORT_SYMBOL_GPL(daulOS_rd_sem);
 struct semaphore daulOS_wr_sem;
 EXPORT_SYMBOL_GPL(daulOS_wr_sem);
 
-struct socket_dev *socket_devp;
+struct socket_dev *socket_devp = NULL;
 
 int socket_open(struct inode *inode, struct file *filp)
 {
@@ -79,7 +61,7 @@ static long socket_ioctl(struct file *filp,
 
 		memset(dev->mem, 0, SOCKET_SIZE);
 		up(&dev->sem);
-		IMSG_INFO("Socket is set to zero.\n");
+		pr_info(KERN_INFO "Socket is set to zero.\n");
 		break;
 
 	default:
@@ -118,11 +100,11 @@ static ssize_t socket_write(struct file *filp, const char __user *buf,
 {
 
 	if (daulOS_shmem_flags == SHMEM_DISABLE) {
-		IMSG_INFO("Socket write timeout\n");
+		pr_info("Socket write timeout\n");
 		return -ETIME;
 	}
 
-	IMSG_INFO("Socket write function is running\n");
+	pr_info("Socket write function is running\n");
 
 	memset((void *)daulOS_share_mem, 0, size);
 
@@ -199,14 +181,13 @@ static void socket_setup_cdev(struct socket_dev *dev, int index)
 	err = cdev_add(&dev->cdev, devno, 1);
 
 	if (err)
-		IMSG_ERROR("Error %d adding socket %d.\n", err, index);
+		pr_info(KERN_NOTICE "Error %d adding socket %d.\n", err, index);
 }
 
 int socket_init(void)
 {
 	int result = 0;
 	struct device *class_dev = NULL;
-
 	devno = MKDEV(socket_major, 0);
 
 	result = alloc_chrdev_region(&devno, 0, 1, "tz_socket");
@@ -219,7 +200,7 @@ int socket_init(void)
 
 	if (IS_ERR(driver_class)) {
 		result = -ENOMEM;
-		IMSG_ERROR("class_create failed %d.\n", result);
+		pr_info("class_create failed %d.\n", result);
 		goto unregister_chrdev_region;
 	}
 
@@ -227,7 +208,7 @@ int socket_init(void)
 
 	if (!class_dev) {
 		result = -ENOMEM;
-		IMSG_ERROR("class_device_create failed %d.\n", result);
+		pr_info("class_device_create failed %d.\n", result);
 		goto class_destroy;
 	}
 
@@ -241,8 +222,8 @@ int socket_init(void)
 	memset(socket_devp, 0, sizeof(struct socket_dev));
 	socket_setup_cdev(socket_devp, 0);
 	sema_init(&socket_devp->sem, 1);
-	sema_init(&daulOS_rd_sem, SEMA_INIT_ZERO);
-	sema_init(&daulOS_wr_sem, SEMA_INIT_ZERO);
+	sema_init(&daulOS_rd_sem, 0);
+	sema_init(&daulOS_wr_sem, 0);
 	goto return_fn;
 
 class_device_destroy:

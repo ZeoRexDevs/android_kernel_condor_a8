@@ -790,8 +790,6 @@ static int __net_init inet6_net_init(struct net *net)
 	net->ipv6.sysctl.bindv6only = 0;
 	net->ipv6.sysctl.icmpv6_time = 1*HZ;
 	net->ipv6.sysctl.flowlabel_consistency = 1;
-	net->ipv6.sysctl.idgen_retries = 3;
-	net->ipv6.sysctl.idgen_delay = 1 * HZ;
 	net->ipv6.sysctl.auto_flowlabels = 0;
 	atomic_set(&net->ipv6.fib6_sernum, 1);
 
@@ -906,12 +904,12 @@ static int __init inet6_init(void)
 	err = register_pernet_subsys(&inet6_net_ops);
 	if (err)
 		goto register_pernet_fail;
-	err = icmpv6_init();
-	if (err)
-		goto icmp_fail;
 	err = ip6_mr_init();
 	if (err)
 		goto ipmr_fail;
+	err = icmpv6_init();
+	if (err)
+		goto icmp_fail;
 	err = ndisc_init();
 	if (err)
 		goto ndisc_fail;
@@ -1029,10 +1027,10 @@ igmp_fail:
 	ndisc_cleanup();
 ndisc_fail:
 	ip6_mr_cleanup();
-ipmr_fail:
-	icmpv6_cleanup();
 icmp_fail:
 	unregister_pernet_subsys(&inet6_net_ops);
+ipmr_fail:
+	icmpv6_cleanup();
 register_pernet_fail:
 	sock_unregister(PF_INET6);
 	rtnl_unregister_all(PF_INET6);

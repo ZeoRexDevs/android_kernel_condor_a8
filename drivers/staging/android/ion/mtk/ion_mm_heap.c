@@ -433,25 +433,6 @@ static int ion_mm_heap_phys(struct ion_heap *heap, struct ion_buffer *buffer,
 	return 0;
 }
 
-int ion_mm_heap_pool_total(struct ion_heap *heap)
-{
-	struct ion_system_heap *sys_heap;
-	int total = 0;
-	int i;
-
-	sys_heap = container_of(heap, struct ion_system_heap, heap);
-
-	for (i = 0; i < num_orders; i++) {
-		struct ion_page_pool *pool = sys_heap->pools[i];
-
-		total += (pool->high_count + pool->low_count) * (1 << pool->order);
-		pool = sys_heap->cached_pools[i];
-		total += (pool->high_count + pool->low_count) * (1 << pool->order);
-	}
-
-	return total;
-}
-
 static struct ion_heap_ops system_heap_ops = {
 		.allocate = ion_mm_heap_allocate,
 		.free = ion_mm_heap_free,
@@ -462,60 +443,12 @@ static struct ion_heap_ops system_heap_ops = {
 		.map_user = ion_heap_map_user,
 		.phys = ion_mm_heap_phys,
 		.shrink = ion_mm_heap_shrink,
-		.page_pool_total = ion_mm_heap_pool_total,
 };
 
 struct dump_fd_data {
 	struct task_struct *p;
 	struct seq_file *s;
 };
-
-static int __do_dump_share_fd(const void *data, struct file *file, unsigned fd)
-{
-	const struct dump_fd_data *d = data;
-	struct seq_file *s = d->s;
-	struct task_struct *p = d->p;
-	struct ion_buffer *buffer;
-	ion_mm_buffer_info *bug_info;
-
-	buffer = ion_drv_file_to_buffer(file);
-	if (IS_ERR_OR_NULL(buffer))
-		return 0;
-
-	bug_info = (ion_mm_buffer_info *)buffer->priv_virt;
-	if (!buffer->handle_count)
-		ION_PRINT_LOG_OR_SEQ(s, "0x%p %9d %16s %5d %5d %16s %4d\n",
-				     buffer, bug_info->pid, buffer->alloc_dbg, p->pid, p->tgid, p->comm, fd);
-
-	return 0;
-}
-
-static int ion_dump_all_share_fds(struct seq_file *s)
-{
-	struct task_struct *p;
-	int res;
-	struct dump_fd_data data;
-
-	/* function is not available, just return */
-	if (ion_drv_file_to_buffer(NULL) == ERR_PTR(-EPERM))
-		return 0;
-
-	ION_PRINT_LOG_OR_SEQ(s, "%18s %9s %16s %5s %5s %16s %4s\n",
-			     "buffer", "alloc_pid", "alloc_client", "pid", "tgid", "process", "fd");
-	data.s = s;
-
-	read_lock(&tasklist_lock);
-	for_each_process(p) {
-		task_lock(p);
-		data.p = p;
-		res = iterate_fd(p->files, 0, __do_dump_share_fd, &data);
-		if (res)
-			IONMSG("%s failed somehow\n", __func__);
-		task_unlock(p);
-	}
-	read_unlock(&tasklist_lock);
-	return 0;
-}
 
 static int ion_mm_heap_debug_show(struct ion_heap *heap, struct seq_file *s, void *unused)
 {
@@ -524,7 +457,6 @@ static int ion_mm_heap_debug_show(struct ion_heap *heap, struct seq_file *s, voi
 	struct ion_device *dev = heap->dev;
 	struct rb_node *n;
 	int i;
-	bool has_orphaned = false;
 	ion_mm_buffer_info *bug_info;
 	ion_mm_buf_debug_info_t *pdbg;
 	unsigned long long current_ts;
@@ -576,13 +508,6 @@ static int ion_mm_heap_debug_show(struct ion_heap *heap, struct seq_file *s, voi
 				     buffer->flags, buffer->heap->id, buffer->pid, bug_info->pid, buffer->task_comm,
 				     pdbg->value1, pdbg->value2, pdbg->value3,
 				     pdbg->value4, pdbg->dbg_name);
-		if (!buffer->handle_count)
-			has_orphaned = true;
-	}
-
-	if (has_orphaned) {
-		ION_PRINT_LOG_OR_SEQ(s, "-----orphaned buffer list:------------------\n");
-		ion_dump_all_share_fds(s);
 	}
 
 	mutex_unlock(&dev->buffer_lock);
@@ -694,7 +619,6 @@ void ion_mm_heap_memory_detail(void)
 	size_t total_orphaned_size = 0;
 	struct rb_node *n;
 	bool need_dev_lock = true;
-	bool has_orphaned = false;
 	ion_mm_buffer_info *bug_info;
 	ion_mm_buf_debug_info_t *pdbg;
 
@@ -745,14 +669,14 @@ void ion_mm_heap_memory_detail(void)
 skip_client_entry:
 
 	ION_PRINT_LOG_OR_SEQ(NULL,
-			     "%s %8s %s %16s %10s %10s %10s %10s %32s\n",
+			     "%s %8s %s %16s %6s %10s %10s %10s %10s %32s\n",
 			     "buffer    ", "size",
-			     "pid(alloc_pid)", "comm(client)", "v1", "v2", "v3", "v4", "dbg_name");
+			     "pid(alloc_pid)", "comm(client)", "heapid", "v1", "v2", "v3", "v4", "dbg_name");
 
 	if (mutex_trylock(&dev->buffer_lock)) {
 		char seq_log[384];
 		int seq_log_count = 0;
-		char seq_fmt[] = "0x%p %10zu %5d(%5d) %16s %10u %10u %10u %10u %48s  ";
+		char seq_fmt[] = "0x%p %10zu %5d(%5d) %16s %6d %10u %10u %10u %10u %48s  ";
 
 		memset(seq_log, 0, 384);
 		for (n = rb_first(&dev->buffers); n; n = rb_next(n)) {
@@ -773,7 +697,6 @@ skip_client_entry:
 
 				if (!buffer->handle_count) {
 					total_orphaned_size += buffer->size;
-					has_orphaned = true;
 				}
 
 				if ((strstr(pdbg->dbg_name, "nothing") &&  (cam_heap == 0)) &&
@@ -783,9 +706,9 @@ skip_client_entry:
 				seq_log_count++;
 				sprintf(seq_log + strlen(seq_log), seq_fmt,
 					buffer, buffer->size,
-					buffer->pid, bug_info->pid, buffer->task_comm,
+					buffer->pid, bug_info->pid, buffer->task_comm, buffer->heap->id,
 					pdbg->value1, pdbg->value2, pdbg->value3, pdbg->value4,
-					cam_heap ? "ion_camera_heap" : pdbg->dbg_name);
+					pdbg->dbg_name);
 
 				if ((seq_log_count % 2) == 0) {
 					ION_PRINT_LOG_OR_SEQ(NULL, "%s\n", seq_log);
@@ -795,11 +718,6 @@ skip_client_entry:
 		}
 
 		ION_PRINT_LOG_OR_SEQ(NULL, "%s\n", seq_log);
-
-		if (has_orphaned) {
-			ION_PRINT_LOG_OR_SEQ(NULL, "-----orphaned buffer list:------------------\n");
-			ion_dump_all_share_fds(NULL);
-		}
 
 		mutex_unlock(&dev->buffer_lock);
 

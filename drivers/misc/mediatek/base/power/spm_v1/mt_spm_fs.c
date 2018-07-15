@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/kobject.h>
@@ -52,9 +39,6 @@ static ssize_t show_pcm_desc(const struct pcm_desc *pcmdesc, char *buf)
 {
 	char *p = buf;
 
-	if (!pcmdesc)
-		return 0;
-
 	p += sprintf(p, "version = %s\n", pcmdesc->version);
 	p += sprintf(p, "base = 0x%p\n", pcmdesc->base);
 	p += sprintf(p, "size = %u\n", pcmdesc->size);
@@ -81,7 +65,11 @@ static ssize_t suspend_pcm_show(struct kobject *kobj, struct kobj_attribute *att
 
 static ssize_t dpidle_pcm_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
+#if defined(CONFIG_ARCH_MT6580)
+	return 0; /* TODO */
+#else
 	return show_pcm_desc(__spm_dpidle.pcmdesc, buf);
+#endif
 }
 
 static ssize_t sodi_pcm_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
@@ -192,7 +180,11 @@ static ssize_t suspend_ctrl_show(struct kobject *kobj, struct kobj_attribute *at
 
 static ssize_t dpidle_ctrl_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
+#if defined(CONFIG_ARCH_MT6580)
+	return 0; /* TODO */
+#else
 	return show_pwr_ctrl(__spm_dpidle.pwrctrl, buf);
+#endif
 }
 
 static ssize_t sodi_ctrl_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
@@ -363,7 +355,11 @@ static ssize_t suspend_ctrl_store(struct kobject *kobj, struct kobj_attribute *a
 static ssize_t dpidle_ctrl_store(struct kobject *kobj, struct kobj_attribute *attr,
 				 const char *buf, size_t count)
 {
+#if defined(CONFIG_ARCH_MT6580)
+	return 0; /* TODO */
+#else
 	return store_pwr_ctrl(__spm_dpidle.pwrctrl, buf, count);
+#endif
 }
 
 static ssize_t sodi_ctrl_store(struct kobject *kobj, struct kobj_attribute *attr,
@@ -458,7 +454,7 @@ static ssize_t golden_dump_show(struct kobject *kobj, struct kobj_attribute *att
 {
 	char *p = buf;
 
-#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6580)
 	spm_golden_setting_cmp(1);
 #endif
 
@@ -472,7 +468,7 @@ static ssize_t golden_dump_show(struct kobject *kobj, struct kobj_attribute *att
 static ssize_t auto_suspend_resume_show(struct kobject *kobj, struct kobj_attribute *attr,
 					char *buf)
 {
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 	return 0; /* TODO */
 #else
 	char *p = buf;
@@ -521,7 +517,7 @@ void __attribute__ ((weak)) slp_set_auto_suspend_wakelock(bool lock)
 static ssize_t auto_suspend_resume_store(struct kobject *kobj, struct kobj_attribute *attr,
 					 const char *buf, size_t count)
 {
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 	return 0; /* TODO */
 #else
 	u32 val, pcm_sec;

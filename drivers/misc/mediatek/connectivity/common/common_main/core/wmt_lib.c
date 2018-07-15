@@ -126,109 +126,11 @@ static MTK_WCN_BOOL wmt_lib_hw_state_show(VOID);
 *                              F U N C T I O N S
 ********************************************************************************
 */
-VOID __weak wmt_plat_func_ctrl_cb_reg(func_ctrl_cb subsys_func_ctrl)
-{
-	WMT_ERR_FUNC("wmt_plat_func_ctrl_cb_reg is not define!!!\n");
-}
-VOID __weak wmt_plat_deep_idle_ctrl_cb_reg(deep_idle_ctrl_cb deep_idle_ctrl)
-{
-	WMT_ERR_FUNC("wmt_plat_deep_idle_ctrl_cb_reg is not define!!!\n");
-}
-INT32 __weak wmt_plat_soc_init(UINT32 co_clock_type)
-{
-	WMT_ERR_FUNC("wmt_plat_soc_init is not define!!!\n");
-
-	return 0;
-}
-UINT32 __weak wmt_plat_soc_co_clock_flag_get(VOID)
-{
-	WMT_ERR_FUNC("wmt_plat_soc_co_clock_flag_get is not define!!!\n");
-
-	return 0;
-}
-P_CONSYS_EMI_ADDR_INFO __weak wmt_plat_get_emi_phy_add(VOID)
-{
-	WMT_ERR_FUNC("wmt_plat_get_emi_phy_add is not define!!!\n");
-
-	return NULL;
-}
-UINT8 * __weak wmt_plat_get_emi_virt_add(UINT32 offset)
-{
-	WMT_ERR_FUNC("wmt_plat_get_emi_virt_add is not define!!!\n");
-
-	return 0;
-}
-VOID __weak wmt_plat_thermal_ctrl_cb_reg(thermal_query_ctrl_cb thermal_query_ctrl)
-{
-	WMT_ERR_FUNC("wmt_plat_thermal_ctrl_cb_reg is not define!!!\n");
-}
-UINT32 __weak wmt_plat_jtag_flag_ctrl(UINT32 en)
-{
-	WMT_ERR_FUNC("wmt_plat_jtag_flag_ctrl is not define!!!\n");
-
-	return 0;
-}
 INT32 __weak mtk_wcn_consys_stp_btif_dpidle_ctrl(ENUM_BTIF_DPIDLE_CTRL en_flag)
 {
 	WMT_ERR_FUNC("mtk_wcn_consys_stp_btif_dpidle_ctrl is not define!!!\n");
 
 	return 0;
-}
-
-INT32 __weak wmt_plat_init(P_PWR_SEQ_TIME pPwrSeqTime)
-{
-	WMT_ERR_FUNC("wmt_plat_init is not define!!!\n");
-
-	return 0;
-}
-
-VOID __weak wmt_lib_plat_irq_cb_reg(irq_cb bgf_irq_cb)
-{
-	WMT_ERR_FUNC("wmt_lib_plat_irq_cb_reg is not define!!!\n");
-
-}
-
-INT32 __weak wmt_plat_stub_init(VOID)
-{
-	WMT_ERR_FUNC("wmt_plat_stub_init is not define!!!\n");
-
-	return 0;
-}
-
-INT32 __weak wmt_plat_set_comm_if_type(ENUM_STP_TX_IF_TYPE type)
-{
-	WMT_ERR_FUNC("wmt_plat_set_comm_if_type is not define!!!\n");
-
-	return 0;
-}
-
-INT32 __weak wmt_plat_merge_if_flag_ctrl(UINT32 enable)
-{
-	WMT_ERR_FUNC("wmt_plat_merge_if_flag_ctrl is not define!!!\n");
-
-	return 0;
-}
-
-VOID __weak wmt_lib_plat_aif_cb_reg(device_audio_if_cb aif_ctrl_cb)
-{
-	WMT_ERR_FUNC("wmt_lib_plat_aif_cb_reg is not define!!!\n");
-
-}
-
-INT32 __weak wmt_plat_merge_if_flag_get(VOID)
-{
-	WMT_ERR_FUNC("wmt_plat_merge_if_flag_get is not define!!!\n");
-
-	return 0;
-}
-VOID __weak wmt_plat_irq_cb_reg(irq_cb bgf_irq_cb)
-{
-
-}
-
-VOID __weak wmt_plat_aif_cb_reg(device_audio_if_cb aif_ctrl_cb)
-{
-
 }
 
 INT32 wmt_lib_idc_lock_aquire(VOID)
@@ -357,38 +259,32 @@ INT32 wmt_lib_init(VOID)
 	osal_event_init(&pDevWmt->cmdReq);
 	/* initialize platform resources */
 
-	chip_type = wmt_detect_get_chip_type();
-	if (chip_type == WMT_CHIP_TYPE_COMBO) {
-		if (0 != gDevWmt.rWmtGenConf.cfgExist) {
-			PWR_SEQ_TIME pwrSeqTime;
+	if (0 != gDevWmt.rWmtGenConf.cfgExist) {
+		PWR_SEQ_TIME pwrSeqTime;
 
-			pwrSeqTime.ldoStableTime = gDevWmt.rWmtGenConf.pwr_on_ldo_slot;
-			pwrSeqTime.rstStableTime = gDevWmt.rWmtGenConf.pwr_on_rst_slot;
-			pwrSeqTime.onStableTime = gDevWmt.rWmtGenConf.pwr_on_on_slot;
-			pwrSeqTime.offStableTime = gDevWmt.rWmtGenConf.pwr_on_off_slot;
-			pwrSeqTime.rtcStableTime = gDevWmt.rWmtGenConf.pwr_on_rtc_slot;
-			WMT_INFO_FUNC("set pwr on seq par to hw conf\n");
-			WMT_INFO_FUNC("ldo(%d)rst(%d)on(%d)off(%d)rtc(%d)\n", pwrSeqTime.ldoStableTime,
-					pwrSeqTime.rstStableTime, pwrSeqTime.onStableTime,
-					pwrSeqTime.offStableTime, pwrSeqTime.rtcStableTime);
-			iRet = wmt_plat_init(&pwrSeqTime);
-		} else {
-			WMT_ERR_FUNC("no pwr on seq par found\n");
-			iRet = wmt_plat_init(NULL);
-		}
-	} else if (chip_type == WMT_CHIP_TYPE_SOC) {
-			if (0 != gDevWmt.rWmtGenConf.cfgExist)
-				iRet = wmt_plat_soc_init(gDevWmt.rWmtGenConf.co_clock_flag & 0x0f);
-			else
-				iRet = wmt_plat_soc_init(0);
-			gDevWmt.rWmtGenConf.co_clock_flag = wmt_plat_soc_co_clock_flag_get();
+		pwrSeqTime.ldoStableTime = gDevWmt.rWmtGenConf.pwr_on_ldo_slot;
+		pwrSeqTime.rstStableTime = gDevWmt.rWmtGenConf.pwr_on_rst_slot;
+		pwrSeqTime.onStableTime = gDevWmt.rWmtGenConf.pwr_on_on_slot;
+		pwrSeqTime.offStableTime = gDevWmt.rWmtGenConf.pwr_on_off_slot;
+		pwrSeqTime.rtcStableTime = gDevWmt.rWmtGenConf.pwr_on_rtc_slot;
+		WMT_INFO_FUNC("set pwr on seq par to hw conf\n");
+		WMT_INFO_FUNC("ldo(%d)rst(%d)on(%d)off(%d)rtc(%d)\n", pwrSeqTime.ldoStableTime,
+				pwrSeqTime.rstStableTime, pwrSeqTime.onStableTime,
+				pwrSeqTime.offStableTime, pwrSeqTime.rtcStableTime);
+		iRet = wmt_plat_init(&pwrSeqTime, gDevWmt.rWmtGenConf.co_clock_flag & 0x0f);
+	} else {
+		WMT_ERR_FUNC("no pwr on seq and clk par found\n");
+		iRet = wmt_plat_init(NULL, 0);
 	}
+	chip_type = wmt_detect_get_chip_type();
+	if (chip_type == WMT_CHIP_TYPE_SOC)
+			gDevWmt.rWmtGenConf.co_clock_flag = wmt_plat_soc_co_clock_flag_get();
+
 	if (iRet) {
 		WMT_ERR_FUNC("wmt_plat_init() fail(%d)\n", iRet);
 		return -3;
 	}
-	if (chip_type == WMT_CHIP_TYPE_COMBO)
-		wmt_plat_stub_init();
+
 #if CFG_WMT_PS_SUPPORT
 	iRet = wmt_lib_ps_init();
 	if (iRet) {
@@ -403,15 +299,10 @@ INT32 wmt_lib_init(VOID)
 		WMT_ERR_FUNC("osal_thread_run(0x%p) fail(%d)\n", pThread, iRet);
 		return -5;
 	}
-	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_COMBO) {
-		/*4. register irq callback to WMT-PLAT */
-		wmt_lib_plat_irq_cb_reg(wmt_lib_ps_irq_cb);
-		/*5. register audio if control callback to WMT-PLAT */
-		wmt_lib_plat_aif_cb_reg(wmt_lib_set_aif);
-	} else {
-		wmt_plat_irq_cb_reg(wmt_lib_ps_irq_cb);
-		wmt_plat_aif_cb_reg(wmt_lib_set_aif);
-	}
+	/*4. register irq callback to WMT-PLAT */
+	wmt_plat_irq_cb_reg(wmt_lib_ps_irq_cb);
+	/*5. register audio if control callback to WMT-PLAT */
+	wmt_plat_aif_cb_reg(wmt_lib_set_aif);
 	/*6. register function control callback to WMT-PLAT */
 	wmt_plat_func_ctrl_cb_reg(mtk_wcn_wmt_func_ctrl_for_plat);
 
@@ -979,7 +870,10 @@ INT32 wmt_lib_ps_stp_cb(MTKSTP_PSM_ACTION_T action)
 
 MTK_WCN_BOOL wmt_lib_is_quick_ps_support(VOID)
 {
-	return wmt_core_is_quick_ps_support();
+	if ((g_quick_sleep_ctrl) && (wmt_dev_get_early_suspend_state() == MTK_WCN_BOOL_TRUE))
+		return wmt_core_is_quick_ps_support();
+	else
+		return MTK_WCN_BOOL_FALSE;
 }
 
 VOID wmt_lib_ps_irq_cb(VOID)
@@ -1187,7 +1081,6 @@ MTK_WCN_BOOL wmt_lib_put_act_op(P_OSAL_OP pOp)
 	MTK_WCN_BOOL bCleanup = MTK_WCN_BOOL_FALSE;
 	P_OSAL_SIGNAL pSignal = NULL;
 	INT32 waitRet = -1;
-	P_OSAL_THREAD pThread;
 	PUINT8 pbuf = NULL;
 	INT32 len = 0;
 
@@ -1241,14 +1134,13 @@ MTK_WCN_BOOL wmt_lib_put_act_op(P_OSAL_OP pOp)
 
 		/* if (unlikely(!wait_ret)) { */
 		if (0 == waitRet) {
-			pThread = &gDevWmt.thread;
 			pbuf = "Wait wmtd complation timeout, just collect SYS_FTRACE to DB";
 			len = osal_strlen(pbuf);
 			WMT_ERR_FUNC
 				("wait completion timeout, opId(%d), show wmtd_thread stack!\n", pOp->op.opId);
+			wmt_lib_dump_wmtd_backtrace();
 			/* TODO: how to handle it? retry? */
 			/* wcn_wmtd_timeout_collect_ftrace();*/ /*trigger collect SYS_FTRACE */
-			osal_thread_show_stack(pThread);
 			stp_dbg_trigger_collect_ftrace(pbuf, len);
 		} else {
 			if (pOp->result)
@@ -2037,6 +1929,11 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset, UINT8 *buf, UI
 			osal_memcpy_fromio(&buf[0], pAddr, len);
 		}
 	} else {
+		if (p_consys_info == NULL) {
+			WMT_ERR_FUNC("wmt-lib: get EMI physical address fail!\n");
+			return 0;
+		}
+
 		if (offset >= 0x7fff)
 			offset = 0x0;
 
@@ -2190,4 +2087,9 @@ INT32 wmt_lib_stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 UINT32 wmt_lib_co_clock_flag_get(VOID)
 {
 	return wmt_plat_soc_co_clock_flag_get();
+}
+
+VOID wmt_lib_dump_wmtd_backtrace(VOID)
+{
+	osal_thread_show_stack(&gDevWmt.thread);
 }

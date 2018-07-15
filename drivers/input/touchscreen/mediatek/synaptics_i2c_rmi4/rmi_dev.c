@@ -37,7 +37,7 @@
 
 
 
-#define SYN_I2C_RETRY_TIMES 10
+#define SYN_I2C_RETRY_TIMES 3
 
 #define CHAR_DEVICE_NAME "rmi"
 #define DEVICE_CLASS_NAME "rmidev"

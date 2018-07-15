@@ -2678,10 +2678,8 @@ void DSI_set_cmdq_subV3(DISP_MODULE_ENUM module, cmdqRecHandle cmdq,
 			}
 
 			if (force_update) {
-				MMProfileLog(MTKFB_MMP_Events.DSICmd, MMProfileFlagStart);
 				DSI_Start(module, cmdq);
 				DSI_WaitForNotBusy(module, cmdq);
-				MMProfileLog(MTKFB_MMP_Events.DSICmd, MMProfileFlagEnd);
 			}
 		}
 	} while (++index < size);
@@ -3076,25 +3074,17 @@ int ddp_dsi_set_lcm_utils(DISP_MODULE_ENUM module, LCM_DRIVER *lcm_drv)
 	if (module == DISP_MODULE_DSI0) {
 		utils->dsi_set_cmdq = DSI_set_cmdq_wrapper_DSI0;
 		utils->dsi_set_cmdq_V2 = DSI_set_cmdq_V2_Wrapper_DSI0;
-		utils->dsi_set_cmdq_V2_DCS = DSI_set_cmdq_V2_DCS_Wrapper_DSI0;
-		utils->dsi_set_cmdq_V2_generic = DSI_set_cmdq_V2_generic_Wrapper_DSI0;
 		utils->dsi_set_cmdq_V3 = DSI_set_cmdq_V3_Wrapper_DSI0;
 		utils->dsi_set_null = DSI_set_null_Wrapper_DSI0;
 		utils->dsi_dcs_read_lcm_reg_v2 = DSI_dcs_read_lcm_reg_v2_wrapper_DSI0;
 		utils->dsi_set_cmdq_V22 = DSI_set_cmdq_V2_DSI0;
-		utils->dsi_set_cmdq_V22_DCS = DSI_set_cmdq_V2_DCS_DSI0;
-		utils->dsi_set_cmdq_V22_generic = DSI_set_cmdq_V2_generic_DSI0;
 	} else if (module == DISP_MODULE_DSI1) {
 		utils->dsi_set_cmdq = DSI_set_cmdq_wrapper_DSI1;
 		utils->dsi_set_cmdq_V2 = DSI_set_cmdq_V2_Wrapper_DSI1;
-		utils->dsi_set_cmdq_V2_DCS = DSI_set_cmdq_V2_DCS_Wrapper_DSI1;
-		utils->dsi_set_cmdq_V2_generic = DSI_set_cmdq_V2_generic_Wrapper_DSI1;
 		utils->dsi_set_cmdq_V3 = DSI_set_cmdq_V3_Wrapper_DSI1;
 		utils->dsi_set_null = DSI_set_null_Wrapper_DSI1;
 		utils->dsi_dcs_read_lcm_reg_v2 = DSI_dcs_read_lcm_reg_v2_wrapper_DSI1;
 		utils->dsi_set_cmdq_V22 = DSI_set_cmdq_V2_DSI1;
-		utils->dsi_set_cmdq_V22_DCS = DSI_set_cmdq_V2_DCS_DSI1;
-		utils->dsi_set_cmdq_V22_generic = DSI_set_cmdq_V2_generic_DSI1;
 	} else if (module == DISP_MODULE_DSIDUAL) {
 		/* TODO: Ugly workaround, hope we can found better resolution */
 		LCM_PARAMS lcm_param;
@@ -3103,39 +3093,27 @@ int ddp_dsi_set_lcm_utils(DISP_MODULE_ENUM module, LCM_DRIVER *lcm_drv)
 		if (lcm_param.lcm_cmd_if == LCM_INTERFACE_DSI0) {
 			utils->dsi_set_cmdq = DSI_set_cmdq_wrapper_DSI0;
 			utils->dsi_set_cmdq_V2 = DSI_set_cmdq_V2_Wrapper_DSI0;
-			utils->dsi_set_cmdq_V2_DCS = DSI_set_cmdq_V2_DCS_Wrapper_DSI0;
-			utils->dsi_set_cmdq_V2_generic = DSI_set_cmdq_V2_generic_Wrapper_DSI0;
 			utils->dsi_set_cmdq_V3 = DSI_set_cmdq_V3_Wrapper_DSI0;
 			utils->dsi_set_null = DSI_set_null_Wrapper_DSI0;
 			utils->dsi_dcs_read_lcm_reg_v2 =
 				DSI_dcs_read_lcm_reg_v2_wrapper_DSI0;
 			utils->dsi_set_cmdq_V22 = DSI_set_cmdq_V2_DSI0;
-			utils->dsi_set_cmdq_V22_DCS = DSI_set_cmdq_V2_DCS_DSI0;
-			utils->dsi_set_cmdq_V22_generic = DSI_set_cmdq_V2_generic_DSI0;
 		} else if (lcm_param.lcm_cmd_if == LCM_INTERFACE_DSI1) {
 			utils->dsi_set_cmdq = DSI_set_cmdq_wrapper_DSI1;
 			utils->dsi_set_cmdq_V2 = DSI_set_cmdq_V2_Wrapper_DSI1;
-			utils->dsi_set_cmdq_V2_DCS = DSI_set_cmdq_V2_DCS_Wrapper_DSI1;
-			utils->dsi_set_cmdq_V2_generic = DSI_set_cmdq_V2_generic_Wrapper_DSI1;
 			utils->dsi_set_cmdq_V3 = DSI_set_cmdq_V3_Wrapper_DSI1;
 			utils->dsi_set_null = DSI_set_null_Wrapper_DSI1;
 			utils->dsi_dcs_read_lcm_reg_v2 =
 				DSI_dcs_read_lcm_reg_v2_wrapper_DSI1;
 			utils->dsi_set_cmdq_V22 = DSI_set_cmdq_V2_DSI1;
-			utils->dsi_set_cmdq_V22_DCS = DSI_set_cmdq_V2_DCS_DSI1;
-			utils->dsi_set_cmdq_V22_generic = DSI_set_cmdq_V2_generic_DSI1;
 		} else {
 			utils->dsi_set_cmdq = DSI_set_cmdq_wrapper_DSIDual;
 			utils->dsi_set_cmdq_V2 = DSI_set_cmdq_V2_Wrapper_DSIDual;
-			utils->dsi_set_cmdq_V2_DCS = DSI_set_cmdq_V2_DCS_Wrapper_DSIDual;
-			utils->dsi_set_cmdq_V2_generic = DSI_set_cmdq_V2_generic_Wrapper_DSIDual;
 			utils->dsi_set_cmdq_V3 = DSI_set_cmdq_V3_Wrapper_DSIDual;
 			utils->dsi_set_null = DSI_set_null_Wrapper_DSIDual;
 			utils->dsi_dcs_read_lcm_reg_v2 =
 				DSI_dcs_read_lcm_reg_v2_wrapper_DSIDUAL;
 			utils->dsi_set_cmdq_V22 = DSI_set_cmdq_V2_DSIDual;
-			utils->dsi_set_cmdq_V22_DCS = DSI_set_cmdq_V2_DCS_DSIDual;
-			utils->dsi_set_cmdq_V22_generic = DSI_set_cmdq_V2_generic_DSIDual;
 		}
 	}
 #ifndef CONFIG_FPGA_EARLY_PORTING
@@ -3150,7 +3128,7 @@ int ddp_dsi_set_lcm_utils(DISP_MODULE_ENUM module, LCM_DRIVER *lcm_drv)
 	utils->set_gpio_mode = 0;
 	utils->set_gpio_dir = 0;
 	utils->set_gpio_pull_enable = 0;
-	utils->set_gpio_lcd_enp_bias_ByName = lcd_enp_bias_setting_by_name;
+	//utils->set_gpio_lcd_enp_bias_ByName = lcd_enp_bias_setting_by_name;
 #endif
 #endif
 

@@ -1,21 +1,8 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef _MTK_THERMAL_PLATFORM_H
 #define _MTK_THERMAL_PLATFORM_H
 
 #include <linux/thermal.h>
-#include "mtk_thermal_typedefs.h"
+#include <mtk_thermal_typedefs.h>
 
 extern
 int mtk_thermal_get_cpu_info(int *nocores, int **cpufreq, int **cpuloading);
@@ -44,39 +31,16 @@ unsigned int mtk_thermal_set_user_scenarios(unsigned int mask);
 extern
 unsigned int mtk_thermal_clear_user_scenarios(unsigned int mask);
 
+
+#if defined(CONFIG_MTK_SMART_BATTERY)
+/* global variable from battery driver... */
+extern kal_bool gFG_Is_Charging;
+#endif
+
 extern int force_get_tbat(void);
 #endif				/* _MTK_THERMAL_PLATFORM_H */
 
 
-/* --- SPA parameters --- */
-struct spa_Tpolicy_info {
-	int min_cpu_power[3];
-	int min_gpu_power[3];
-	int steady_target_tj;
-	int steady_exit_tj;
-};
-
-struct spa_system_info {
-	int cpu_Tj;
-	int Tpcb;
-	int OPP_power;
-	unsigned int fg_app_pid;
-	unsigned int avg_fps;
-	int WIFI_UL_Tput;
-	int MD_UL_Tput;
-	int chg_current_limit;
-	int input_current_limit;
-	int camera_on;
-	int game_mode;
-};
-
-struct SPA_T {
-	struct spa_Tpolicy_info t_spa_Tpolicy_info;
-	struct spa_system_info t_spa_system_info;
-};
-
-extern struct SPA_T thermal_spa_t;
-/* --- SPA parameters --- */
 typedef enum {
 	TA_DAEMON_CMD_GET_INIT_FLAG = 0,
 	TA_DAEMON_CMD_SET_DAEMON_PID,
@@ -84,7 +48,6 @@ typedef enum {
 	TA_DAEMON_CMD_NOTIFY_DAEMON_CATMINIT,
 	TA_DAEMON_CMD_SET_TTJ,
 	TA_DAEMON_CMD_GET_TPCB,
-	TA_DAEMON_CMD_GET_TI,
 
 	TA_DAEMON_CMD_TO_KERNEL_NUMBER
 } TA_DAEMON_CTRL_CMD_TO_KERNEL; /*must sync userspace/kernel: TA_DAEMON_CTRL_CMD_FROM_USER*/

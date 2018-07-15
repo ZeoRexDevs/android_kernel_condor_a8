@@ -141,9 +141,6 @@
 #include <linux/ftrace_event.h>
 #endif
 
-#define CREATE_TRACE_POINTS
-#include <trace/events/netdev_rx.h>
-
 /* Instead of increasing this, you should create a hash table. */
 #define MAX_GRO_SKBS 8
 
@@ -190,38 +187,6 @@ static unsigned int napi_gen_id;
 static DEFINE_HASHTABLE(napi_hash, 8);
 
 static seqcount_t devnet_rename_seq;
-
-#if defined(NETDEV_TRACE)
-#define NET_STATS_NUM  8
-#define NET_RPS_NUM    256
-#define NET_DL_MAGIC   333
-#define NET_UL_MAGIC   555
-#define SKB_DBG_TAG(skb) (skb->dbg_flag)
-#define SKB_DL_FLAG		(0x1 << 0)
-#define SKB_UL_FLAG		(0x4 << 0)
-#define SKB_DL_RPS		(0x3 << 0)
-#define SKB_UL_RPS		(0xC << 0)
-
-DEFINE_PER_CPU(unsigned long long [NET_STATS_NUM], netrx_stats);
-DEFINE_PER_CPU(unsigned long long [NET_STATS_NUM], rx_rps_stats);
-DEFINE_PER_CPU(unsigned int, rx_rps_idx);
-DEFINE_PER_CPU(unsigned int, rx_rps_rcv_idx);
-DEFINE_PER_CPU(unsigned long long [NET_RPS_NUM], rx_rps_buf);
-
-DEFINE_PER_CPU(unsigned long long [NET_STATS_NUM], nettx_stats);
-DEFINE_PER_CPU(unsigned long long [NET_STATS_NUM], tx_rps_stats);
-DEFINE_PER_CPU(unsigned int, tx_rps_idx);
-DEFINE_PER_CPU(unsigned int, tx_rps_rcv_idx);
-DEFINE_PER_CPU(unsigned long long [NET_RPS_NUM], tx_rps_buf);
-
-static inline void netif_rx_stats_pre(struct sk_buff *skb);
-static inline void netif_rx_stats_post(struct sk_buff *skb);
-static inline void netdev_stats_pre(struct sk_buff *skb, int idx);
-static inline void netdev_stats_post(struct sk_buff *skb, int idx);
-static inline void netdev_enqueue_stats(struct sk_buff *skb, int cpu);
-static inline unsigned long long netif_receive_stats_pre(struct sk_buff *skb, int idx);
-static inline void netif_receive_stats_post(struct sk_buff *skb, int ret, unsigned long long id);
-#endif
 
 static inline void dev_base_seq_inc(struct net *net)
 {
@@ -977,7 +942,7 @@ bool dev_valid_name(const char *name)
 {
 	if (*name == '\0')
 		return false;
-	if (strlen(name) >= IFNAMSIZ)
+	if (strnlen(name, IFNAMSIZ) == IFNAMSIZ)
 		return false;
 	if (!strcmp(name, ".") || !strcmp(name, ".."))
 		return false;
@@ -1099,9 +1064,8 @@ static int dev_alloc_name_ns(struct net *net,
 	return ret;
 }
 
-static int dev_get_valid_name(struct net *net,
-			      struct net_device *dev,
-			      const char *name)
+int dev_get_valid_name(struct net *net, struct net_device *dev,
+		       const char *name)
 {
 	BUG_ON(!net);
 
@@ -1117,6 +1081,7 @@ static int dev_get_valid_name(struct net *net,
 
 	return 0;
 }
+EXPORT_SYMBOL(dev_get_valid_name);
 
 /**
  *	dev_change_name - change name of a device
@@ -1288,6 +1253,7 @@ void netdev_notify_peers(struct net_device *dev)
 {
 	rtnl_lock();
 	call_netdevice_notifiers(NETDEV_NOTIFY_PEERS, dev);
+	call_netdevice_notifiers(NETDEV_RESEND_IGMP, dev);
 	rtnl_unlock();
 }
 EXPORT_SYMBOL(netdev_notify_peers);
@@ -2109,7 +2075,10 @@ EXPORT_SYMBOL(netif_set_xps_queue);
  */
 int netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
 {
+	bool disabling;
 	int rc;
+
+	disabling = txq < dev->real_num_tx_queues;
 
 	if (txq < 1 || txq > dev->num_tx_queues)
 		return -EINVAL;
@@ -2126,15 +2095,19 @@ int netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
 		if (dev->num_tc)
 			netif_setup_tc(dev, txq);
 
-		if (txq < dev->real_num_tx_queues) {
+		dev->real_num_tx_queues = txq;
+
+		if (disabling) {
+			synchronize_net();
 			qdisc_reset_all_tx_gt(dev, txq);
 #ifdef CONFIG_XPS
 			netif_reset_xps_queues_gt(dev, txq);
 #endif
 		}
+	} else {
+		dev->real_num_tx_queues = txq;
 	}
 
-	dev->real_num_tx_queues = txq;
 	return 0;
 }
 EXPORT_SYMBOL(netif_set_real_num_tx_queues);
@@ -2404,7 +2377,7 @@ __be16 skb_network_protocol(struct sk_buff *skb, int *depth)
 		if (unlikely(!pskb_may_pull(skb, sizeof(struct ethhdr))))
 			return 0;
 
-		eth = (struct ethhdr *)skb_mac_header(skb);
+		eth = (struct ethhdr *)skb->data;
 		type = eth->h_proto;
 	}
 
@@ -2517,7 +2490,7 @@ struct sk_buff *__skb_gso_segment(struct sk_buff *skb,
 
 	segs = skb_mac_gso_segment(skb, features);
 
-	if (unlikely(skb_needs_check(skb, tx_path)))
+	if (unlikely(skb_needs_check(skb, tx_path) && !IS_ERR(segs)))
 		skb_warn_bad_offload(skb);
 
 	return segs;
@@ -2683,10 +2656,6 @@ struct sk_buff *dev_hard_start_xmit(struct sk_buff *first, struct net_device *de
 	struct sk_buff *skb = first;
 	int rc = NETDEV_TX_OK;
 
-#if defined(NETDEV_TRACE)
-	/* [6]: dev_queue_xmit -> dev_hard_start_xmit, also dev queue schedule time */
-	netdev_stats_pre(skb, 6);
-#endif
 	while (skb) {
 		struct sk_buff *next = skb->next;
 
@@ -2705,11 +2674,6 @@ struct sk_buff *dev_hard_start_xmit(struct sk_buff *first, struct net_device *de
 	}
 
 out:
-#if defined(NETDEV_TRACE)
-	/* [7]: dev_hard_start_xmit runtime, also ccmni/rndis->xmit() runtime*/
-	if (first)
-		netdev_stats_post(first, 7);
-#endif
 	*ret = rc;
 	return skb;
 }
@@ -2820,10 +2784,21 @@ static void qdisc_pkt_len_init(struct sk_buff *skb)
 		hdr_len = skb_transport_header(skb) - skb_mac_header(skb);
 
 		/* + transport layer */
-		if (likely(shinfo->gso_type & (SKB_GSO_TCPV4 | SKB_GSO_TCPV6)))
-			hdr_len += tcp_hdrlen(skb);
-		else
-			hdr_len += sizeof(struct udphdr);
+		if (likely(shinfo->gso_type & (SKB_GSO_TCPV4 | SKB_GSO_TCPV6))) {
+			const struct tcphdr *th;
+			struct tcphdr _tcphdr;
+
+			th = skb_header_pointer(skb, skb_transport_offset(skb),
+						sizeof(_tcphdr), &_tcphdr);
+			if (likely(th))
+				hdr_len += __tcp_hdrlen(th);
+		} else {
+			struct udphdr _udphdr;
+
+			if (skb_header_pointer(skb, skb_transport_offset(skb),
+					       sizeof(_udphdr), &_udphdr))
+				hdr_len += sizeof(struct udphdr);
+		}
 
 		if (shinfo->gso_type & SKB_GSO_DODGY)
 			gso_segs = DIV_ROUND_UP(skb->len - hdr_len,
@@ -2968,10 +2943,6 @@ static int __dev_queue_xmit(struct sk_buff *skb, void *accel_priv)
 #endif
 
 	skb_reset_mac_header(skb);
-#if defined(NETDEV_TRACE)
-	/* [5]: netif_receive_skb -> dev_queue_xmit, also IP protocol runtime */
-	netdev_stats_pre(skb, 5);
-#endif
 
 #ifdef UDP_SKT_WIFI
 	if (unlikely(need_wfd && (ip_hdr(skb)->protocol == IPPROTO_UDP) && skb->sk)) {
@@ -3177,8 +3148,6 @@ static int get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
 	int cpu = -1;
 	u16 tcpu;
 	u32 hash;
-	struct rps_dev_flow *rflow;
-	u16 next_cpu, last_cpu;
 
 	if (skb_rx_queue_recorded(skb)) {
 		u16 index = skb_get_rx_queue(skb);
@@ -3214,12 +3183,11 @@ static int get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
 	flow_table = rcu_dereference(rxqueue->rps_flow_table);
 	sock_flow_table = rcu_dereference(rps_sock_flow_table);
 	if (flow_table && sock_flow_table) {
-		/* u16 next_cpu; */
-		/* struct rps_dev_flow *rflow; */
+		u16 next_cpu;
+		struct rps_dev_flow *rflow;
 
 		rflow = &flow_table->flows[hash & flow_table->mask];
 		tcpu = rflow->cpu;
-		last_cpu = tcpu;
 
 		next_cpu = sock_flow_table->ents[hash & sock_flow_table->mask];
 
@@ -3253,25 +3221,7 @@ static int get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
 		tcpu = map->cpus[reciprocal_scale(hash, map->len)];
 		if (cpu_online(tcpu)) {
 			cpu = tcpu;
-			/* goto done; */
-			next_cpu = cpu;
-		} else
-			next_cpu = raw_smp_processor_id();
-
-		if (flow_table) {
-			rflow = &flow_table->flows[hash & flow_table->mask];
-			last_cpu = rflow->cpu;
-			if (last_cpu != next_cpu && last_cpu != RPS_NO_CPU &&
-			    cpu_online(last_cpu) &&
-			     ((int)(per_cpu(softnet_data, last_cpu).input_queue_head -
-			      rflow->last_qtail)) < 0) {
-				*rflowp = rflow;
-				cpu = last_cpu;
-			} else {
-				rflow->last_qtail = per_cpu(softnet_data, next_cpu).input_queue_head;
-				rflow->cpu = next_cpu;
-				*rflowp = rflow;
-			}
+			goto done;
 		}
 	}
 
@@ -3403,11 +3353,6 @@ static int enqueue_to_backlog(struct sk_buff *skb, int cpu,
 	unsigned int qlen;
 
 	sd = &per_cpu(softnet_data, cpu);
-#if defined(NETDEV_TRACE)
-	/* [3]: netif_rx_ni -> raise NET_RX softirq */
-	netdev_stats_pre(skb, 3);
-	netdev_enqueue_stats(skb, cpu);
-#endif
 
 	local_irq_save(flags);
 
@@ -3506,9 +3451,6 @@ int netif_rx_ni(struct sk_buff *skb)
 {
 	int err;
 
-#if defined(NETDEV_TRACE)
-	netif_rx_stats_pre(skb);
-#endif
 	trace_netif_rx_ni_entry(skb);
 
 	preempt_disable();
@@ -3516,9 +3458,6 @@ int netif_rx_ni(struct sk_buff *skb)
 	if (local_softirq_pending())
 		do_softirq();
 	preempt_enable();
-#if defined(NETDEV_TRACE)
-	netif_rx_stats_post(skb);
-#endif
 
 	return err;
 }
@@ -3871,10 +3810,6 @@ static int __netif_receive_skb(struct sk_buff *skb)
 {
 	int ret;
 
-#if defined(NETDEV_TRACE)
-	/* [4]: raise NET_RX softirq -> netif_receive_skb */
-	unsigned long long ip_id = netif_receive_stats_pre(skb, 4);
-#endif
 	if (sk_memalloc_socks() && skb_pfmemalloc(skb)) {
 		unsigned long pflags = current->flags;
 
@@ -3892,10 +3827,7 @@ static int __netif_receive_skb(struct sk_buff *skb)
 		tsk_restore_flags(current, pflags, PF_MEMALLOC);
 	} else
 		ret = __netif_receive_skb_core(skb, false);
-#if defined(NETDEV_TRACE)
-	/* rps_stats[2]: netif_receive_skb runtime*/
-	netif_receive_stats_post(skb, ret, ip_id);
-#endif
+
 	return ret;
 }
 
@@ -7484,204 +7416,3 @@ out:
 }
 
 subsys_initcall(net_dev_init);
-
-#if defined(NETDEV_TRACE)
-static inline void netif_rx_stats_pre(struct sk_buff *skb)
-{
-	int num = 0;
-	struct iphdr *iph = NULL;
-
-	if (SKB_DBG_TAG(skb) == SKB_DL_FLAG) {
-		for (; num < NET_STATS_NUM; num++)
-			__get_cpu_var(netrx_stats)[num] = 0;
-
-		iph = (struct iphdr *)skb->data;
-		if (iph)
-			__get_cpu_var(netrx_stats)[1] = iph->id;
-		else
-			__get_cpu_var(netrx_stats)[1] = 0;
-
-		__get_cpu_var(netrx_stats)[0] = NET_DL_MAGIC;
-		__get_cpu_var(netrx_stats)[3] = sched_clock();
-		__get_cpu_var(netrx_stats)[2] = sched_clock();
-	} else if (SKB_DBG_TAG(skb) == SKB_UL_FLAG) {
-		for (; num < NET_STATS_NUM; num++)
-			__get_cpu_var(nettx_stats)[num] = 0;
-
-		/* if (skb->protocol == htons(ETH_P_IP)) { */
-		iph = (struct iphdr *)skb->data;
-		if (iph)
-			__get_cpu_var(nettx_stats)[1] = iph->id;
-		else
-			__get_cpu_var(nettx_stats)[1] = 0;
-
-		__get_cpu_var(nettx_stats)[0] = NET_UL_MAGIC;
-		__get_cpu_var(nettx_stats)[3] = sched_clock();
-		__get_cpu_var(nettx_stats)[2] = sched_clock();
-	}
-}
-
-static inline void netif_rx_stats_post(struct sk_buff *skb)
-{
-	if (__get_cpu_var(netrx_stats)[0] && ((SKB_DBG_TAG(skb) == SKB_DL_FLAG) || (SKB_DBG_TAG(skb) == SKB_DL_RPS))) {
-		__get_cpu_var(netrx_stats)[2] = sched_clock() - __get_cpu_var(netrx_stats)[2];
-		trace_netd_skb_rx(__get_cpu_var(netrx_stats));
-		__get_cpu_var(netrx_stats)[0] = 0;
-	} else if (__get_cpu_var(nettx_stats)[0] && ((SKB_DBG_TAG(skb) == SKB_UL_FLAG) ||
-			(SKB_DBG_TAG(skb) == SKB_UL_RPS))) {
-		__get_cpu_var(nettx_stats)[2] = sched_clock() - __get_cpu_var(nettx_stats)[2];
-		trace_netd_skb_rx(__get_cpu_var(nettx_stats));
-		__get_cpu_var(nettx_stats)[0] = 0;
-	}
-}
-
-static inline void netdev_stats_pre(struct sk_buff *skb, int idx)
-{
-	if (SKB_DBG_TAG(skb) == SKB_DL_FLAG) {
-		__get_cpu_var(netrx_stats)[idx] = sched_clock() - __get_cpu_var(netrx_stats)[idx];
-		__get_cpu_var(netrx_stats)[idx+1] = sched_clock();
-	} else if (SKB_DBG_TAG(skb) == SKB_UL_FLAG) {
-		__get_cpu_var(nettx_stats)[idx] = sched_clock() - __get_cpu_var(nettx_stats)[idx];
-		__get_cpu_var(nettx_stats)[idx+1] = sched_clock();
-	} else if (SKB_DBG_TAG(skb) == SKB_DL_RPS) {
-		__get_cpu_var(rx_rps_stats)[idx] = sched_clock() - __get_cpu_var(rx_rps_stats)[idx];
-		__get_cpu_var(rx_rps_stats)[idx+1] = sched_clock();
-	} else if (SKB_DBG_TAG(skb) == SKB_UL_RPS) {
-		__get_cpu_var(tx_rps_stats)[idx] = sched_clock() - __get_cpu_var(tx_rps_stats)[idx];
-		__get_cpu_var(tx_rps_stats)[idx+1] = sched_clock();
-	}
-}
-
-static inline void netdev_stats_post(struct sk_buff *skb, int idx)
-{
-	if (SKB_DBG_TAG(skb) == SKB_DL_FLAG)
-		__get_cpu_var(netrx_stats)[idx] = sched_clock() - __get_cpu_var(netrx_stats)[idx];
-	else if (SKB_DBG_TAG(skb) == SKB_UL_FLAG)
-		__get_cpu_var(nettx_stats)[idx] = sched_clock() - __get_cpu_var(nettx_stats)[idx];
-	else if (SKB_DBG_TAG(skb) == SKB_DL_RPS)
-		__get_cpu_var(rx_rps_stats)[idx] = sched_clock() - __get_cpu_var(rx_rps_stats)[idx];
-	else if (SKB_DBG_TAG(skb) == SKB_UL_RPS)
-		__get_cpu_var(tx_rps_stats)[idx] = sched_clock() - __get_cpu_var(tx_rps_stats)[idx];
-}
-
-static inline void netdev_enqueue_stats(struct sk_buff *skb, int cpu)
-{
-	int cur_cpu = raw_smp_processor_id();
-
-	if (cur_cpu != cpu) {
-		if (SKB_DBG_TAG(skb) == SKB_DL_FLAG) {
-			SKB_DBG_TAG(skb) = SKB_DL_RPS;
-			__get_cpu_var(netrx_stats)[4] = cpu;
-			__get_cpu_var(netrx_stats)[5] = skb_get_hash(skb);
-			per_cpu(rx_rps_buf, cpu)[per_cpu(rx_rps_idx, cpu)++] = __get_cpu_var(netrx_stats)[1];
-			per_cpu(rx_rps_buf, cpu)[per_cpu(rx_rps_idx, cpu)++] = sched_clock();
-
-			if (per_cpu(rx_rps_idx, cpu) >= NET_RPS_NUM)
-				per_cpu(rx_rps_idx, cpu) = 0;
-		} else if (SKB_DBG_TAG(skb) == SKB_UL_FLAG) {
-			SKB_DBG_TAG(skb) = SKB_UL_RPS;
-			__get_cpu_var(nettx_stats)[4] = cpu;
-			__get_cpu_var(nettx_stats)[5] = skb_get_hash(skb);
-			per_cpu(tx_rps_buf, cpu)[per_cpu(tx_rps_idx, cpu)++] = __get_cpu_var(nettx_stats)[1];
-			per_cpu(tx_rps_buf, cpu)[per_cpu(tx_rps_idx, cpu)++] = sched_clock();
-			if (per_cpu(tx_rps_idx, cpu) >= NET_RPS_NUM)
-				per_cpu(tx_rps_idx, cpu) = 0;
-		}
-	}
-}
-
-static inline unsigned long long netif_receive_stats_pre(struct sk_buff *skb, int idx)
-{
-	unsigned long long ret = 0;
-	unsigned long long rx_idx = 0;
-	unsigned long long tx_idx = 0;
-	struct iphdr *iph = ip_hdr(skb);
-
-	if (SKB_DBG_TAG(skb) == SKB_DL_FLAG) {
-		__get_cpu_var(netrx_stats)[idx] = sched_clock() - __get_cpu_var(netrx_stats)[idx];
-		__get_cpu_var(netrx_stats)[idx+1] = sched_clock();
-		ret = __get_cpu_var(netrx_stats)[1];
-	} else if (SKB_DBG_TAG(skb) == SKB_UL_FLAG) {
-		__get_cpu_var(nettx_stats)[idx] = sched_clock() - __get_cpu_var(nettx_stats)[idx];
-		__get_cpu_var(nettx_stats)[idx+1] = sched_clock();
-		ret = __get_cpu_var(nettx_stats)[1];
-	} else if (SKB_DBG_TAG(skb) == SKB_DL_RPS) {
-		rx_idx = __get_cpu_var(rx_rps_rcv_idx);
-		__get_cpu_var(rx_rps_stats)[1] = __get_cpu_var(rx_rps_buf)[rx_idx];
-		__get_cpu_var(rx_rps_stats)[4] =
-		sched_clock() -  __get_cpu_var(rx_rps_buf)[rx_idx+1];
-
-		if (__get_cpu_var(rx_rps_buf)[rx_idx] != ~0ULL) {
-			__get_cpu_var(rx_rps_rcv_idx) += 2;
-			if (__get_cpu_var(rx_rps_rcv_idx) >= NET_RPS_NUM)
-				__get_cpu_var(rx_rps_rcv_idx) = 0;
-
-			__get_cpu_var(rx_rps_buf)[rx_idx] = ~0ULL;
-			__get_cpu_var(rx_rps_buf)[rx_idx+1] = ~0ULL;
-		}
-
-		__get_cpu_var(rx_rps_stats)[0] = NET_DL_MAGIC;
-		__get_cpu_var(rx_rps_stats)[3] = sched_clock();
-		__get_cpu_var(rx_rps_stats)[5] = sched_clock();
-		ret = __get_cpu_var(rx_rps_stats)[1];
-	} else if (SKB_DBG_TAG(skb) == SKB_UL_RPS) {
-		tx_idx = __get_cpu_var(tx_rps_rcv_idx);
-		__get_cpu_var(tx_rps_stats)[1] = __get_cpu_var(tx_rps_buf)[tx_idx];
-		__get_cpu_var(tx_rps_stats)[4] =
-		sched_clock() - __get_cpu_var(tx_rps_buf)[tx_idx+1];
-		if (__get_cpu_var(tx_rps_buf)[tx_idx] != ~0ULL) {
-			__get_cpu_var(tx_rps_rcv_idx) += 2;
-			if (__get_cpu_var(tx_rps_rcv_idx) >= NET_RPS_NUM)
-				__get_cpu_var(tx_rps_rcv_idx) = 0;
-
-			__get_cpu_var(tx_rps_buf)[tx_idx] = ~0ULL;
-			__get_cpu_var(tx_rps_buf)[tx_idx+1] = ~0ULL;
-		}
-
-		__get_cpu_var(tx_rps_stats)[0] = NET_UL_MAGIC;
-		__get_cpu_var(tx_rps_stats)[3] = sched_clock();
-		__get_cpu_var(tx_rps_stats)[5] = sched_clock();
-		ret = __get_cpu_var(tx_rps_stats)[1];
-	}
-
-	if (iph)
-		ret = (unsigned long long)iph->id;
-	return ret;
-}
-
-static inline void netif_receive_stats_post(struct sk_buff *skb, int ret, unsigned long long id)
-{
-	int num = 0;
-
-	if (ret == NET_RX_DROP) {
-		if (__get_cpu_var(rx_rps_stats)[1] == id) {
-			__get_cpu_var(rx_rps_stats)[3] = sched_clock() - __get_cpu_var(rx_rps_stats)[3];
-			__get_cpu_var(rx_rps_stats)[2] = NET_RX_DROP;
-			trace_rpsd_skb_rx(__get_cpu_var(rx_rps_stats));
-			for (; num < NET_STATS_NUM; num++)
-				__get_cpu_var(rx_rps_stats)[num] = 0;
-		} else if (__get_cpu_var(tx_rps_stats)[1] == id) {
-			__get_cpu_var(tx_rps_stats)[3] = sched_clock() - __get_cpu_var(tx_rps_stats)[3];
-			__get_cpu_var(tx_rps_stats)[2] = NET_RX_DROP;
-			trace_rpsd_skb_rx(__get_cpu_var(tx_rps_stats));
-			for (; num < NET_STATS_NUM; num++)
-				__get_cpu_var(tx_rps_stats)[num] = 0;
-		}
-		return;
-	}
-
-	if ((SKB_DBG_TAG(skb) == SKB_DL_RPS) && (__get_cpu_var(rx_rps_stats)[1] == id)) {
-		__get_cpu_var(rx_rps_stats)[3] = sched_clock() - __get_cpu_var(rx_rps_stats)[3];
-		__get_cpu_var(rx_rps_stats)[2] = __get_cpu_var(rx_rps_stats)[3] + __get_cpu_var(rx_rps_stats)[4];
-		trace_rpsd_skb_rx(__get_cpu_var(rx_rps_stats));
-		for (; num < NET_STATS_NUM; num++)
-			__get_cpu_var(rx_rps_stats)[num] = 0;
-	} else if ((SKB_DBG_TAG(skb) == SKB_UL_RPS) && (__get_cpu_var(tx_rps_stats)[1] == id)) {
-		__get_cpu_var(tx_rps_stats)[3] = sched_clock() - __get_cpu_var(tx_rps_stats)[3];
-		__get_cpu_var(tx_rps_stats)[2] = __get_cpu_var(tx_rps_stats)[3] + __get_cpu_var(tx_rps_stats)[4];
-		trace_rpsd_skb_rx(__get_cpu_var(tx_rps_stats));
-		for (; num < NET_STATS_NUM; num++)
-			__get_cpu_var(tx_rps_stats)[num] = 0;
-	}
-}
-#endif

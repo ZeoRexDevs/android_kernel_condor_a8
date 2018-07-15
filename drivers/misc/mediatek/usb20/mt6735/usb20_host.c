@@ -55,6 +55,17 @@ struct pinctrl_state *pinctrl_iddig;
 struct pinctrl_state *pinctrl_drvvbus;
 struct pinctrl_state *pinctrl_drvvbus_low;
 struct pinctrl_state *pinctrl_drvvbus_high;
+#if defined(LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT)
+#if defined(LYCONFIG_AUTO_PLATFORM_NAME_F5C)
+struct pinctrl_state *pinctrl_gpio92_drvvbus;
+struct pinctrl_state *pinctrl_gpio92_drvvbus_low;
+struct pinctrl_state *pinctrl_gpio92_drvvbus_high;
+#else
+struct pinctrl_state *pinctrl_gpio5_drvvbus;
+struct pinctrl_state *pinctrl_gpio5_drvvbus_low;
+struct pinctrl_state *pinctrl_gpio5_drvvbus_high;
+#endif
+#endif
 
 #ifdef CONFIG_USB_MTK_OTG_SWITCH
 static bool otg_switch_state;
@@ -205,10 +216,22 @@ void mt_usb_set_vbus(struct musb *musb, int is_on)
 #ifndef FPGA_PLATFORM
 	if (is_on) {
 		/* power on VBUS, implement later... */
-	#ifdef CONFIG_MTK_FAN5405_SUPPORT
+	#if	defined(LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT)
 		fan5405_set_opa_mode(1);
 		fan5405_set_otg_pl(1);
 		fan5405_set_otg_en(1);
+		//otg
+		#if defined(LYCONFIG_AUTO_PLATFORM_NAME_F5C)
+		if (!IS_ERR(pinctrl_gpio92_drvvbus_high))
+		pinctrl_select_state(pinctrl, pinctrl_gpio92_drvvbus_high);
+		#else
+		if (!IS_ERR(pinctrl_gpio5_drvvbus_high))
+		pinctrl_select_state(pinctrl, pinctrl_gpio5_drvvbus_high);
+		#endif
+	#elif defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5701_SUPPORT)
+        sm5701_boost_notification(1);
+	#elif defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5414_SUPPORT)
+        sm5414_boost_notification(1);
 	#elif defined(CONFIG_MTK_BQ24261_SUPPORT)
 		bq24261_set_en_boost(1);
 	#elif defined(CONFIG_MTK_BQ24296_SUPPORT)
@@ -230,18 +253,31 @@ void mt_usb_set_vbus(struct musb *musb, int is_on)
 		mt_set_gpio_out(drvvbus_pin, GPIO_OUT_ONE);
 		#else
 		pr_debug("****%s:%d Drive VBUS HIGH KS!!!!!\n", __func__, __LINE__);
+		if (!IS_ERR(pinctrl_drvvbus_high))
 		pinctrl_select_state(pinctrl, pinctrl_drvvbus_high);
 		#endif
 		#else
 		mt_set_gpio_mode(GPIO_OTG_DRVVBUS_PIN, GPIO_OTG_DRVVBUS_PIN_M_GPIO);
 		mt_set_gpio_out(GPIO_OTG_DRVVBUS_PIN, GPIO_OUT_ONE);
 		#endif
-		#endif
+	#endif
 	} else {
 		/* power off VBUS, implement later... */
-	#ifdef CONFIG_MTK_FAN5405_SUPPORT
+	#if	defined(LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT)
 		fan5405_reg_config_interface(0x01, 0x30);
 		fan5405_reg_config_interface(0x02, 0x8e);
+		//otg
+		#if defined(LYCONFIG_AUTO_PLATFORM_NAME_F5C)
+		if (!IS_ERR(pinctrl_gpio92_drvvbus_low))
+		pinctrl_select_state(pinctrl, pinctrl_gpio92_drvvbus_low);
+		#else
+		if (!IS_ERR(pinctrl_gpio5_drvvbus_low))
+		pinctrl_select_state(pinctrl, pinctrl_gpio5_drvvbus_low);
+		#endif
+	#elif defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5701_SUPPORT)
+	sm5701_boost_notification(0);
+	#elif defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5414_SUPPORT)
+	sm5414_boost_notification(0);	
 	#elif defined(CONFIG_MTK_BQ24261_SUPPORT)
 		bq24261_set_en_boost(0);
 	#elif defined(CONFIG_MTK_BQ24296_SUPPORT)
@@ -257,8 +293,9 @@ void mt_usb_set_vbus(struct musb *musb, int is_on)
 		mt_set_gpio_out(drvvbus_pin, GPIO_OUT_ZERO);
 		#else
 		pr_debug("****%s:%d Drive VBUS LOW KS!!!!!\n", __func__, __LINE__);
+		if (!IS_ERR(pinctrl_drvvbus_low))
 		pinctrl_select_state(pinctrl, pinctrl_drvvbus_low);
-		#endif
+		#endif	
 		#else
 		mt_set_gpio_mode(GPIO_OTG_DRVVBUS_PIN, GPIO_OTG_DRVVBUS_PIN_M_GPIO);
 		mt_set_gpio_out(GPIO_OTG_DRVVBUS_PIN, GPIO_OUT_ZERO);
@@ -286,7 +323,7 @@ int mt_usb_get_vbus_status(struct musb *musb)
 
 void mt_usb_init_drvvbus(void)
 {
-#if !(defined(SWITCH_CHARGER) || defined(FPGA_PLATFORM))
+#if 1//!(defined(SWITCH_CHARGER) || defined(FPGA_PLATFORM))
 	#ifdef CONFIG_OF
 	#if defined(CONFIG_MTK_LEGACY)
 	mt_set_gpio_mode(drvvbus_pin, drvvbus_pin_mode); /* should set GPIO2 as gpio mode. */
@@ -316,7 +353,56 @@ void mt_usb_init_drvvbus(void)
 		dev_err(mtk_musb->controller, "Cannot find usb pinctrl drvvbus_high\n");
 	}
 
+	if (!IS_ERR(pinctrl_drvvbus))
 	pinctrl_select_state(pinctrl, pinctrl_drvvbus);
+
+	/////////
+	#if defined(LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT)
+	#if defined(LYCONFIG_AUTO_PLATFORM_NAME_F5C)
+	pinctrl_gpio92_drvvbus = pinctrl_lookup_state(pinctrl, "gpio92_drvvbus_init");
+	if (IS_ERR(pinctrl_gpio92_drvvbus)) {
+		ret = PTR_ERR(pinctrl_gpio92_drvvbus);
+		dev_err(mtk_musb->controller, "Cannot find usb pinctrl gpio92_drvvbus\n");
+	}
+
+	pinctrl_gpio92_drvvbus_low = pinctrl_lookup_state(pinctrl, "gpio92_drvvbus_low");
+	if (IS_ERR(pinctrl_gpio92_drvvbus_low)) {
+		ret = PTR_ERR(pinctrl_gpio92_drvvbus_low);
+		dev_err(mtk_musb->controller, "Cannot find usb pinctrl gpio92_drvvbus_low\n");
+	}
+
+	pinctrl_gpio92_drvvbus_high = pinctrl_lookup_state(pinctrl, "gpio92_drvvbus_high");
+	if (IS_ERR(pinctrl_gpio92_drvvbus_high)) {
+		ret = PTR_ERR(pinctrl_gpio92_drvvbus_high);
+		dev_err(mtk_musb->controller, "Cannot find usb pinctrl gpio92_drvvbus_high\n");
+	}
+
+	if (!IS_ERR(pinctrl_gpio92_drvvbus))
+	pinctrl_select_state(pinctrl, pinctrl_gpio92_drvvbus);
+	#else
+	pinctrl_gpio5_drvvbus = pinctrl_lookup_state(pinctrl, "gpio5_drvvbus_init");
+	if (IS_ERR(pinctrl_gpio5_drvvbus)) {
+		ret = PTR_ERR(pinctrl_gpio5_drvvbus);
+		dev_err(mtk_musb->controller, "Cannot find usb pinctrl gpio5_drvvbus\n");
+	}
+
+	pinctrl_gpio5_drvvbus_low = pinctrl_lookup_state(pinctrl, "gpio5_drvvbus_low");
+	if (IS_ERR(pinctrl_gpio5_drvvbus_low)) {
+		ret = PTR_ERR(pinctrl_gpio5_drvvbus_low);
+		dev_err(mtk_musb->controller, "Cannot find usb pinctrl gpio5_drvvbus_low\n");
+	}
+
+	pinctrl_gpio5_drvvbus_high = pinctrl_lookup_state(pinctrl, "gpio5_drvvbus_high");
+	if (IS_ERR(pinctrl_gpio5_drvvbus_high)) {
+		ret = PTR_ERR(pinctrl_gpio5_drvvbus_high);
+		dev_err(mtk_musb->controller, "Cannot find usb pinctrl gpio5_drvvbus_high\n");
+	}
+
+	if (!IS_ERR(pinctrl_gpio5_drvvbus))
+	pinctrl_select_state(pinctrl, pinctrl_gpio5_drvvbus);
+	#endif
+	#endif
+	
 	pr_debug("****%s:%d end Init Drive VBUS KS!!!!!\n", __func__, __LINE__);
 	#endif
 	#else
@@ -490,8 +576,8 @@ void switch_int_to_host_and_mask(struct musb *musb)
 		return;
 	}
 #ifdef ID_PIN_USE_EX_EINT
-	disable_irq(usb_iddig_number);
 	irq_set_irq_type(usb_iddig_number, IRQF_TRIGGER_LOW);
+	disable_irq(usb_iddig_number);
 #else
 	musb_writel(musb->mregs, USB_L1INTM, (~IDDIG_INT_STATUS)&musb_readl(musb->mregs, USB_L1INTM));
 	mb();
@@ -745,7 +831,7 @@ static void otg_int_init(void)
 		ret = PTR_ERR(pinctrl_iddig);
 		dev_err(mtk_musb->controller, "Cannot find usb pinctrl iddig_irq_init\n");
 	}
-
+	else
 	pinctrl_select_state(pinctrl, pinctrl_iddig);
 #else
 	pinctrl_iddig_init = pinctrl_lookup_state(pinctrl, "iddig_init");

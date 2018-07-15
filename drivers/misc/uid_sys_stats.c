@@ -1,4 +1,4 @@
-/* drivers/misc/uid_cputime.c
+/* drivers/misc/uid_sys_stats.c
  *
  * Copyright (C) 2014 - 2015 Google, Inc.
  *
@@ -27,6 +27,7 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/cpufreq.h>
 
 #define UID_HASH_BITS	10
 static DECLARE_HASHTABLE(hash_table, UID_HASH_BITS);
@@ -68,6 +69,8 @@ struct uid_entry {
 	cputime_t stime;
 	cputime_t active_utime;
 	cputime_t active_stime;
+	cputime_t total_utime;
+	cputime_t total_stime;
 	unsigned long long active_power;
 	unsigned long long power;
 	int state;
@@ -321,6 +324,9 @@ static struct uid_entry *find_or_register_uid(uid_t uid)
 		return NULL;
 
 	uid_entry->uid = uid;
+	uid_entry->total_utime = 0;
+	uid_entry->total_stime = 0;
+
 #ifdef CONFIG_UID_SYS_STATS_DEBUG
 	hash_init(uid_entry->task_entries);
 #endif
@@ -377,6 +383,20 @@ static int uid_cputime_show(struct seq_file *m, void *v)
 							uid_entry->active_stime;
 		unsigned long long total_power = uid_entry->power +
 							uid_entry->active_power;
+
+		/***
+		 *	workaround for KernelUidCpuTimeReader issue
+		***/
+		if (total_stime < uid_entry->total_stime)
+			total_stime = uid_entry->total_stime;
+		else
+			uid_entry->total_stime = total_stime;
+
+		if (total_utime < uid_entry->total_utime)
+			total_utime = uid_entry->total_utime;
+		else
+			uid_entry->total_utime = total_utime;
+
 		seq_printf(m, "%d: %llu %llu %llu\n", uid_entry->uid,
 			(unsigned long long)jiffies_to_msecs(
 				cputime_to_jiffies(total_utime)) * USEC_PER_MSEC,
@@ -413,7 +433,8 @@ static ssize_t uid_remove_write(struct file *file,
 	struct hlist_node *tmp;
 	char uids[128];
 	char *start_uid, *end_uid = NULL;
-	long int uid_start = 0, uid_end = 0;
+	long int start = 0, end = 0;
+	uid_t uid_start, uid_end;
 
 	if (count >= sizeof(uids))
 		count = sizeof(uids) - 1;
@@ -428,15 +449,32 @@ static ssize_t uid_remove_write(struct file *file,
 	if (!start_uid || !end_uid)
 		return -EINVAL;
 
-	if (kstrtol(start_uid, 10, &uid_start) != 0 ||
-		kstrtol(end_uid, 10, &uid_end) != 0) {
+	if (kstrtol(start_uid, 10, &start) != 0 ||
+		kstrtol(end_uid, 10, &end) != 0) {
 		return -EINVAL;
 	}
+
+#define UID_T_MAX (((uid_t)~0U)-1)
+	if ((start < 0) || (end < 0) ||
+		(start > UID_T_MAX) || (end > UID_T_MAX)) {
+		return -EINVAL;
+	}
+
+	uid_start = start;
+	uid_end = end;
+
+	/* TODO need to unify uid_sys_stats interface with uid_time_in_state.
+	 * Here we are reusing remove_uid_range to reduce the number of
+	 * sys calls made by userspace clients, remove_uid_range removes uids
+	 * from both here as well as from cpufreq uid_time_in_state
+	 */
+	cpufreq_task_stats_remove_uids(uid_start, uid_end);
+
 	rt_mutex_lock(&uid_lock);
 
 	for (; uid_start <= uid_end; uid_start++) {
 		hash_for_each_possible_safe(hash_table, uid_entry, tmp,
-							hash, (uid_t)uid_start) {
+							hash, uid_start) {
 			if (uid_start == uid_entry->uid) {
 				remove_uid_tasks(uid_entry);
 				hash_del(&uid_entry->hash);
@@ -446,6 +484,7 @@ static ssize_t uid_remove_write(struct file *file,
 	}
 
 	rt_mutex_unlock(&uid_lock);
+
 	return count;
 }
 

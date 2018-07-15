@@ -400,8 +400,8 @@ static int sock_set_timeout(long *timeo_p, char __user *optval, int optlen)
 		*timeo_p = 0;
 		if (warned < 10 && net_ratelimit()) {
 			warned++;
-			pr_info_ratelimited("%s: `%s' (pid %d) tries to set negative timeout\n",
-					    __func__, current->comm, task_pid_nr(current));
+			pr_debug("%s: `%s' (pid %d) tries to set negative timeout\n",
+				 __func__, current->comm, task_pid_nr(current));
 		}
 		return 0;
 	}
@@ -419,7 +419,7 @@ static void sock_warn_obsolete_bsdism(const char *name)
 	static char warncomm[TASK_COMM_LEN];
 	if (strcmp(warncomm, current->comm) && warned < 5) {
 		strcpy(warncomm,  current->comm);
-		pr_info_ratelimited("process `%s' is using obsolete %s SO_BSDCOMPAT\n", warncomm, name);
+		pr_debug("process `%s' is using obsolete %s SO_BSDCOMPAT\n", warncomm, name);
 		warned++;
 	}
 }
@@ -1419,8 +1419,8 @@ static void __sk_free(struct sock *sk)
 	sock_disable_timestamp(sk, SK_FLAGS_TIMESTAMP);
 
 	if (atomic_read(&sk->sk_omem_alloc))
-		pr_info_ratelimited("%s: optmem leakage (%d bytes) detected\n",
-				    __func__, atomic_read(&sk->sk_omem_alloc));
+		pr_debug("%s: optmem leakage (%d bytes) detected\n",
+			 __func__, atomic_read(&sk->sk_omem_alloc));
 
 	if (sk->sk_frag.page) {
 		put_page(sk->sk_frag.page);
@@ -1692,7 +1692,7 @@ kuid_t sock_i_uid(struct sock *sk)
 
 	/*mtk_net: fix kernel bug*/
 	if (!sk) {
-		pr_info_ratelimited("sk == NULL for sock_i_uid\n");
+		pr_info("sk == NULL for sock_i_uid\n");
 		return GLOBAL_ROOT_UID;
 	}
 
@@ -1791,59 +1791,62 @@ static long sock_wait_for_wmem(struct sock *sk, long timeo)
 	return timeo;
 }
 
-#ifdef CONFIG_MTK_NET_LOGGING
-/*2016/8/18
-  *           1. Only AF_UNIX use this debug info
-  */
-struct sock_block_info_t {
-	char *process;
-	int pid;
-	unsigned long long when;
-	struct sock *sk;
-};
-
-void print_block_sock_info(unsigned long data)
+static int sock_dump_info(struct sock *sk)
 {
-	struct sock_block_info_t  *print_info = (struct sock_block_info_t *)data;
-	struct sock *sk = print_info->sk;
-	struct unix_sock *u = unix_sk(sk);
-	struct sock *peer = NULL;
-	unsigned long long time = jiffies - print_info->when;
+	if (sk->sk_family == AF_UNIX) {
+		struct unix_sock *u = unix_sk(sk);
+		struct sock *other = NULL;
 
-	if (!sk || (sk->sk_family != AF_UNIX))
-		return;
-	do_div(time, HZ);
-	pr_info_ratelimited("----------------------sock alloc memory block info-----------------------\n");
-	pr_info_ratelimited("[mtk_net][sock]sockdbg %s[%d] is blocking more than %lld sec\n",
-			    print_info->process, print_info->pid, time);
-	if (u->path.dentry != NULL)
-			pr_info_ratelimited("[mtk_net][sock]sockdbg: socket-Name:%s\n", u->path.dentry->d_iname);
-		else
-			pr_info_ratelimited("[mtk_net][sock]sockdbg:socket Name (NULL)\n");
-	if (sk->sk_socket && SOCK_INODE(sk->sk_socket)) {
-		pr_info_ratelimited("[mtk_net][sock]sockdbg:socket Inode[%lu]\n",
-				    SOCK_INODE(sk->sk_socket)->i_ino);
-	}
-	peer = unix_sk(sk)->peer;
-	if (!peer) {
-		pr_info_ratelimited("[mtk_net][sock]sockdbg:peer is (NULL)\n");
-	} else {
-		if (((struct unix_sock *)peer)->path.dentry) {
-				pr_info_ratelimited("[mtk_net][sock]sockdbg: Peer Name:%s\n",
-						    ((struct unix_sock *)peer)->path.dentry->d_iname);
-		} else {
-			pr_info_ratelimited("[mtk_net][sock]sockdbg: Peer Name (NULL)\n");
-		}
-			if (peer->sk_socket && SOCK_INODE(peer->sk_socket)) {
-				pr_info_ratelimited("[mtk_net][sock]sockdbg: Peer Inode [%lu]\n",
-						    SOCK_INODE(peer->sk_socket)->i_ino);
-		}
-			pr_info_ratelimited("[mtk_net][sock]sockdbg: Peer Receive Queue len:%d\n",
-					    peer->sk_receive_queue.qlen);
-		}
-		pr_info_ratelimited("----------------------sock alloc memory block info end-----------------------\n");
-}
+		if ((u->path.dentry != NULL) && (u->path.dentry->d_iname != NULL)) {
+#ifdef CONFIG_MTK_NET_LOGGING
+			pr_debug("[mtk_net][sock]sockdbg: socket-Name:%s\n", u->path.dentry->d_iname);
 #endif
+		} else {
+#ifdef CONFIG_MTK_NET_LOGGING
+			pr_debug("[mtk_net][sock]sockdbg:socket Name (NULL)\n");
+#endif
+		}
+
+		if (sk->sk_socket && SOCK_INODE(sk->sk_socket)) {
+#ifdef CONFIG_MTK_NET_LOGGING
+			pr_debug("[mtk_net][sock]sockdbg:socket Inode[%lu]\n",
+				 SOCK_INODE(sk->sk_socket)->i_ino);
+#endif
+		}
+
+		other = unix_sk(sk)->peer;
+		if (!other) {
+#ifdef CONFIG_MTK_NET_LOGGING
+			pr_debug("[mtk_net][sock]sockdbg:peer is (NULL)\n");
+#endif
+		} else {
+			if ((((struct unix_sock *)other)->path.dentry != NULL) &&
+			    (((struct unix_sock *)other)->path.dentry->d_iname != NULL)) {
+#ifdef CONFIG_MTK_NET_LOGGING
+				char *name = ((struct unix_sock *)other)->path.dentry->d_iname;
+
+				pr_debug("[mtk_net][sock]sockdbg: Peer Name:%s\n", name);
+#endif
+			} else {
+#ifdef CONFIG_MTK_NET_LOGGING
+				pr_debug("[mtk_net][sock]sockdbg: Peer Name (NULL)\n");
+#endif
+			}
+
+			if (other->sk_socket && SOCK_INODE(other->sk_socket)) {
+#ifdef CONFIG_MTK_NET_LOGGING
+				char *name = ((struct unix_sock *)other)->path.dentry->d_iname;
+
+				pr_debug("[mtk_net][sock]sockdbg: Peer Inode [%lu]\n", name);
+#endif
+			}
+#ifdef CONFIG_MTK_NET_LOGGING
+			pr_debug("[mtk_net][sock]sockdbg: Peer Receive Queue len:%d\n", other->sk_receive_queue.qlen);
+#endif
+		}
+	}
+	return 0;
+}
 
 /*
  *	Generic send/receive buffer handlers
@@ -1856,14 +1859,7 @@ struct sk_buff *sock_alloc_send_pskb(struct sock *sk, unsigned long header_len,
 	struct sk_buff *skb;
 	long timeo;
 	int err;
-#ifdef CONFIG_MTK_NET_LOGGING
-	static struct sock_block_info_t debug_block;
-	struct timer_list debug_timer;
-	unsigned long long delay_time = 0;
 
-	/*init debug_block struct*/
-	memset(&debug_block, 0, sizeof(debug_block));
-#endif
 	timeo = sock_sndtimeo(sk, noblock);
 	for (;;) {
 		err = sock_error(sk);
@@ -1884,36 +1880,16 @@ struct sk_buff *sock_alloc_send_pskb(struct sock *sk, unsigned long header_len,
 			goto failure;
 		if (signal_pending(current))
 			goto interrupted;
-
-#ifdef CONFIG_MTK_NET_LOGGING
-	if (sk->sk_family == AF_UNIX) {
-		debug_block.pid = current->pid;
-		debug_block.process = current->comm;
-		debug_block.when = jiffies;
-		debug_block.sk = sk; /*Mark sk info*/
-		init_timer_on_stack(&debug_timer);
-		debug_timer.function = print_block_sock_info;
-		debug_timer.expires = jiffies + 10*HZ;
-		debug_timer.data = (unsigned long)&debug_block;
-		add_timer(&debug_timer);
-	}
-#endif
-	timeo = sock_wait_for_wmem(sk, timeo);
-
-#ifdef CONFIG_MTK_NET_LOGGING
-	if (sk->sk_family == AF_UNIX) {
-		del_timer(&debug_timer);
-		destroy_timer_on_stack(&debug_timer);
-		delay_time = jiffies - debug_block.when;
-		do_div(delay_time, HZ);
-		if (delay_time > 5) {
-			pr_info_ratelimited("[mtk_net][sock]sockdbg: more than 5s wait_for_wmem done, header_len=0x%lx, data_len=0x%lx,timeo =%ld\n",
-					    header_len, data_len, timeo);
-			pr_info_ratelimited("[mtk_net][sock]sockdbg:Warning: Process %s[%d] Block %lld s\n",
-					    debug_block.process, debug_block.pid, delay_time);
-		}
-	}
-#endif
+	sock_dump_info(sk);
+		#ifdef CONFIG_MTK_NET_LOGGING
+		pr_debug("[mtk_net][sock]sockdbg: wait_for_wmem, timeo =%ld, wmem =%d, snd buf =%d\n",
+			 timeo, atomic_read(&sk->sk_wmem_alloc), sk->sk_sndbuf);
+	#endif
+		timeo = sock_wait_for_wmem(sk, timeo);
+		#ifdef CONFIG_MTK_NET_LOGGING
+		pr_debug("[mtk_net][sock]sockdbg: wait_for_wmem done, header_len=0x%lx, data_len=0x%lx,timeo =%ld\n",
+			 header_len, data_len, timeo);
+	    #endif
 	}
 	skb = alloc_skb_with_frags(header_len, data_len, max_page_order,
 				   errcode, sk->sk_allocation);
@@ -2794,7 +2770,7 @@ static void assign_proto_idx(struct proto *prot)
 	prot->inuse_idx = find_first_zero_bit(proto_inuse_idx, PROTO_INUSE_NR);
 
 	if (unlikely(prot->inuse_idx == PROTO_INUSE_NR - 1)) {
-		pr_info_ratelimited("PROTO_INUSE_NR exhausted\n");
+		pr_debug("PROTO_INUSE_NR exhausted\n");
 		return;
 	}
 
@@ -2824,8 +2800,8 @@ int proto_register(struct proto *prot, int alloc_slab)
 					NULL);
 
 		if (prot->slab == NULL) {
-			pr_info_ratelimited("%s: Can't create sock SLAB cache!\n",
-					    prot->name);
+			pr_debug("%s: Can't create sock SLAB cache!\n",
+				 prot->name);
 			goto out;
 		}
 
@@ -2839,8 +2815,8 @@ int proto_register(struct proto *prot, int alloc_slab)
 								 SLAB_HWCACHE_ALIGN, NULL);
 
 			if (prot->rsk_prot->slab == NULL) {
-				pr_info_ratelimited("%s: Can't create request sock SLAB cache!\n",
-						    prot->name);
+				pr_debug("%s: Can't create request sock SLAB cache!\n",
+					 prot->name);
 				goto out_free_request_sock_slab_name;
 			}
 		}

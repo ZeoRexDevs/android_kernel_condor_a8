@@ -47,12 +47,12 @@
 #include "mtkfb_fence.h"
 #include "disp_session.h"
 #include "disp_lcm.h"
+#include "disp_log.h"
 #include "disp_utils.h"
 #include "disp_recorder.h"
 #include "fbconfig_kdebug.h"
 #include "primary_display.h"
 #include "disp_helper.h"
-#include "disp_debug.h"
 #include "ddp_hal.h"
 #include "ddp_dump.h"
 #include "ddp_path.h"
@@ -62,6 +62,7 @@
 #include "ddp_manager.h"
 #include "ddp_mmp.h"
 #include "ddp_reg.h"
+#include "ddp_debug.h"
 #include "ddp_irq.h"
 
 #ifndef MTK_FB_CMDQ_DISABLE
@@ -109,6 +110,7 @@ static disp_mem_output_config mem_config;
 
 static unsigned int primary_session_id = MAKE_DISP_SESSION(DISP_SESSION_PRIMARY, 0);
 unsigned int ext_session_id = MAKE_DISP_SESSION(DISP_SESSION_MEMORY, 2);
+static bool needs_apply_rgb = false;
 
 /* primary display uses itself's abs macro */
 #ifdef abs
@@ -298,6 +300,16 @@ static DISP_POWER_STATE primary_get_state(void)
 {
 	return pgc->state;
 }
+
+static void apply_rgb(void)
+{
+	ssize_t count;
+	char* buf = (char*) kmalloc(19, GFP_KERNEL);
+	count = mtk_disp_ld_get_rgb(NULL, NULL, buf);
+	mtk_disp_ld_set_rgb(NULL, NULL, buf, count);
+	kfree(buf);
+}
+
 static DISP_POWER_STATE primary_set_state(DISP_POWER_STATE new_state)
 {
 	DISP_POWER_STATE old_state = pgc->state;
@@ -6041,6 +6053,8 @@ done:
 #endif
 	ddp_dump_analysis(DISP_MODULE_RDMA0);
 
+	if (needs_apply_rgb) apply_rgb();
+
 	return 0;
 }
 
@@ -6792,24 +6806,6 @@ static int _config_interface_input(primary_disp_input_config *input)
 }
 #endif
 
-static void update_debug_fps_meter(disp_ddp_path_config *data_config)
-{
-	int i, dst_id = 0;
-
-	for (i = 0; i < HW_OVERLAY_COUNT; i++) {
-		if (data_config->ovl_config[i].layer_en && data_config->ovl_config[i].dst_x == 0 &&
-		    data_config->ovl_config[i].dst_y == 0)
-			dst_id = i;
-	}
-	_debug_fps_meter(data_config->ovl_config[dst_id].addr,
-			 data_config->ovl_config[dst_id].vaddr,
-			 data_config->ovl_config[dst_id].dst_w,
-			 data_config->ovl_config[dst_id].dst_h,
-			 data_config->ovl_config[dst_id].src_pitch, 0x00000000, dst_id,
-			 data_config->ovl_config[dst_id].buff_idx);
-}
-
-
 static int _config_ovl_input(disp_session_input_config *session_input,
 			     disp_path_handle disp_handle, cmdqRecHandle cmdq_handle)
 {
@@ -6858,11 +6854,6 @@ static int _config_ovl_input(disp_session_input_config *session_input,
 			DISPMSG("set AEE layer %d\n", layer);
 		}
 		_convert_disp_input_to_ovl(ovl_cfg, input_cfg);
-
-		if (ovl_cfg->layer_en)
-			_debug_pattern(ovl_cfg->addr, ovl_cfg->vaddr, ovl_cfg->dst_w,
-				       ovl_cfg->dst_h, ovl_cfg->src_pitch, 0x00000000,
-				       ovl_cfg->layer, ovl_cfg->buff_idx);
 
 		dprec_logger_start(DPREC_LOGGER_PRIMARY_CONFIG, ovl_cfg->layer | (ovl_cfg->layer_en << 16),
 				   ovl_cfg->addr);
@@ -6943,7 +6934,6 @@ static int _config_ovl_input(disp_session_input_config *session_input,
 	}
 #endif
 
-	update_debug_fps_meter(data_config);
 	if (DISP_SESSION_TYPE(session_input->session_id) == DISP_SESSION_PRIMARY) {
 		last_primary_config = *data_config;
 		is_hwc_update_frame = 1;
@@ -7419,6 +7409,11 @@ done:
 	return 0;		/* avoid build warning. */
 }
 #endif
+
+void set_needs_apply_rgb(bool needed)
+{
+	needs_apply_rgb = needed;
+}
 
 int primary_display_is_alive(void)
 {

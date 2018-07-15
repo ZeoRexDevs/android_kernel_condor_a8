@@ -57,7 +57,7 @@
 /**
  * ESD recovery support.
  */
-#define MTK_FB_ESD_ENABLE
+//#define MTK_FB_ESD_ENABLE
 
 /**
 * PullClk support

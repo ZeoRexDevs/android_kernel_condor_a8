@@ -47,7 +47,7 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+#ifdef CONFIG_MTK_EXTMEM
 #include <linux/exm_driver.h>
 #endif
 
@@ -92,7 +92,7 @@ static void unmap_region(struct mm_struct *mm,
  *		x: (no) no	x: (no) yes	x: (no) yes	x: (yes) yes
  *
  */
-pgprot_t protection_map[16] = {
+pgprot_t protection_map[16] __ro_after_init = {
 	__P000, __P001, __P010, __P011, __P100, __P101, __P110, __P111,
 	__S000, __S001, __S010, __S011, __S100, __S101, __S110, __S111
 };
@@ -2214,7 +2214,8 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 		gap_addr = TASK_SIZE;
 
 	next = vma->vm_next;
-	if (next && next->vm_start < gap_addr) {
+	if (next && next->vm_start < gap_addr &&
+			(next->vm_flags & (VM_WRITE|VM_READ|VM_EXEC))) {
 		if (!(next->vm_flags & VM_GROWSUP))
 			return -ENOMEM;
 		/* Check that both stack segments have the same anon_vma? */
@@ -2294,7 +2295,8 @@ int expand_downwards(struct vm_area_struct *vma,
 	if (gap_addr > address)
 		return -ENOMEM;
 	prev = vma->vm_prev;
-	if (prev && prev->vm_end > gap_addr) {
+	if (prev && prev->vm_end > gap_addr &&
+			(prev->vm_flags & (VM_WRITE|VM_READ|VM_EXEC))) {
 		if (!(prev->vm_flags & VM_GROWSDOWN))
 			return -ENOMEM;
 		/* Check that both stack segments have the same anon_vma? */
@@ -2598,7 +2600,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 	prev = vma->vm_prev;
 	/* we have  start < vma->vm_end  */
 
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+#ifdef CONFIG_MTK_EXTMEM
 	/* get correct mmap size if in mspace. */
 	if (extmem_in_mspace(vma))
 		len = extmem_get_mem_size(vma->vm_pgoff);

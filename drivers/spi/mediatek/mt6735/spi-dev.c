@@ -1,22 +1,10 @@
-/*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
 #include <linux/spi/spi.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/delay.h>
-#include "mt_spi.h"
+#include <mt_spi.h>
 
 #include <linux/dma-mapping.h>
 #include <linux/sched.h>
@@ -223,7 +211,7 @@ static void spi_complete(void *arg)
 
 static int threadfunc1(void *data)
 {
-	struct spi_transfer transfer = {0,};
+	struct spi_transfer transfer;
 	struct spi_message msg;
 	struct spi_device *spi = (struct spi_device *)data;
 	u32 len = 8;
@@ -256,7 +244,7 @@ static int threadfunc1(void *data)
 
 static int threadfunc2(void *data)
 {
-	struct spi_transfer transfer = {0,};
+	struct spi_transfer transfer;
 	struct spi_message msg;
 	struct spi_device *spi = (struct spi_device *)data;
 
@@ -355,6 +343,7 @@ static int threadfunc4(void *data)
 		} else {
 			ret = spi_recv_check(&msg);
 			if (ret != 0) {
+				ret -= ret;
 				stress_err += ret;
 				SPIDEV_LOG("Message transfer err:%d\n", ret);
 			}
@@ -440,7 +429,7 @@ int secspi_session_open(void)
 	return 0;
 }
 
-int secspi_execute(u32 cmd, tciSpiMessage_t *param,  struct mt_spi_t *ms)
+int secspi_execute(u32 cmd, tciSpiMessage_t *param)
 {
 	enum mc_result mc_ret;
 
@@ -472,7 +461,7 @@ int secspi_execute(u32 cmd, tciSpiMessage_t *param,  struct mt_spi_t *ms)
 	SPIDEV_MSG("mc_notify\n");
 
 	/*enable_clock(MT_CG_PERI_SPI0, "spi"); */
-	mt_spi_enable_clk(ms);
+	/*enable_clk(ms); */
 
 	mc_ret = mc_notify(&secspi_session);
 
@@ -498,7 +487,7 @@ int secspi_execute(u32 cmd, tciSpiMessage_t *param,  struct mt_spi_t *ms)
 
 	return 0;
 }
-#if 0
+
 static int secspi_session_close(void)
 {
 	enum mc_result mc_ret = MC_DRV_OK;
@@ -551,7 +540,6 @@ static int secspi_session_close(void)
 
 }
 #endif
-#endif
 
 static ssize_t spi_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -565,12 +553,7 @@ static ssize_t spi_store(struct device *dev, struct device_attribute *attr, cons
 	int rx_endian, com_mod, pause, finish_intr;
 	int deassert, tckdly, ulthigh;
 
-	struct spi_master *master;
-	struct mt_spi_t *ms;
-
 	spi = container_of(dev, struct spi_device, dev);
-	master = spi->master;
-	ms = spi_master_get_devdata(master);
 
 	SPIDEV_LOG("SPIDEV name is:%s\n", spi->modalias);
 
@@ -582,30 +565,26 @@ static ssize_t spi_store(struct device *dev, struct device_attribute *attr, cons
 		if (!chip_config)
 			return -ENOMEM;
 	}
-	if (!buf) {
-		SPIDEV_LOG("buf is NULL.\n");
-		goto out;
-	}
 #ifdef CONFIG_TRUSTONIC_TEE_SUPPORT
 	if (!strncmp(buf, "-1", 2)) {
 		/*TRANSFER*/ SPIDEV_MSG("start to access TL SPI driver.\n");
 		secspi_session_open();
-		secspi_execute(1, NULL, ms);
+		secspi_execute(1, NULL);
 		SPIDEV_MSG("secspi_execute 1 finished!!!\n");
 	} else if (!strncmp(buf, "-2", 2)) {	/*HW CONFIG */
 		SPIDEV_MSG("start to access TL SPI driver.\n");
 		secspi_session_open();
-		secspi_execute(2, NULL, ms);
+		secspi_execute(2, NULL);
 		SPIDEV_MSG("secspi_execute 2 finished!!!\n");
 	} else if (!strncmp(buf, "-3", 2)) {
 		/*DEBUG*/ SPIDEV_MSG("start to access TL SPI driver.\n");
 		secspi_session_open();
-		secspi_execute(3, NULL, ms);
+		secspi_execute(3, NULL);
 		SPIDEV_MSG("secspi_execute 3 finished!!!\n");
 	} else if (!strncmp(buf, "-4", 2)) {
 		/*TEST*/ SPIDEV_MSG("start to access TL SPI driver.\n");
 		secspi_session_open();
-		secspi_execute(4, NULL, ms);
+		secspi_execute(4, NULL);
 		SPIDEV_MSG("secspi_execute 4 finished!!!\n");
 #else
 	if (!strncmp(buf, "-h", 2)) {
@@ -613,6 +592,10 @@ static ssize_t spi_store(struct device *dev, struct device_attribute *attr, cons
 #endif
 	} else if (!strncmp(buf, "-w", 2)) {
 		buf += 3;
+		if (!buf) {
+			SPIDEV_LOG("buf is NULL.\n");
+			goto out;
+		}
 		if (!strncmp(buf, "setuptime=", 10) && (1 == sscanf(buf + 10, "%d", &setuptime))) {
 			SPIDEV_MSG("setuptime is:%d\n", setuptime);
 			chip_config->setuptime = setuptime;
@@ -681,8 +664,6 @@ static ssize_t spi_store(struct device *dev, struct device_attribute *attr, cons
 		/*spi_setup(spi);*/
 	}
  out:
-	if (!spi->controller_data)
-		kfree(chip_config);
 	return count;
 }
 
@@ -709,9 +690,9 @@ static ssize_t spi_msg_store(struct device *dev, struct device_attribute *attr, 
 	struct spi_message *p;
 	int ret = 0;
 	struct spi_device *spi;
-	struct spi_transfer transfer = {0,};
-	struct spi_transfer transfer2 = {0,};
-	struct spi_transfer transfer3 = {0,};
+	struct spi_transfer transfer;
+	struct spi_transfer transfer2;
+	struct spi_transfer transfer3;
 	struct spi_message msg;
 	struct mt_chip_conf *chip_config;
 
@@ -1002,7 +983,7 @@ static int spi_test_remove(struct spi_device *spi)
 	return 0;
 }
 
-static int spi_test_probe(struct spi_device *spi)
+static int __init spi_test_probe(struct spi_device *spi)
 {
 	SPIDEV_LOG("spi test probe  enter\n");
 	/*spi_test = spi;*/

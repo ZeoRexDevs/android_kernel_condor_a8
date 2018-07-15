@@ -1019,15 +1019,13 @@ MODULE_PARM_DESC(edid_fixup,
  * @raw_edid: pointer to raw EDID block
  * @block: type of block to validate (0 for base, extension otherwise)
  * @print_bad_edid: if true, dump bad EDID blocks to the console
- * @edid_corrupt: if true, the header or checksum is invalid
  *
  * Validate a base or extension EDID block and optionally dump bad blocks to
  * the console.
  *
  * Return: True if the block is valid, false otherwise.
  */
-bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
-			  bool *edid_corrupt)
+bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
 {
 	int i;
 	u8 csum = 0;
@@ -1041,22 +1039,11 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
 
 	if (block == 0) {
 		int score = drm_edid_header_is_valid(raw_edid);
-		if (score == 8) {
-			if (edid_corrupt)
-				*edid_corrupt = 0;
-		} else if (score >= edid_fixup) {
-			/* Displayport Link CTS Core 1.2 rev1.1 test 4.2.2.6
-			 * The corrupt flag needs to be set here otherwise, the
-			 * fix-up code here will correct the problem, the
-			 * checksum is correct and the test fails
-			 */
-			if (edid_corrupt)
-				*edid_corrupt = 1;
+		if (score == 8) ;
+		else if (score >= edid_fixup) {
 			DRM_DEBUG("Fixing EDID header, your hardware may be failing\n");
 			memcpy(raw_edid, edid_header, sizeof(edid_header));
 		} else {
-			if (edid_corrupt)
-				*edid_corrupt = 1;
 			goto bad;
 		}
 	}
@@ -1067,9 +1054,6 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
 		if (print_bad_edid) {
 			DRM_ERROR("EDID checksum is invalid, remainder is %d\n", csum);
 		}
-
-		if (edid_corrupt)
-			*edid_corrupt = 1;
 
 		/* allow CEA to slide through, switches mangle this */
 		if (raw_edid[0] != 0x02)
@@ -1121,7 +1105,7 @@ bool drm_edid_is_valid(struct edid *edid)
 		return false;
 
 	for (i = 0; i <= edid->extensions; i++)
-		if (!drm_edid_block_valid(raw + i * EDID_LENGTH, i, true, NULL))
+		if (!drm_edid_block_valid(raw + i * EDID_LENGTH, i, true))
 			return false;
 
 	return true;
@@ -1232,8 +1216,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 	for (i = 0; i < 4; i++) {
 		if (get_edid_block(data, block, 0, EDID_LENGTH))
 			goto out;
-		if (drm_edid_block_valid(block, 0, print_bad_edid,
-					 &connector->edid_corrupt))
+		if (drm_edid_block_valid(block, 0, print_bad_edid))
 			break;
 		if (i == 0 && drm_edid_is_zero(block, EDID_LENGTH)) {
 			connector->null_edid_counter++;
@@ -1258,10 +1241,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 				  block + (valid_extensions + 1) * EDID_LENGTH,
 				  j, EDID_LENGTH))
 				goto out;
-			if (drm_edid_block_valid(block + (valid_extensions + 1)
-						 * EDID_LENGTH, j,
-						 print_bad_edid,
-						 NULL)) {
+			if (drm_edid_block_valid(block + (valid_extensions + 1) * EDID_LENGTH, j, print_bad_edid)) {
 				valid_extensions++;
 				break;
 			}
@@ -3350,7 +3330,7 @@ struct drm_connector *drm_select_eld(struct drm_encoder *encoder,
 	WARN_ON(!mutex_is_locked(&dev->mode_config.mutex));
 	WARN_ON(!drm_modeset_is_locked(&dev->mode_config.connection_mutex));
 
-	drm_for_each_connector(connector, dev)
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head)
 		if (connector->encoder == encoder && connector->eld[0])
 			return connector;
 

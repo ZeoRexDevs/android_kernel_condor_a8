@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 
 #ifdef USE_SSUSB_QMU
 
@@ -592,16 +579,11 @@ TGPD *_ex_mu3d_hal_prepare_tx_gpd(TGPD *gpd, dma_addr_t pBuf, DEV_UINT32 data_le
 				  DEV_UINT8 ioc, DEV_UINT8 bps, DEV_UINT8 zlp)
 {
 	qmu_printk(K_DEBUG,
-		   "[TX]" "%s gpd=%p, epnum=%d, len=%d, zlp=%d, size(TGPD)=%lld, pBuf=%llx\n",
-		   __func__, gpd, ep_num, data_len, zlp, (u64) sizeof(TGPD),
-		   (unsigned long long) pBuf);
+		   "[TX]" "%s gpd=%p, epnum=%d, len=%d, zlp=%d, size(TGPD)=%lld, pBuf=%08lx\n",
+		   __func__, gpd, ep_num, data_len, zlp, (u64) sizeof(TGPD), (unsigned long)pBuf);
+
 	/*Set actual data point to "DATA Buffer" */
 	TGPD_SET_DATA(gpd, (unsigned long)pBuf);
-
-#if defined(CONFIG_USB_MU3D_DRV_36BIT)
-	TGPD_SET_DATA_TXHI(gpd, (unsigned long) (pBuf >> 32));
-#endif
-
 	/*Clear "BDP(Buffer Descriptor Present)" flag */
 	TGPD_CLR_FORMAT_BDP(gpd);
 	/*
@@ -638,10 +620,7 @@ TGPD *_ex_mu3d_hal_prepare_tx_gpd(TGPD *gpd, dma_addr_t pBuf, DEV_UINT32 data_le
 	/*Set "Next GDP pointer" as the next GPD */
 	TGPD_SET_NEXT(gpd,
 		      (unsigned long)mu3d_hal_gpd_virt_to_phys(Tx_gpd_end[ep_num], USB_TX, ep_num));
-#if defined(CONFIG_USB_MU3D_DRV_36BIT)
-	TGPD_SET_NEXT_TXHI(gpd,
-		      (unsigned long) (mu3d_hal_gpd_virt_to_phys(Tx_gpd_end[ep_num], USB_TX, ep_num) >> 32));
-#endif
+
 	/*Default: isHWO=true */
 	TGPD_SET_CHKSUM(gpd, CHECKSUM_LENGTH);	/*Set GPD Checksum */
 	TGPD_SET_FLAGS_HWO(gpd);	/*Set HWO flag */
@@ -851,14 +830,11 @@ TGPD *_ex_mu3d_hal_prepare_rx_gpd(TGPD *gpd, dma_addr_t pBuf, DEV_UINT32 data_le
 				  DEV_UINT8 ep_num, DEV_UINT8 _is_bdp, DEV_UINT8 isHWO,
 				  DEV_UINT8 ioc, DEV_UINT8 bps, DEV_UINT32 cMaxPacketSize)
 {
-	qmu_printk(K_DEBUG, "[RX]" "%s gpd=%p, epnum=%d, len=%d, pBuf=%llx\n", __func__,
-		   gpd, ep_num, data_len, (unsigned long long) pBuf);
+	qmu_printk(K_DEBUG, "[RX]" "%s gpd=%p, epnum=%d, len=%d, pBuf=%08lx\n", __func__,
+		   gpd, ep_num, data_len, (unsigned long)pBuf);
 
 	/*Set actual data point to "DATA Buffer" */
 	TGPD_SET_DATA(gpd, (unsigned long)pBuf);
-#if defined(CONFIG_USB_MU3D_DRV_36BIT)
-	TGPD_SET_DATA_RXHI(gpd, (unsigned long) (pBuf >> 32));
-#endif
 	/*Clear "BDP(Buffer Descriptor Present)" flag */
 	TGPD_CLR_FORMAT_BDP(gpd);
 	/*
@@ -892,11 +868,6 @@ TGPD *_ex_mu3d_hal_prepare_rx_gpd(TGPD *gpd, dma_addr_t pBuf, DEV_UINT32 data_le
 	/*Set Next GDP pointer to the next GPD */
 	TGPD_SET_NEXT(gpd,
 		      (unsigned long)mu3d_hal_gpd_virt_to_phys(Rx_gpd_end[ep_num], USB_RX, ep_num));
-
-#if defined(CONFIG_USB_MU3D_DRV_36BIT)
-		TGPD_SET_NEXT_RXHI(gpd,
-			(unsigned long) (mu3d_hal_gpd_virt_to_phys(Rx_gpd_end[ep_num], USB_RX, ep_num) >> 32));
-#endif
 
 	/*Default: isHWO=true */
 	TGPD_SET_CHKSUM(gpd, CHECKSUM_LENGTH);	/*Set GPD Checksum */
@@ -1158,7 +1129,7 @@ void mu3d_hal_start_qmu(DEV_INT32 Q_num, USB_DIR dir)
 		os_writel(U3D_QEMIESR, os_readl(U3D_QEMIESR) | QMU_TX_EMPTY(Q_num));
 		os_writel(U3D_TQERRIESR0, QMU_TX_LEN_ERR(Q_num) | QMU_TX_CS_ERR(Q_num));
 
-		qmu_printk(K_DEBUG, "USB_QMU_TQCSR:0x%08X\n", os_readl(USB_QMU_TQCSR(Q_num)));
+		qmu_printk(K_INFO, "USB_QMU_TQCSR:0x%08X\n", os_readl(USB_QMU_TQCSR(Q_num)));
 
 		if (os_readl(USB_QMU_TQCSR(Q_num)) & QMU_Q_ACTIVE) {
 			qmu_printk(K_INFO, "Tx %d Active Now!\n", Q_num);
@@ -1167,7 +1138,7 @@ void mu3d_hal_start_qmu(DEV_INT32 Q_num, USB_DIR dir)
 
 		os_writel(USB_QMU_TQCSR(Q_num), QMU_Q_START);
 
-		qmu_printk(K_DEBUG, "USB_QMU_TQCSR:0x%08X\n", os_readl(USB_QMU_TQCSR(Q_num)));
+		qmu_printk(K_INFO, "USB_QMU_TQCSR:0x%08X\n", os_readl(USB_QMU_TQCSR(Q_num)));
 	} else if (dir == USB_RX) {
 		USB_WriteCsr32(U3D_RX1CSR0, Q_num,
 			       USB_ReadCsr32(U3D_RX1CSR0, Q_num) | (RX_DMAREQEN));
@@ -1194,7 +1165,7 @@ void mu3d_hal_start_qmu(DEV_INT32 Q_num, USB_DIR dir)
 		os_writel(U3D_RQERRIESR0, QMU_RX_LEN_ERR(Q_num) | QMU_RX_CS_ERR(Q_num));
 		os_writel(U3D_RQERRIESR1, QMU_RX_EP_ERR(Q_num) | QMU_RX_ZLP_ERR(Q_num));
 
-		qmu_printk(K_DEBUG, "USB_QMU_RQCSR:0x%08X\n", os_readl(USB_QMU_RQCSR(Q_num)));
+		qmu_printk(K_INFO, "USB_QMU_RQCSR:0x%08X\n", os_readl(USB_QMU_RQCSR(Q_num)));
 
 		if (os_readl(USB_QMU_RQCSR(Q_num)) & QMU_Q_ACTIVE) {
 			qmu_printk(K_INFO, "Rx %d Active Now!\n", Q_num);
@@ -1203,7 +1174,7 @@ void mu3d_hal_start_qmu(DEV_INT32 Q_num, USB_DIR dir)
 
 		os_writel(USB_QMU_RQCSR(Q_num), QMU_Q_START);
 
-		qmu_printk(K_DEBUG, "USB_QMU_RQCSR:0x%08X\n", os_readl(USB_QMU_RQCSR(Q_num)));
+		qmu_printk(K_INFO, "USB_QMU_RQCSR:0x%08X\n", os_readl(USB_QMU_RQCSR(Q_num)));
 	}
 #if (CHECKSUM_TYPE == CS_16B)
 	os_writel(U3D_QCR0, os_readl(U3D_QCR0) | CS16B_EN);
@@ -1220,13 +1191,13 @@ void mu3d_hal_stop_qmu(DEV_INT32 q_num, USB_DIR dir)
 {
 	if (dir == USB_TX) {
 		if (!(os_readl(USB_QMU_TQCSR(q_num)) & (QMU_Q_ACTIVE))) {
-			qmu_printk(K_INFO, "Tx%d inActive Now!\n", q_num);
+			qmu_printk(K_CRIT, "Tx%d inActive Now!\n", q_num);
 			return;
 		}
 		os_writel(USB_QMU_TQCSR(q_num), QMU_Q_STOP);
 		mb();
 		if (wait_for_value(USB_QMU_TQCSR(q_num), QMU_Q_ACTIVE, 0, 10, 100) == RET_SUCCESS)
-			qmu_printk(K_INFO, "Tx%d stop Now! CSR=0x%x\n", q_num,
+			qmu_printk(K_CRIT, "Tx%d stop Now! CSR=0x%x\n", q_num,
 				   os_readl(USB_QMU_TQCSR(q_num)));
 		else {
 			qmu_printk(K_CRIT, "Tx%d UNSTOPABLE!! CSR=0x%x\n", q_num,
@@ -1235,13 +1206,13 @@ void mu3d_hal_stop_qmu(DEV_INT32 q_num, USB_DIR dir)
 		}
 	} else if (dir == USB_RX) {
 		if (!(os_readl(USB_QMU_RQCSR(q_num)) & QMU_Q_ACTIVE)) {
-			qmu_printk(K_INFO, "Rx%d inActive Now!\n", q_num);
+			qmu_printk(K_CRIT, "Rx%d inActive Now!\n", q_num);
 			return;
 		}
 		os_writel(USB_QMU_RQCSR(q_num), QMU_Q_STOP);
 		mb();
 		if (wait_for_value(USB_QMU_RQCSR(q_num), QMU_Q_ACTIVE, 0, 10, 100) == RET_SUCCESS)
-			qmu_printk(K_INFO, "Rx%d stop Now! CSR=0x%x\n", q_num,
+			qmu_printk(K_CRIT, "Rx%d stop Now! CSR=0x%x\n", q_num,
 				   os_readl(USB_QMU_RQCSR(q_num)));
 		else {
 			qmu_printk(K_CRIT, "Rx%d UNSTOPABLE!! CSR=0x%x\n", q_num,
@@ -1312,35 +1283,87 @@ void mu3d_hal_restart_qmu(DEV_INT32 q_num, USB_DIR dir)
  */
 void _ex_mu3d_hal_flush_qmu(DEV_INT32 Q_num, USB_DIR dir)
 {
-	qmu_printk(K_INFO, "%s flush QMU %s-EP[%d]\n", __func__, ((dir == USB_TX) ? "TX" : "RX"),
+	TGPD *gpd_current;
+
+	qmu_printk(K_CRIT, "%s flush QMU %s-EP[%d]\n", __func__, ((dir == USB_TX) ? "TX" : "RX"),
 		   Q_num);
 
 	if (dir == USB_TX) {
 		/*Stop QMU */
 		mu3d_hal_stop_qmu(Q_num, USB_TX);
 
+		/*Get TX Queue Current Pointer Register */
+		/* QMU GPD address --> CPU DMA address */
+		gpd_current = (TGPD *) (uintptr_t) (os_readl(USB_QMU_TQCPR(Q_num)));
+
+		/*If gpd_current = 0, it means QMU has not yet to execute GPD in QMU. */
+		if (!gpd_current) {
+			/*Get TX Queue Starting Address Register */
+			/* QMU GPD address --> CPU DMA address */
+			gpd_current = (TGPD *) (uintptr_t) (os_readl(USB_QMU_TQSAR(Q_num)));
+		}
+
+		/*
+		 * Even if the GPD pointer got from SAR is corrupted. We should use the head of GPD list.
+		 * We know that Tx_gpd_head[Q_num] is always correct.
+		 */
+		if (!gpd_current) {
+			gpd_current = Tx_gpd_head[Q_num];
+			qmu_printk(K_CRIT, "gpd is null, so use the head of GPD list %p\n",
+				   gpd_current);
+		} else {
+			/*Switch physical to virtual address */
+			qmu_printk(K_CRIT, "gpd_current(P) %p\n", gpd_current);
+			gpd_current = gpd_phys_to_virt((void *)gpd_current, USB_TX, Q_num);
+			qmu_printk(K_CRIT, "gpd_current(V) %p\n", (void *)gpd_current);
+		}
+
 		/*Reset the TX GPD list state */
-		Tx_gpd_end[Q_num] = Tx_gpd_last[Q_num] = Tx_gpd_head[Q_num];
+		Tx_gpd_end[Q_num] = Tx_gpd_last[Q_num] = gpd_current;
 		gpd_ptr_align(dir, Q_num, Tx_gpd_end[Q_num]);
 		free_gpd(dir, Q_num);
 
 		/*FIXME: Do not know why... */
 		os_writel(USB_QMU_TQSAR(Q_num),
 			  mu3d_hal_gpd_virt_to_phys(Tx_gpd_last[Q_num], USB_TX, Q_num));
-		qmu_printk(K_INFO, "USB_QMU_TQSAR %x\n", os_readl(USB_QMU_TQSAR(Q_num)));
+		qmu_printk(K_ERR, "USB_QMU_TQSAR %x\n", os_readl(USB_QMU_TQSAR(Q_num)));
 	} else if (dir == USB_RX) {
 		/*Stop QMU */
 		mu3d_hal_stop_qmu(Q_num, USB_RX);
 
+		/*Get RX Queue Current Pointer Register */
+		/* QMU GPD address --> CPU DMA address */
+		gpd_current = (TGPD *) (uintptr_t) (os_readl(USB_QMU_RQCPR(Q_num)));
+		if (!gpd_current) {
+			/*Get RX Queue Starting Address Register */
+			/* QMU GPD address --> CPU DMA address */
+			gpd_current = (TGPD *) (uintptr_t) (os_readl(USB_QMU_RQSAR(Q_num)));
+		}
+
+		/*
+		 * Even if the GPD pointer got from SAR is corrupted. We should use the head of GPD list.
+		 * We know that Rx_gpd_head[Q_num] is always correct.
+		 */
+		if (!gpd_current) {
+			gpd_current = Rx_gpd_head[Q_num];
+			qmu_printk(K_CRIT, "gpd is null, so use the head of GPD list %p\n",
+				   gpd_current);
+		} else {
+			/*Switch physical to virtual address */
+			qmu_printk(K_CRIT, "gpd_current(P) %p\n", gpd_current);
+			gpd_current = gpd_phys_to_virt((void *)gpd_current, USB_RX, Q_num);
+			qmu_printk(K_CRIT, "gpd_current(V) %p\n", (void *)gpd_current);
+		}
+
 		/*Reset the RX GPD list state */
-		Rx_gpd_end[Q_num] = Rx_gpd_last[Q_num] = Rx_gpd_head[Q_num];
+		Rx_gpd_end[Q_num] = Rx_gpd_last[Q_num] = gpd_current;
 		gpd_ptr_align(dir, Q_num, Rx_gpd_end[Q_num]);
 		free_gpd(dir, Q_num);
 
 		/*FIXME: Do not know why... */
 		os_writel(USB_QMU_RQSAR(Q_num),
 			  mu3d_hal_gpd_virt_to_phys(Rx_gpd_end[Q_num], USB_RX, Q_num));
-		qmu_printk(K_INFO, "USB_QMU_RQSAR %x\n", os_readl(USB_QMU_RQSAR(Q_num)));
+		qmu_printk(K_ERR, "USB_QMU_RQSAR %x\n", os_readl(USB_QMU_RQSAR(Q_num)));
 	}
 }
 
@@ -1350,7 +1373,7 @@ void mu3d_hal_flush_qmu(DEV_INT32 Q_num, USB_DIR dir)
 
 	struct USB_REQ *req = mu3d_hal_get_req(Q_num, dir);
 
-	os_printk(K_INFO, "%s flush QMU %s\n", __func__, ((dir == USB_TX) ? "TX" : "RX"));
+	os_printk(K_CRIT, "%s flush QMU %s\n", __func__, ((dir == USB_TX) ? "TX" : "RX"));
 
 	if (dir == USB_TX) {
 		/*Stop QMU */
@@ -1368,9 +1391,9 @@ void mu3d_hal_flush_qmu(DEV_INT32 Q_num, USB_DIR dir)
 		}
 
 		/*Switch physical to virtual address */
-		os_printk(K_INFO, "gpd_current(P) %p\n", gpd_current);
+		os_printk(K_CRIT, "gpd_current(P) %p\n", gpd_current);
 		gpd_current = gpd_phys_to_virt(gpd_current, USB_TX, Q_num);
-		os_printk(K_INFO, "gpd_current(V) %p\n", gpd_current);
+		os_printk(K_CRIT, "gpd_current(V) %p\n", gpd_current);
 
 		/*Reset the TX GPD list state */
 		Tx_gpd_end[Q_num] = Tx_gpd_last[Q_num] = gpd_current;
@@ -1380,7 +1403,7 @@ void mu3d_hal_flush_qmu(DEV_INT32 Q_num, USB_DIR dir)
 		/*FIXME: Do not know why... */
 		os_writel(USB_QMU_TQSAR(Q_num),
 			  mu3d_hal_gpd_virt_to_phys(Tx_gpd_last[Q_num], USB_TX, Q_num));
-		os_printk(K_INFO, "USB_QMU_TQSAR %x\n", os_readl(USB_QMU_TQSAR(Q_num)));
+		os_printk(K_ERR, "USB_QMU_TQSAR %x\n", os_readl(USB_QMU_TQSAR(Q_num)));
 		req->complete = true;
 		/* os_printk(K_ERR,"TxQ %d Flush Now!\n", Q_num); */
 	} else if (dir == USB_RX) {
@@ -1397,9 +1420,9 @@ void mu3d_hal_flush_qmu(DEV_INT32 Q_num, USB_DIR dir)
 		}
 
 		/*Switch physical to virtual address */
-		os_printk(K_INFO, "gpd_current(P) %p\n", gpd_current);
+		os_printk(K_CRIT, "gpd_current(P) %p\n", gpd_current);
 		gpd_current = gpd_phys_to_virt(gpd_current, USB_RX, Q_num);
-		os_printk(K_INFO, "gpd_current(V) %p\n", gpd_current);
+		os_printk(K_CRIT, "gpd_current(V) %p\n", gpd_current);
 
 		/*Reset the RX GPD list state */
 		Rx_gpd_end[Q_num] = Rx_gpd_last[Q_num] = gpd_current;
@@ -1409,45 +1432,9 @@ void mu3d_hal_flush_qmu(DEV_INT32 Q_num, USB_DIR dir)
 		/*FIXME: Do not know why... */
 		os_writel(USB_QMU_RQSAR(Q_num),
 			  mu3d_hal_gpd_virt_to_phys(Rx_gpd_end[Q_num], USB_RX, Q_num));
-		os_printk(K_INFO, "USB_QMU_RQSAR %x\n", os_readl(USB_QMU_RQSAR(Q_num)));
+		os_printk(K_ERR, "USB_QMU_RQSAR %x\n", os_readl(USB_QMU_RQSAR(Q_num)));
 		req->complete = true;
 		/* os_printk(K_ERR,"RxQ %d Flush Now!\n", Q_num); */
-	}
-}
-
-void mu3d_reset_gpd_resource(void)
-{
-	DEV_UINT32 i;
-
-	/* TX reset */
-	for (i = 1; i <= MAX_QMU_EP; i++) {
-
-		mu3d_hal_stop_qmu(i, USB_TX);
-
-		/*Reset the TX GPD list state */
-		Tx_gpd_end[i] = Tx_gpd_last[i] = Tx_gpd_head[i];
-		gpd_ptr_align(USB_TX, i, Tx_gpd_end[i]);
-		free_gpd(USB_TX, i);
-
-		/*FIXME: Do not know why... */
-		os_writel(USB_QMU_TQSAR(i),
-				mu3d_hal_gpd_virt_to_phys(Tx_gpd_last[i], USB_TX, i));
-		qmu_printk(K_INFO, "USB_QMU_TQSAR %x\n", os_readl(USB_QMU_TQSAR(i)));
-	}
-
-	/* RX reset */
-	for (i = 1; i <= MAX_QMU_EP; i++) {
-		mu3d_hal_stop_qmu(i, USB_RX);
-
-		/*Reset the RX GPD list state */
-		Rx_gpd_end[i] = Rx_gpd_last[i] = Rx_gpd_head[i];
-		gpd_ptr_align(USB_RX, i, Rx_gpd_end[i]);
-		free_gpd(USB_RX, i);
-
-		/*FIXME: Do not know why... */
-		os_writel(USB_QMU_RQSAR(i),
-				mu3d_hal_gpd_virt_to_phys(Rx_gpd_end[i], USB_RX, i));
-		qmu_printk(K_INFO, "USB_QMU_RQSAR %x\n", os_readl(USB_QMU_RQSAR(i)));
 	}
 }
 

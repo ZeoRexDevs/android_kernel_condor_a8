@@ -1,15 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This file is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
 /*****************************************************************************
 *
 * Filename:
@@ -108,8 +96,13 @@
 #define CON4_RESET_MASK     0x01
 #define CON4_RESET_SHIFT    7
 
+#if defined(LYCONFIG_CHARGER_FAN5405_SUPPORT_HL7005)
 #define CON4_I_CHR_MASK     0x07
 #define CON4_I_CHR_SHIFT    4
+#else
+#define CON4_I_CHR_MASK     0x0F
+#define CON4_I_CHR_SHIFT    3
+#endif
 
 #define CON4_I_TERM_MASK    0x07
 #define CON4_I_TERM_SHIFT   0
@@ -131,8 +124,13 @@
 #define CON5_VSP_SHIFT          0
 
 /* CON6 */
+#if defined(LYCONFIG_CHARGER_FAN5405_SUPPORT_HL7005)
 #define CON6_ISAFE_MASK     0x07
 #define CON6_ISAFE_SHIFT    4
+#else
+#define CON6_ISAFE_MASK     0x0F
+#define CON6_ISAFE_SHIFT    4
+#endif
 
 #define CON6_VSAFE_MASK     0x0F
 #define CON6_VSAFE_SHIFT    0
@@ -142,9 +140,7 @@
   *   [Extern Function]
   *
   *********************************************************/
-extern kal_bool chargin_hw_init_done;
 /* CON0---------------------------------------------------- */
-extern int is_fan5405_exist(void);
 extern void fan5405_set_tmr_rst(unsigned int val);
 extern unsigned int fan5405_get_otg_status(void);
 extern void fan5405_set_en_stat(unsigned int val);

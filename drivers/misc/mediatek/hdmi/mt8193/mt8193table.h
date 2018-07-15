@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 
 #ifndef __mt8193table_h__
 #define __mt8193table_h__
@@ -30,8 +17,7 @@ enum HDMI_VIDEO_RESOLUTION {
 	HDMI_VIDEO_1920x1080p_29Hz,	/* a */
 	HDMI_VIDEO_1920x1080p_60Hz,	/* b */
 	HDMI_VIDEO_1920x1080p_50Hz,	/* c */
-	HDMI_VIDEO_2160p_DSC_24Hz = 0x14,
-	HDMI_VIDEO_2160p_DSC_30Hz = 0x13,
+
 	HDMI_VIDEO_RESOLUTION_NUM
 };
 

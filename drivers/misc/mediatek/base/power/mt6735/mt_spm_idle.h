@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef _MT_SPM_IDLE_
 #define _MT_SPM_IDLE_
 
@@ -58,7 +45,6 @@ void spm_sodi_mempll_pwr_mode(bool pwr_mode);
 void spm_enable_sodi(bool);
 bool spm_get_sodi_en(void);
 void spm_sodi_init(void);
-int sodi_forbid_by_prev_wakeup_info(void);
 /* #define SPM_SODI_PROFILE_TIME */
 #ifdef SPM_SODI_PROFILE_TIME
 #define SPM_SODI_PROFILE_APXGPT GPT2

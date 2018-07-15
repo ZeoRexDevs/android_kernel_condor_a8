@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /*****************************************************************************
  *
  *Filename:
@@ -126,8 +113,8 @@ typedef struct IPC_MSGSVC_TASKMAP_STRUCT {
 
 } IPC_MSGSVC_TASKMAP_T;
 
-extern int ccci_ipc_init(int);
-extern void ccci_ipc_exit(int);
+extern int __init ccci_ipc_init(int);
+extern void __exit ccci_ipc_exit(int);
 
 #define offset_of(type, mem)  ((uint32)(&(((type *)0)->mem)))
 #define CCCI_IPC_SMEM_SIZE  (sizeof(CCCI_IPC_MEM))

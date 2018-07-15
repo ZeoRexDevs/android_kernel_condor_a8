@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /*****************************************************************************
  *
  * Filename:
@@ -39,8 +26,8 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <asm/atomic.h>
-//#include <asm/system.h>
-#include <linux/xlog.h>
+//#include <linux/xlog.h>
+#include "kd_camera_typedef.h"
 
 #include "kd_camera_hw.h"
 #include "kd_imgsensor.h"
@@ -76,7 +63,7 @@ static imgsensor_info_struct imgsensor_info = {
         /*     following for MIPIDataLowPwr2HighSpeedSettleDelayCount by different scenario    */
         .mipi_data_lp2hs_settle_dc = 85,//unit , ns
         /*     following for GetDefaultFramerateByScenario()    */
-        .max_framerate = 300,
+        .max_framerate = 100,
     },
     .cap = {
         .pclk = 84000000,
@@ -149,7 +136,7 @@ static imgsensor_info_struct imgsensor_info = {
     .hs_video_delay_frame = 2,
     .slim_video_delay_frame = 2,
 
-    .isp_driving_current = ISP_DRIVING_2MA, //mclk driving current
+    .isp_driving_current = ISP_DRIVING_4MA, //mclk driving current
     .sensor_interface_type = SENSOR_INTERFACE_TYPE_MIPI,//sensor_interface_type
     .mipi_sensor_type = MIPI_OPHY_NCSI2, //0,MIPI_OPHY_NCSI2;  1,MIPI_OPHY_CSI2
     .mipi_settle_delay_mode = MIPI_SETTLEDELAY_AUTO,//0,MIPI_SETTLEDELAY_AUTO; 1,MIPI_SETTLEDELAY_MANNUAL
@@ -391,7 +378,6 @@ static void ihdr_write_shutter_gain(kal_uint16 le, kal_uint16 se, kal_uint16 gai
     //LOG_INF("le:0x%x, se:0x%x, gain:0x%x\n",le,se,gain);
 }
 
-#if 0
 static void set_mirror_flip(kal_uint8 image_mirror)
 {
     LOG_INF("image_mirror = %d\n", image_mirror);
@@ -430,7 +416,6 @@ static void set_mirror_flip(kal_uint8 image_mirror)
     }
 
 }
-#endif
 
 /*************************************************************************
 * FUNCTION
@@ -1280,7 +1265,7 @@ static kal_uint32 preview(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
     imgsensor.autoflicker_en = KAL_FALSE;
     spin_unlock(&imgsensor_drv_lock);
     preview_setting();
-    //set_mirror_flip(sensor_config_data->SensorImageMirror);
+    	set_mirror_flip(imgsensor.mirror);
     return ERROR_NONE;
 }    /*    preview   */
 
@@ -1323,7 +1308,7 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
     }
     spin_unlock(&imgsensor_drv_lock);
     capture_setting(imgsensor.current_fps);
-    //set_mirror_flip(sensor_config_data->SensorImageMirror);
+    	set_mirror_flip(imgsensor.mirror);
     return ERROR_NONE;
 }    /* capture() */
 static kal_uint32 normal_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
@@ -1341,7 +1326,7 @@ static kal_uint32 normal_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
     imgsensor.autoflicker_en = KAL_FALSE;
     spin_unlock(&imgsensor_drv_lock);
     normal_video_setting(imgsensor.current_fps);
-    //set_mirror_flip(sensor_config_data->SensorImageMirror);
+   	 set_mirror_flip(imgsensor.mirror);
     return ERROR_NONE;
 }    /*    normal_video   */
 
@@ -1362,7 +1347,7 @@ static kal_uint32 hs_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
     imgsensor.autoflicker_en = KAL_FALSE;
     spin_unlock(&imgsensor_drv_lock);
     hs_video_setting();
-    //set_mirror_flip(sensor_config_data->SensorImageMirror);
+    	set_mirror_flip(imgsensor.mirror);
     return ERROR_NONE;
 }    /*    hs_video   */
 
@@ -1382,7 +1367,7 @@ static kal_uint32 slim_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
     imgsensor.autoflicker_en = KAL_FALSE;
     spin_unlock(&imgsensor_drv_lock);
     slim_video_setting();
-    //set_mirror_flip(sensor_config_data->SensorImageMirror);
+   	 set_mirror_flip(imgsensor.mirror);
 
     return ERROR_NONE;
 }    /*    slim_video     */
@@ -1708,6 +1693,7 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
     SENSOR_WINSIZE_INFO_STRUCT *wininfo;
     MSDK_SENSOR_REG_INFO_STRUCT *sensor_reg_data=(MSDK_SENSOR_REG_INFO_STRUCT *) feature_para;
 
+    //printk("feature_id = %d\n", feature_id);
     switch (feature_id) {
         case SENSOR_FEATURE_GET_PERIOD:
             *feature_return_para_16++ = imgsensor.line_length;

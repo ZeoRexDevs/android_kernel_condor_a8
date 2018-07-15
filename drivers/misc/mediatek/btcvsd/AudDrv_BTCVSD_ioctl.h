@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /*******************************************************************************
  *
  * Filename:
@@ -58,8 +45,6 @@
 #define ALLOCATE_FREE_BTCVSD_BUF _IOWR(AUD_DRV_BTCVSD_IOC_MAGIC, 0xE0, unsigned int)
 #define SET_BTCVSD_STATE         _IOWR(AUD_DRV_BTCVSD_IOC_MAGIC, 0xE1, unsigned int)
 #define GET_BTCVSD_STATE         _IOWR(AUD_DRV_BTCVSD_IOC_MAGIC, 0xE2, unsigned int)
-#define GET_BTCVSD_RX_TIME_BUFFER_INFO _IOWR(AUD_DRV_BTCVSD_IOC_MAGIC, 0xE3, unsigned long long)
-#define GET_BTCVSD_TX_TIME_BUFFER_INFO _IOWR(AUD_DRV_BTCVSD_IOC_MAGIC, 0xE4, unsigned long long)
 
 
 

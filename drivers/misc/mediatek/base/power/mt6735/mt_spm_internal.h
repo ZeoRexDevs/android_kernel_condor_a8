@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef _MT_SPM_INTERNAL_
 #define _MT_SPM_INTERNAL_
 
@@ -183,7 +170,6 @@ extern void __iomem *i2c4_base;
 struct pcm_desc {
 	const char *version;	/* PCM code version */
 	const u32 *base;	/* binary array base */
-	dma_addr_t base_dma;	/* dma addr of base */
 	const u16 size;		/* binary array size */
 	const u8 sess;		/* session number */
 	const u8 replace;	/* replace mode */
@@ -265,29 +251,6 @@ struct pwr_ctrl {
 	u32 param2;
 	u32 param3;
 };
-
-#define PCM_FIRMWARE_SIZE   0x1000
-#define DYNA_LOAD_PCM_PATH_SIZE 128
-#define PCM_FIRMWARE_VERSION_SIZE 128
-
-enum dyna_load_pcm_index {
-	DYNA_LOAD_PCM_SUSPEND = 0,
-	DYNA_LOAD_PCM_SODI,
-	DYNA_LOAD_PCM_DEEPIDLE,
-	DYNA_LOAD_PCM_VCORE_DVFS,
-	DYNA_LOAD_PCM_MAX,
-};
-
-struct dyna_load_pcm_t {
-	char path[DYNA_LOAD_PCM_PATH_SIZE];
-	char version[PCM_FIRMWARE_VERSION_SIZE];
-	char *buf;
-	dma_addr_t buf_dma;
-	struct pcm_desc desc;
-	int ready;
-};
-
-extern struct dyna_load_pcm_t dyna_load_pcm[DYNA_LOAD_PCM_MAX];
 
 struct wake_status {
 	u32 assert_pc;		/* PCM_REG_DATA_INI */

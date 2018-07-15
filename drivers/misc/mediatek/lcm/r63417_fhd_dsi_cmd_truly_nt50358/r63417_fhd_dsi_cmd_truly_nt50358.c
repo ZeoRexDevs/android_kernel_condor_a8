@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef BUILD_LK
 #include <linux/string.h>
 #include <linux/kernel.h>
@@ -59,9 +46,6 @@ static LCM_UTIL_FUNCS lcm_util;
 	lcm_util.dsi_dcs_read_lcm_reg(cmd)
 #define read_reg_v2(cmd, buffer, buffer_size) \
 	lcm_util.dsi_dcs_read_lcm_reg_v2(cmd, buffer, buffer_size)
-
-#define set_gpio_lcd_enp(cmd) lcm_util.set_gpio_lcd_enp_bias(cmd)
-#define set_gpio_lcd_enp_ByName(cmd, pinName) lcm_util.set_gpio_lcd_enp_bias_ByName(cmd, pinName)
 
 #ifndef BUILD_LK
 #include <linux/kernel.h>
@@ -210,11 +194,6 @@ static const unsigned char LCD_MODULE_ID = 0x01; /* haobing modified 2013.07.11 
 #define FRAME_WIDTH										(1080)
 #define FRAME_HEIGHT										(1920)
 #endif
-
-/* physical size in um */
-#define LCM_PHYSICAL_WIDTH    (59500)
-#define LCM_PHYSICAL_HEIGHT   (104700)
-
 /*
 #ifndef CONFIG_FPGA_EARLY_PORTING
 #define GPIO_65132_EN GPIO_LCD_BIAS_ENP_PIN
@@ -249,11 +228,16 @@ struct LCM_setting_table {
 };
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
+#ifndef LCM_DSI_CMD_MODE
+	/* switch to CMD mode for fitting DSI state */
+	{0xB3, 1, {0x04} },
+	{REGFLAG_DELAY, 120, {} },
+#endif
 	{0x28, 0, {} },
 	{REGFLAG_DELAY, 20, {} },
 	{0x10, 0, {} },
-	{0xB0, 1, {0x00 } },
-	{0xB1, 1, {0x01 } },
+	{0xB0, 1, {0x00} },
+	{0xB1, 1, {0x01} },
 	{REGFLAG_DELAY, 80, {} },
 };
 
@@ -266,15 +250,38 @@ static struct LCM_setting_table lcm_initialization_setting[] = {
 	{0xD6, 1, {0x01} },
 #ifndef LCM_DSI_CMD_MODE
 	/* video mode */
-	{0xB3, 1, {0x35} },
+	{0xB3, 1, {0x14} },
 #endif
 	/* display brightness */
 	{0x51, 1, {0xFF} },
 	/* LED pwm output enable */
 	{0x53, 1, {0x0C} },
 
+#ifdef LCM_DSI_CMD_MODE
+	/* RTN setting (for change frame rate) */
+	{0xC6, 40,
+	 {0x77, 0x01, 0x71, 0x07, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	  0x00, 0x00, 0x09, 0x19, 0x09,
+	  0x77, 0x01, 0x71, 0x07, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	  0x00, 0x00, 0x09, 0x19, 0x09} },
+#endif
+
+	/* Analog Gamma Setting */
+	{0xC7, 30,
+	 {0x01, 0x0C, 0x14, 0x1E, 0x2D, 0x3C, 0x48, 0x58, 0x3D, 0x44, 0x4F, 0x5C, 0x65, 0x6D, 0x75,
+	  0x01, 0x0C, 0x14, 0x1D, 0x2C, 0x39, 0x44, 0x54, 0x39, 0x41, 0x4D, 0x5A, 0x63, 0x6B,
+	  0x74} },
+
+	/* Digital Gamma Setting */
+	{0xC8, 19,
+	 {0x01, 0x00, 0xFF, 0xFF, 0x00, 0xFC, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFC, 0x00, 0x00, 0xFF,
+	  0xFF, 0x00, 0xFC, 0x00} },
+
 	/* Enable TE */
 	{0x35, 1, {0x00} },
+
+	/* mipi clock */
+	{0xB6, 2, {0x3A, 0xD3} },
 
 	/* Display ON */
 	{0x29, 0, {} },
@@ -333,16 +340,11 @@ static void lcm_get_params(LCM_PARAMS *params)
 	params->width  = FRAME_WIDTH;
 	params->height = FRAME_HEIGHT;
 
-	params->physical_width = LCM_PHYSICAL_WIDTH/1000;
-	params->physical_height = LCM_PHYSICAL_HEIGHT/1000;
-	params->physical_width_um = LCM_PHYSICAL_WIDTH;
-	params->physical_height_um = LCM_PHYSICAL_HEIGHT;
-
 #ifdef LCM_DSI_CMD_MODE
-	params->dsi.mode   = CMD_MODE;
-	params->dsi.switch_mode = SYNC_PULSE_VDO_MODE;
+	params->dsi.mode = CMD_MODE;
+	params->dsi.switch_mode = SYNC_EVENT_VDO_MODE;
 #else
-	params->dsi.mode   = SYNC_PULSE_VDO_MODE;
+	params->dsi.mode = SYNC_EVENT_VDO_MODE;
 	params->dsi.switch_mode = CMD_MODE;
 #endif
 	params->dsi.switch_mode_enable = 0;
@@ -368,16 +370,16 @@ static void lcm_get_params(LCM_PARAMS *params)
 	params->dsi.vertical_active_line					= FRAME_HEIGHT;
 
 	params->dsi.horizontal_sync_active				= 10;
-	params->dsi.horizontal_backporch				= 20;
-	params->dsi.horizontal_frontporch				= 40;
+	params->dsi.horizontal_backporch				= 60;
+	params->dsi.horizontal_frontporch				= 100;
 	params->dsi.horizontal_active_pixel				= FRAME_WIDTH;
 	/* params->dsi.ssc_disable							= 1; */
 
 #ifndef CONFIG_FPGA_EARLY_PORTING
 #ifdef LCM_DSI_CMD_MODE
-	params->dsi.PLL_CLOCK = 450; /* this value must be in MTK suggested table */
+	params->dsi.PLL_CLOCK = 450;	/* this value must be in MTK suggested table */
 #else
-	params->dsi.PLL_CLOCK = 450; /* this value must be in MTK suggested table */
+	params->dsi.PLL_CLOCK = 475;	/* this value must be in MTK suggested table */
 #endif
 #else
 	params->dsi.pll_div1 = 0;
@@ -473,7 +475,7 @@ static void lcm_init(void)
 		pr_debug("[KERNEL]r63417----tps65132---cmd=%0x-- i2c write success-----\n", cmd);
 #endif
 #endif
-	set_gpio_lcd_enp_ByName(1, "lcd_bias_enp1_gpio");
+
 	SET_RESET_PIN(1);
 	MDELAY(1);
 	SET_RESET_PIN(0);
@@ -497,7 +499,6 @@ static void lcm_suspend(void)
 	mt_set_gpio_dir(GPIO_65132_EN, GPIO_DIR_OUT);
 	mt_set_gpio_out(GPIO_65132_EN, GPIO_OUT_ZERO);
 #endif
-	set_gpio_lcd_enp_ByName(0, "lcd_bias_enp0_gpio");
 }
 
 static void lcm_resume(void)

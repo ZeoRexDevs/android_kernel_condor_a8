@@ -1,15 +1,3 @@
-/*
- * Copyright (C) 2016 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
- */
 #ifndef __MT_PMIC_WRAP_H__
 #define __MT_PMIC_WRAP_H__
 /* #include <mach/typedefs.h> */
@@ -55,6 +43,5 @@ u32 mt_pmic_wrap_eint_status(void);
 void mt_pmic_wrap_eint_clr(int offset);
 s32 pwrap_init(void);
 struct mt_pmic_wrap_driver *get_mt_pmic_wrap_drv(void);
-void pwrap_dump_ap_register(void);
 
 #endif				/* __MT_PMIC_WRAP_H__ */

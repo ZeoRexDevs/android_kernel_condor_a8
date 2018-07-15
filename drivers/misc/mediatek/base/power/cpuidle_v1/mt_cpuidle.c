@@ -20,7 +20,6 @@
 
 #include <linux/of_address.h>
 #include <linux/of.h>
-#include <linux/irqchip/mt-gic.h>
 
 #include <mt-plat/mt_dbg.h>
 #include <mt-plat/mt_io.h>
@@ -35,7 +34,7 @@
 #if defined(CONFIG_MTK_RAM_CONSOLE) || defined(CONFIG_TRUSTONIC_TEE_SUPPORT)
 #include <mach/mt_secure_api.h>
 #endif
-#if defined(CONFIG_TRUSTY) && (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_TRUSTY) && defined(CONFIG_ARCH_MT6580)
 #include <mach/mt_trusty_api.h>
 #endif
 
@@ -55,7 +54,7 @@ unsigned long *sleep_aee_rec_cpu_dormant_pa;
 unsigned long *sleep_aee_rec_cpu_dormant_va;
 #endif
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#ifdef CONFIG_ARCH_MT6580
 static unsigned long mcucfg_base;
 static unsigned long infracfg_ao_base;
 static unsigned long gic_id_base;
@@ -65,52 +64,34 @@ static unsigned long gic_ci_base;
 static unsigned long gic_id_base;
 #if defined(CONFIG_ARCH_MT6735) || defined(CONFIG_ARCH_MT6735M)
 static unsigned long biu_base;
-#endif /* #if defined(CONFIG_ARCH_MT6735) || defined(CONFIG_ARCH_MT6735M) */
+#endif
 
-#endif /* #ifdef CONFIG_ARCH_MT6580 */
+#endif
 
 static unsigned int kp_irq_bit;
 static unsigned int conn_wdt_irq_bit;
 static unsigned int lowbattery_irq_bit;
 static unsigned int md1_wdt_irq_bit;
-#ifdef CONFIG_MTK_MD3_SUPPORT
-#if CONFIG_MTK_MD3_SUPPORT /* Using this to check >0 */
+#ifdef CONFIG_MTK_C2K_SUPPORT
 static unsigned int c2k_wdt_irq_bit;
 #endif
-#endif
 
-#if defined(CONFIG_ARCH_MT6735_SERIES) || (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6735_SERIES) || defined(CONFIG_ARCH_MT6580)
 #define CPUIDLE_CPU_IDLE_STA SPM_SLEEP_TIMER_STA
 #define CPUIDLE_CPU_IDLE_STA_OFFSET 16
 #define CPUIDLE_SPM_WAKEUP_MISC SPM_SLEEP_WAKEUP_MISC
-#define CPUIDLE_SPM_WAKEUP_STA SPM_SLEEP_ISR_RAW_STA
-#define CPUIDLE_WAKE_SRC_R12_KP_IRQ_B WAKE_SRC_KP
-#define CPUIDLE_WAKE_SRC_R12_CONN_WDT_IRQ_B WAKE_SRC_CONN_WDT
-#define CPUIDLE_WAKE_SRC_R12_LOWBATTERY_IRQ_B WAKE_SRC_LOW_BAT
-#if defined(CONFIG_ARCH_MT6735_SERIES)
-#define CPUIDLE_WAKE_SRC_R12_MD1_WDT_B WAKE_SRC_MD_WDT
-#else
-#define CPUIDLE_WAKE_SRC_R12_MD1_WDT_B WAKE_SRC_MD1_WDT
-#endif
-#define CPUIDLE_WAKE_SRC_R12_C2K_WDT_IRQ_B WAKE_SRC_C2K_WDT
 
 #elif defined(CONFIG_ARCH_MT6755) || defined(CONFIG_ARCH_MT6797)
 #define CPUIDLE_CPU_IDLE_STA CPU_IDLE_STA
 #define CPUIDLE_CPU_IDLE_STA_OFFSET 10
 #define CPUIDLE_SPM_WAKEUP_MISC SPM_WAKEUP_MISC
-#define CPUIDLE_SPM_WAKEUP_STA SPM_WAKEUP_STA
-#define CPUIDLE_WAKE_SRC_R12_KP_IRQ_B WAKE_SRC_R12_KP_IRQ_B
-#define CPUIDLE_WAKE_SRC_R12_CONN_WDT_IRQ_B WAKE_SRC_R12_CONN_WDT_IRQ_B
-#define CPUIDLE_WAKE_SRC_R12_LOWBATTERY_IRQ_B WAKE_SRC_R12_LOWBATTERY_IRQ_B
-#define CPUIDLE_WAKE_SRC_R12_MD1_WDT_B WAKE_SRC_R12_MD1_WDT_B
-#define CPUIDLE_WAKE_SRC_R12_C2K_WDT_IRQ_B WAKE_SRC_R12_C2K_WDT_IRQ_B
 #endif
 
 
 #define MAX_CORES 4
 #define MAX_CLUSTER 2
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#ifdef CONFIG_ARCH_MT6580
 #define MP0_CACHE_CONFIG	(mcucfg_base + 0)
 #define MP1_CACHE_CONFIG	(mcucfg_base + 0x200)
 #define L2RSTDISABLE		BIT(4)
@@ -134,7 +115,6 @@ static unsigned int c2k_wdt_irq_bit;
 #define _aor(a, b, c)		_or(_and(a, b), (c))
 
 struct core_context {
-	unsigned int banked_regs[32];
 	volatile u64 timestamp[5];
 	unsigned long timer_data[8];
 };
@@ -238,7 +218,6 @@ void __weak mt_restore_dbg_regs(unsigned int *p, unsigned int cpuid) { }
 void __weak mt_copy_dbg_regs(int to, int from) { }
 void __weak mt_save_banked_registers(unsigned int *container) { }
 void __weak mt_restore_banked_registers(unsigned int *container) { }
-void __weak mt_gic_cpu_init_for_low_power(void) { }
 
 struct interrupt_distributor {
 	volatile unsigned int control;			/* 0x000 */
@@ -263,11 +242,11 @@ struct interrupt_distributor {
 	unsigned const int primecell_id[4];		/* 0xFF0 */
 };
 
-static void restore_gic_spm_irq(struct interrupt_distributor *id, int wake_src, int *irq_bit)
+static void restore_gic_spm_irq(struct interrupt_distributor *id, long wakeup_sta, int wake_src, int *irq_bit)
 {
 	int i, j;
 
-	if (reg_read(CPUIDLE_SPM_WAKEUP_STA) & wake_src) {
+	if (reg_read(wakeup_sta) & wake_src) {
 		i = *irq_bit / GIC_PRIVATE_SIGNALS;
 		j = *irq_bit % GIC_PRIVATE_SIGNALS;
 		id->pending.set[i] |= (1 << j);
@@ -283,20 +262,33 @@ static void restore_edge_gic_spm_irq(unsigned long gic_distributor_address)
 	id->control = 0;
 
 	/* Set the pending bit for spm wakeup source that is edge triggerd */
-	restore_gic_spm_irq(id, CPUIDLE_WAKE_SRC_R12_KP_IRQ_B, &kp_irq_bit);
-	restore_gic_spm_irq(id, CPUIDLE_WAKE_SRC_R12_CONN_WDT_IRQ_B, &conn_wdt_irq_bit);
-	restore_gic_spm_irq(id, CPUIDLE_WAKE_SRC_R12_LOWBATTERY_IRQ_B, &lowbattery_irq_bit);
-	restore_gic_spm_irq(id, CPUIDLE_WAKE_SRC_R12_MD1_WDT_B, &md1_wdt_irq_bit);
-#ifdef CONFIG_MTK_MD3_SUPPORT
-#if CONFIG_MTK_MD3_SUPPORT /* Using this to check >0 */
-	restore_gic_spm_irq(id, CPUIDLE_WAKE_SRC_R12_C2K_WDT_IRQ_B, &c2k_wdt_irq_bit);
-#endif
-#endif
+#if defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6735_SERIES)
+	restore_gic_spm_irq(id, (long) SPM_SLEEP_ISR_RAW_STA, WAKE_SRC_KP, &kp_irq_bit);
+	restore_gic_spm_irq(id, (long) SPM_SLEEP_ISR_RAW_STA, WAKE_SRC_CONN_WDT, &conn_wdt_irq_bit);
+	restore_gic_spm_irq(id, (long) SPM_SLEEP_ISR_RAW_STA, WAKE_SRC_LOW_BAT, &lowbattery_irq_bit);
+#if defined(CONFIG_ARCH_MT6735_SERIES)
+	restore_gic_spm_irq(id, (long) SPM_SLEEP_ISR_RAW_STA, WAKE_SRC_MD_WDT, &md1_wdt_irq_bit);
+#else
+	restore_gic_spm_irq(id, (long) SPM_SLEEP_ISR_RAW_STA, WAKE_SRC_MD1_WDT, &md1_wdt_irq_bit);
+#endif /* #if defined(CONFIG_ARCH_MT6735_SERIES) */
+#ifdef CONFIG_MTK_C2K_SUPPORT
+	restore_gic_spm_irq(id, (long) SPM_SLEEP_ISR_RAW_STA, WAKE_SRC_C2K_WDT, &c2k_wdt_irq_bit);
+#endif /* #ifdef CONFIG_MTK_C2K_SUPPORT */
+
+#elif defined(CONFIG_ARCH_MT6755)
+	restore_gic_spm_irq(id, (long) SPM_WAKEUP_STA, WAKE_SRC_R12_KP_IRQ_B, &kp_irq_bit);
+	restore_gic_spm_irq(id, (long) SPM_WAKEUP_STA, WAKE_SRC_R12_CONN_WDT_IRQ_B, &conn_wdt_irq_bit);
+	/* restore_gic_spm_irq(id, (long) SPM_WAKEUP_STA, WAKE_SRC_R12_LOWBATTERY_IRQ_B, &lowbattery_irq_bit); */
+	restore_gic_spm_irq(id, (long) SPM_WAKEUP_STA, WAKE_SRC_R12_MD1_WDT_B, &md1_wdt_irq_bit);
+#ifdef CONFIG_MTK_C2K_SUPPORT
+	restore_gic_spm_irq(id, (long) SPM_WAKEUP_STA, WAKE_SRC_R12_C2K_WDT_IRQ_B, &c2k_wdt_irq_bit);
+#endif /* #ifdef CONFIG_MTK_C2K_SUPPORT */
+#endif /* #if defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6735_SERIES) */
 
 	id->control = backup;
 }
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 
 struct cpu_interface {
 	volatile unsigned int control;			/* 0x00 */
@@ -656,9 +648,9 @@ static void mt_cluster_restore(int flags)
 {
 #if defined(CONFIG_ARCH_MT6735) || defined(CONFIG_ARCH_MT6735M)
 	biu_reconfig();
-#elif defined(CONFIG_ARCH_MT6797)
-	mt_gic_cpu_init_for_low_power();
-#elif (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#endif
+
+#if defined(CONFIG_ARCH_MT6580)
 	if (read_cluster_id() == 0)
 		mp0_l2rstdisable_restore(flags);
 	else
@@ -669,10 +661,8 @@ static void mt_cluster_restore(int flags)
 void mt_cpu_save(void)
 {
 	struct core_context *core;
-#if 0
 	struct cluster_context *cluster;
 	unsigned int sleep_sta;
-#endif
 	int cpuid, clusterid;
 
 	read_id(&cpuid, &clusterid);
@@ -681,7 +671,7 @@ void mt_cpu_save(void)
 
 	mt_save_generic_timer((unsigned int *)core->timer_data, 0x0);
 	stop_generic_timer();
-#if 0
+
 	if (clusterid == 0)
 		sleep_sta = (spm_read(CPUIDLE_CPU_IDLE_STA) >> CPUIDLE_CPU_IDLE_STA_OFFSET) & 0x0f;
 	else
@@ -691,23 +681,19 @@ void mt_cpu_save(void)
 		cluster = GET_CLUSTER_DATA();
 		mt_save_dbg_regs((unsigned int *)cluster->dbg_data, cpuid + (clusterid * 4));
 	}
-#endif
-	mt_save_banked_registers(core->banked_regs);
 }
 
 void mt_cpu_restore(void)
 {
 	struct core_context *core;
-#if 0
 	struct cluster_context *cluster;
 	unsigned int sleep_sta;
-#endif
 	int cpuid, clusterid;
 
 	read_id(&cpuid, &clusterid);
 
 	core = GET_CORE_DATA();
-#if 0
+
 	if (clusterid == 0)
 		sleep_sta = (spm_read(CPUIDLE_CPU_IDLE_STA) >> CPUIDLE_CPU_IDLE_STA_OFFSET) & 0x0f;
 	else
@@ -724,16 +710,14 @@ void mt_cpu_restore(void)
 		mt_copy_dbg_regs(cpuid + (clusterid * 4), any + (clusterid * 4));
 	}
 
-#endif
 	mt_restore_generic_timer((unsigned int *)core->timer_data, 0x0);
-	mt_restore_banked_registers(core->banked_regs);
 }
 
 void mt_platform_save_context(int flags)
 {
 	mt_cpu_save();
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 	mt_cluster_save(flags);
 
 	if (IS_DORMANT_GIC_OFF(flags)) {
@@ -745,19 +729,11 @@ void mt_platform_save_context(int flags)
 
 void mt_platform_restore_context(int flags)
 {
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
-#if (defined(CONFIG_TRUSTONIC_TEE_SUPPORT) || defined(CONFIG_TRUSTY))
-	int cpuid, clusterid;
-
-	read_id(&cpuid, &clusterid);
-#endif
-#endif
-
 	mt_cluster_restore(flags);
 	mt_cpu_restore();
 
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 	if (IS_DORMANT_GIC_OFF(flags)) {
 		gic_dist_restore();
 		gic_cpu_restore();
@@ -766,26 +742,9 @@ void mt_platform_restore_context(int flags)
 	if (IS_DORMANT_GIC_OFF(flags))
 		restore_edge_gic_spm_irq(gic_id_base);
 #endif
-
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
-#if defined(CONFIG_TRUSTONIC_TEE_SUPPORT)
-	/* SODI/DPIDLE */
-	if (!IS_DORMANT_INNER_OFF(flags)) {
-		if (cpuid == 0)
-			mt_secure_call(MC_FC_SLEEP_CANCELLED, 0, 0, 0);
-	}
-#elif defined(CONFIG_TRUSTY)
-	/* SODI/DPIDLE */
-	if (!IS_DORMANT_INNER_OFF(flags)) {
-		if (cpuid == 0)
-			mt_trusty_call(SMC_FC_CPU_DORMANT_CANCEL, 0, 0, 0);
-	}
-#endif
-#endif /* CONFIG_ARCH_MT6580  */
-
 }
 
-#if !defined(CONFIG_ARM64) && !(defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if !defined(CONFIG_ARM64) && !defined(CONFIG_ARCH_MT6580)
 int mt_cpu_dormant_psci(unsigned long flags)
 {
 	int ret = 1;
@@ -809,7 +768,7 @@ int mt_cpu_dormant_psci(unsigned long flags)
 }
 #endif
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 int mt_cpu_dormant_reset(unsigned long flags)
 {
 	int ret = 1; /* dormant abort */
@@ -819,6 +778,12 @@ int mt_cpu_dormant_reset(unsigned long flags)
 	read_id(&cpuid, &clusterid);
 
 	disable_dcache_safe(!!IS_DORMANT_INNER_OFF(flags));
+
+	if ((unlikely(IS_DORMANT_BREAK_CHECK(flags)) &&
+	     unlikely(SPM_IS_CPU_IRQ_OCCUR(SPM_CORE_ID())))) {
+		ret = 2; /* dormant break */
+		goto _break0;
+	}
 
 	amp();
 
@@ -830,17 +795,52 @@ int mt_cpu_dormant_reset(unsigned long flags)
 
 	DORMANT_LOG(clusterid * 4 + cpuid, 0x302);
 
+_break0:
+
 	__enable_dcache();
 
 	DORMANT_LOG(clusterid * 4 + cpuid, 0x303);
 
 	return ret;
 }
+
+#define get_data_nommu(va)				\
+	({						\
+		register int data = 0;			\
+		register unsigned long pva = (unsigned long)(void *)(&(va)); \
+		mt_get_data_nommu(data, pva);		\
+		data;					\
+	})
+
+__naked void cpu_resume_wrapper(void)
+{
+	register int val;
+
+#ifdef CONFIG_MTK_RAM_CONSOLE
+	reg_write(get_data_nommu(sleep_aee_rec_cpu_dormant_pa), 0x401);
+#endif
+
+	/*
+	 * restore L2 SRAM latency:
+	 * This register can only be written when the L2 memory system is
+	 * idle. ARM recommends that you write to this register after a
+	 * powerup reset before the MMU is enabled and before any AXI4 or
+	 * ACP traffic has begun.
+	 */
+	val = get_data_nommu(dormant_data[0].poc.l2ctlr);
+	if (val) {
+		val &= 0x3ffff;
+		mt_restore_l2ctlr(val);
+	}
+
+	/* jump to cpu_resume() */
+	mt_goto_cpu_resume(&(dormant_data[0].poc.cpu_resume_phys));
+}
 #endif
 
 static int mt_cpu_dormant_abort(unsigned long index)
 {
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 	int cpuid, clusterid;
 
 	read_id(&cpuid, &clusterid);
@@ -848,7 +848,7 @@ static int mt_cpu_dormant_abort(unsigned long index)
 #ifdef CONFIG_TRUSTONIC_TEE_SUPPORT
 	if (cpuid == 0)
 		mt_secure_call(MC_FC_SLEEP_CANCELLED, 0, 0, 0);
-#elif defined(CONFIG_TRUSTY) && (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#elif defined(CONFIG_TRUSTY) && defined(CONFIG_ARCH_MT6580)
 	if (cpuid == 0)
 		mt_trusty_call(SMC_FC_CPU_DORMANT_CANCEL, 0, 0, 0);
 #endif
@@ -887,20 +887,34 @@ int mt_cpu_dormant(unsigned long flags)
 	/* to mark as cpu clobs vfp register.*/
 	kernel_neon_begin();
 
+	/* dormant break */
+	if (IS_DORMANT_BREAK_CHECK(flags) && SPM_IS_CPU_IRQ_OCCUR(SPM_CORE_ID())) {
+		ret = MT_CPU_DORMANT_BREAK_V(IRQ_PENDING_1);
+		goto dormant_exit;
+	}
+
 	mt_platform_save_context(flags);
 
 	DORMANT_LOG(clusterid * MAX_CORES + cpuid, 0x102);
 
-#if !defined(CONFIG_ARM64) && !(defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+	/* dormant break */
+	if (IS_DORMANT_BREAK_CHECK(flags) && SPM_IS_CPU_IRQ_OCCUR(SPM_CORE_ID())) {
+		mt_cpu_dormant_abort(flags);
+		ret = MT_CPU_DORMANT_BREAK_V(IRQ_PENDING_2);
+		goto dormant_exit;
+	}
+
+	DORMANT_LOG(clusterid * MAX_CORES + cpuid, 0x103);
+
+#if !defined(CONFIG_ARM64) && !defined(CONFIG_ARCH_MT6580)
 	ret = cpu_suspend(flags, mt_cpu_dormant_psci);
-#elif !(defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#elif !defined(CONFIG_ARCH_MT6580)
 	ret = cpu_suspend(2);
 #else
 	dormant_data[0].poc.cpu_resume_phys = (void (*)(void))(long)virt_to_phys(cpu_resume);
 #ifdef CONFIG_TRUSTONIC_TEE_SUPPORT
-	/* CPU_DEEP_SLEEP (0), CPU_MCDI_SLEEP (1)  */
-	mt_secure_call(MC_FC_MTK_SLEEP, virt_to_phys(cpu_resume), cpuid, IS_DORMANT_INNER_OFF(flags) ? 0 : 1);
-#elif defined(CONFIG_TRUSTY) && (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+	mt_secure_call(MC_FC_MTK_SLEEP, virt_to_phys(cpu_resume), cpuid, 0);
+#elif defined(CONFIG_TRUSTY) && defined(CONFIG_ARCH_MT6580)
 	mt_trusty_call(SMC_FC_CPU_DORMANT, virt_to_phys(cpu_resume), cpuid, 0);
 #else
 	writel_relaxed(virt_to_phys(cpu_resume), DMT_BOOTROM_BOOT_ADDR);
@@ -909,7 +923,7 @@ int mt_cpu_dormant(unsigned long flags)
 #endif
 	DORMANT_LOG(clusterid * MAX_CORES + cpuid, 0x601);
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 	if (IS_DORMANT_INNER_OFF(flags)) {
 		reg_write(DMT_BOOTROM_BOOT_ADDR, virt_to_phys(cpu_wake_up_errata_802022));
 
@@ -919,7 +933,7 @@ int mt_cpu_dormant(unsigned long flags)
 			mt_secure_call(MC_FC_SET_RESET_VECTOR, virt_to_phys(cpu_wake_up_errata_802022), 2, 0);
 			mt_secure_call(MC_FC_SET_RESET_VECTOR, virt_to_phys(cpu_wake_up_errata_802022), 3, 0);
 		}
-#elif defined(CONFIG_TRUSTY) && (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#elif defined(CONFIG_TRUSTY) && defined(CONFIG_ARCH_MT6580)
 		mt_trusty_call(SMC_FC_CPU_ON, virt_to_phys(cpu_wake_up_errata_802022), 1, 1);
 		if (num_possible_cpus() == 4) {
 			mt_trusty_call(SMC_FC_CPU_ON, virt_to_phys(cpu_wake_up_errata_802022), 2, 1);
@@ -938,7 +952,7 @@ int mt_cpu_dormant(unsigned long flags)
 
 #ifdef CONFIG_TRUSTONIC_TEE_SUPPORT
 		mt_secure_call(MC_FC_ERRATA_808022, 0, 0, 0);
-#elif defined(CONFIG_TRUSTY) && (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#elif defined(CONFIG_TRUSTY) && defined(CONFIG_ARCH_MT6580)
 		mt_trusty_call(SMC_FC_CPU_ERRATA_802022, 0, 0, 0);
 #endif
 	}
@@ -966,6 +980,8 @@ int mt_cpu_dormant(unsigned long flags)
 	DORMANT_LOG(clusterid * MAX_CORES + cpuid, 0x602);
 
 	local_fiq_enable();
+
+dormant_exit:
 
 	kernel_neon_end();
 
@@ -1023,7 +1039,7 @@ static u32 get_dts_node_irq_bit(char *node_compatible, const int int_size, int i
 	return irq_bit;
 }
 
-#if defined(CONFIG_ARCH_MT6580)
+#ifdef CONFIG_ARCH_MT6580
 static void get_dts_nodes_address(void)
 {
 	mcucfg_base = get_dts_node_address("mediatek,mt6580-mcucfg", 0);
@@ -1037,22 +1053,6 @@ static void get_dts_nodes_irq_bit(void)
 	kp_irq_bit = get_dts_node_irq_bit("mediatek,mt6580-keypad", 3, 0);
 	conn_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mt6580-consys", 6, 3);
 	lowbattery_irq_bit = get_dts_node_irq_bit("mediatek,mt6735-auxadc", 3, 0);
-	md1_wdt_irq_bit = get_dts_node_irq_bit("mediatek,ap_ccif0", 6, 3);
-}
-#elif defined(CONFIG_ARCH_MT6570)
-static void get_dts_nodes_address(void)
-{
-	mcucfg_base = get_dts_node_address("mediatek,mcucfg", 0);
-	infracfg_ao_base = get_dts_node_address("mediatek,infracfg_ao", 0);
-	gic_id_base = get_dts_node_address("arm,cortex-a7-gic", 0);
-	gic_ci_base = get_dts_node_address("arm,cortex-a7-gic", 1);
-}
-
-static void get_dts_nodes_irq_bit(void)
-{
-	kp_irq_bit = get_dts_node_irq_bit("mediatek,mt6570-keypad", 3, 0);
-	conn_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mt6570-consys", 6, 3);
-	lowbattery_irq_bit = get_dts_node_irq_bit("mediatek,ap-auxadc", 3, 0);
 	md1_wdt_irq_bit = get_dts_node_irq_bit("mediatek,ap_ccif0", 6, 3);
 }
 #elif defined(CONFIG_ARCH_MT6735_SERIES)
@@ -1070,10 +1070,8 @@ static void get_dts_nodes_irq_bit(void)
 	conn_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mt6735-consys", 6, 3);
 	lowbattery_irq_bit = get_dts_node_irq_bit("mediatek,mt6735-auxadc", 3, 0);
 	md1_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mdcldma", 9, 6);
-#ifdef CONFIG_MTK_MD3_SUPPORT
-#if CONFIG_MTK_MD3_SUPPORT /* Using this to check >0 */
+#ifdef CONFIG_MTK_C2K_SUPPORT
 	c2k_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mdc2k", 3, 0);
-#endif
 #endif
 }
 #elif defined(CONFIG_ARCH_MT6755)
@@ -1088,10 +1086,8 @@ static void get_dts_nodes_irq_bit(void)
 	conn_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mt6755-consys", 6, 3);
 	lowbattery_irq_bit = get_dts_node_irq_bit(NULL, 3, 0);
 	md1_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mdcldma", 9, 6);
-#ifdef CONFIG_MTK_MD3_SUPPORT
-#if CONFIG_MTK_MD3_SUPPORT /* Using this to check >0 */
+#ifdef CONFIG_MTK_C2K_SUPPORT
 	c2k_wdt_irq_bit = get_dts_node_irq_bit("mediatek,ap2c2k_ccif", 6, 3);
-#endif
 #endif
 }
 #elif defined(CONFIG_ARCH_MT6797)
@@ -1103,13 +1099,11 @@ static void get_dts_nodes_address(void)
 static void get_dts_nodes_irq_bit(void)
 {
 	kp_irq_bit = get_dts_node_irq_bit("mediatek,mt6797-keypad", 3, 0);
-	conn_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mt6797-consys", 6, 3);
-	lowbattery_irq_bit = get_dts_node_irq_bit("mediatek,mt6797-auxadc", 3, 0);
-	md1_wdt_irq_bit = get_dts_node_irq_bit("mediatek,mdcldma", 9, 6);
-#ifdef CONFIG_MTK_MD3_SUPPORT
-#if CONFIG_MTK_MD3_SUPPORT /* Using this to check >0 */
+	conn_wdt_irq_bit = get_dts_node_irq_bit(NULL, 6, 3);
+	lowbattery_irq_bit = get_dts_node_irq_bit("mediatek,auxadc", 3, 0);
+	md1_wdt_irq_bit = get_dts_node_irq_bit(NULL, 9, 6);
+#ifdef CONFIG_MTK_C2K_SUPPORT
 	c2k_wdt_irq_bit = get_dts_node_irq_bit("mediatek,ap2c2k_ccif", 6, 3);
-#endif
 #endif
 }
 #endif
@@ -1133,7 +1127,7 @@ int mt_cpu_dormant_init(void)
 
 	mt_dormant_dts_map();
 
-#if (defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if defined(CONFIG_ARCH_MT6580)
 	/* enable bootrom power down mode */
 	reg_write(DMT_BOOTROM_PWR_CTRL, reg_read(DMT_BOOTROM_PWR_CTRL) | SW_ROM_PD);
 
@@ -1146,7 +1140,7 @@ int mt_cpu_dormant_init(void)
 
 	BUG_ON(!sleep_aee_rec_cpu_dormant_va || !sleep_aee_rec_cpu_dormant_pa);
 
-#if !(defined(CONFIG_ARCH_MT6580) || defined(CONFIG_ARCH_MT6570))
+#if !defined(CONFIG_ARCH_MT6580)
 #if defined(CONFIG_ARM_PSCI) || defined(CONFIG_MTK_PSCI)
 	kernel_smc_msg(0, 2, (long) sleep_aee_rec_cpu_dormant_pa);
 #endif

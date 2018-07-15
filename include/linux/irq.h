@@ -836,28 +836,6 @@ static inline void irq_gc_lock(struct irq_chip_generic *gc) { }
 static inline void irq_gc_unlock(struct irq_chip_generic *gc) { }
 #endif
 
-/*
- * The irqsave variants are for usage in non interrupt code. Do not use
- * them in irq_chip callbacks. Use irq_gc_lock() instead.
- */
-#define irq_gc_lock_irqsave(gc, flags)	\
-	raw_spin_lock_irqsave(&(gc)->lock, flags)
-
-#define irq_gc_unlock_irqrestore(gc, flags)	\
-	raw_spin_unlock_irqrestore(&(gc)->lock, flags)
-
-static inline void irq_reg_writel(struct irq_chip_generic *gc,
-				  u32 val, int reg_offset)
-{
-	writel(val, gc->reg_base + reg_offset);
-}
-
-static inline u32 irq_reg_readl(struct irq_chip_generic *gc,
-				int reg_offset)
-{
-	return readl(gc->reg_base + reg_offset);
-}
-
 #ifdef CONFIG_MTK_IRQ_NEW_DESIGN
 #include <linux/rculist.h>
 
@@ -879,5 +857,27 @@ void dump_irq_need_migrate_list(const struct cpumask *mask);
 extern bool mt_get_irq_gic_targets(struct irq_data *d, cpumask_t *mask);
 extern bool mt_is_secure_irq(struct irq_data *d);
 #endif
+
+/*
+ * The irqsave variants are for usage in non interrupt code. Do not use
+ * them in irq_chip callbacks. Use irq_gc_lock() instead.
+ */
+#define irq_gc_lock_irqsave(gc, flags)	\
+	raw_spin_lock_irqsave(&(gc)->lock, flags)
+
+#define irq_gc_unlock_irqrestore(gc, flags)	\
+	raw_spin_unlock_irqrestore(&(gc)->lock, flags)
+
+static inline void irq_reg_writel(struct irq_chip_generic *gc,
+				  u32 val, int reg_offset)
+{
+	writel(val, gc->reg_base + reg_offset);
+}
+
+static inline u32 irq_reg_readl(struct irq_chip_generic *gc,
+				int reg_offset)
+{
+	return readl(gc->reg_base + reg_offset);
+}
 
 #endif /* _LINUX_IRQ_H */

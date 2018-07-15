@@ -29,11 +29,8 @@
 #define MT_CCF_DEBUG	0
 #define MT_CCF_BRINGUP  0
 #elif defined(CONFIG_ARCH_MT6797)
-#define MT_CCF_DEBUG	0
+#define MT_CCF_DEBUG	1
 #define MT_CCF_BRINGUP  0
-#elif defined(CONFIG_ARCH_MT6757)
-#define MT_CCF_DEBUG	0
-#define MT_CCF_BRINGUP  1
 #else
 #define MT_CCF_DEBUG	0
 #define MT_CCF_BRINGUP	0
@@ -86,9 +83,6 @@ static int cg_enable(struct clk_hw *hw)
 			__clk_get_name(hw->clk), cg->bit);
 	return 0;
 #endif /* MT_CCF_BRINGUP */
-#if MT_CCF_DEBUG
-	pr_debug_ratelimited("[CCF] %s: %s\n", __func__, __clk_get_name(hw->clk));
-#endif
 
 	mtk_clk_lock(flags);
 
@@ -113,9 +107,6 @@ static void cg_disable(struct clk_hw *hw)
 			__clk_get_name(hw->clk), cg->bit);
 	return;
 #endif /* MT_CCF_BRINGUP */
-#if MT_CCF_DEBUG
-	pr_debug_ratelimited("[CCF] %s: %s\n", __func__, __clk_get_name(hw->clk));
-#endif
 
 	mtk_clk_lock(flags);
 
@@ -144,10 +135,8 @@ static int cg_is_enabled(struct clk_hw *hw)
 
 	r = (cg->flags & CLK_GATE_INVERSE) ? (val != 0) : (val == 0);
 
-#if MT_CCF_DEBUG
-	pr_debug_ratelimited("[CCF] %s: %d, %s, bit[%d]\n", __func__, r,
+	pr_debug("[CCF] %s: %d, %s, bit[%d]\n", __func__, r,
 		 __clk_get_name(hw->clk), (int)cg->bit);
-#endif
 
 	return r;
 }
@@ -172,7 +161,7 @@ struct clk *mtk_clk_register_gate(
 	struct clk_init_data init;
 
 #if MT_CCF_DEBUG
-	pr_debug_ratelimited("[CCF] name: %s, bit: %d\n", name, (int)bit);
+	pr_debug("[CCF] name: %s, bit: %d\n", name, (int)bit);
 #endif /* MT_CCF_DEBUG */
 
 	cg = kzalloc(sizeof(*cg), GFP_KERNEL);

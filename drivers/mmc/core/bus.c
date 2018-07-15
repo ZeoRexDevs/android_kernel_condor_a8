@@ -154,18 +154,10 @@ static int mmc_bus_suspend(struct device *dev)
 	if (dev->driver && drv->suspend) {
 		ret = drv->suspend(card);
 		if (ret)
-			goto out;
+			return ret;
 	}
 
 	ret = host->bus_ops->suspend(host);
-	/*
-	 * Restart queue if suspend failed
-	 */
-	if (ret) {
-		if (dev->driver && drv->resume)
-			(void)drv->resume(card);
-	}
-out:
 	return ret;
 }
 

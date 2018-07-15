@@ -219,11 +219,7 @@ static struct usb_request *acc_request_new(struct usb_ep *ep, int buffer_size)
 		return NULL;
 
 	/* now allocate buffers for the requests */
-#if defined(CONFIG_64BIT) && defined(CONFIG_MTK_LM_MODE)
-	req->buf = kmalloc(buffer_size, GFP_KERNEL | GFP_DMA);
-#else
 	req->buf = kmalloc(buffer_size, GFP_KERNEL);
-#endif
 	if (!req->buf) {
 		usb_ep_free_request(ep, req);
 		return NULL;
@@ -571,7 +567,6 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 	struct acc_dev *dev = fp->private_data;
 	struct usb_request *req;
 	ssize_t r = count;
-	ssize_t data_length;
 	unsigned xfer;
 	int ret = 0;
 
@@ -585,7 +580,6 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 	if (count > BULK_BUFFER_SIZE)
 		count = BULK_BUFFER_SIZE;
 
-
 	/* we will block until we're online */
 	pr_debug("acc_read: waiting for online\n");
 	ret = wait_event_interruptible(dev->read_wq, dev->online);
@@ -593,10 +587,6 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 		r = ret;
 		goto done;
 	}
-
-	data_length = count;
-	data_length += dev->ep_out->maxpacket - 1;
-	data_length -= data_length % dev->ep_out->maxpacket;
 
 	if (dev->rx_done) {
 		// last req cancelled. try to get it.
@@ -607,7 +597,7 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 requeue_req:
 	/* queue a request */
 	req = dev->rx_req[0];
-	req->length = data_length;
+	req->length = count;
 	dev->rx_done = 0;
 	ret = usb_ep_queue(dev->ep_out, req, GFP_KERNEL);
 	if (ret < 0) {
@@ -639,7 +629,6 @@ copy_data:
 
 		pr_debug("rx %p %u\n", req, req->actual);
 		xfer = (req->actual < count) ? req->actual : count;
-
 		r = xfer;
 		if (copy_to_user(buf, req->buf, xfer))
 			r = -EFAULT;
@@ -658,7 +647,6 @@ static ssize_t acc_write(struct file *fp, const char __user *buf,
 	struct usb_request *req = 0;
 	ssize_t r = count;
 	unsigned xfer;
-	int sendZLP = 0;
 	int ret;
 
 	pr_debug("acc_write(%zu)\n", count);
@@ -668,17 +656,7 @@ static ssize_t acc_write(struct file *fp, const char __user *buf,
 		return -ENODEV;
 	}
 
-	/* we need to send a zero length packet to signal the end of transfer
-	 * if the transfer size is aligned to a packet boundary.
-	 */
-	if ((count & (dev->ep_in->maxpacket - 1)) == 0)
-		sendZLP = 1;
-
-	while (count > 0 || sendZLP) {
-		/* so we exit after sending ZLP */
-		if (count == 0)
-			sendZLP = 0;
-
+	while (count > 0) {
 		if (!dev->online) {
 			pr_debug("acc_write dev->error\n");
 			r = -EIO;
@@ -694,11 +672,17 @@ static ssize_t acc_write(struct file *fp, const char __user *buf,
 			break;
 		}
 
-		if (count > BULK_BUFFER_SIZE)
+		if (count > BULK_BUFFER_SIZE) {
 			xfer = BULK_BUFFER_SIZE;
-		else
+			/* ZLP, They will be more TX requests so not yet. */
+			req->zero = 0;
+		} else {
 			xfer = count;
-
+			/* If the data length is a multple of the
+			 * maxpacket size then send a zero length packet(ZLP).
+			*/
+			req->zero = ((xfer % dev->ep_in->maxpacket) == 0);
+		}
 		if (copy_from_user(req->buf, buf, xfer)) {
 			r = -EFAULT;
 			break;
@@ -794,9 +778,6 @@ static const struct file_operations acc_fops = {
 	.read = acc_read,
 	.write = acc_write,
 	.unlocked_ioctl = acc_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = acc_ioctl,
-#endif
 	.open = acc_open,
 	.release = acc_release,
 };
@@ -968,7 +949,6 @@ __acc_function_bind(struct usb_configuration *c,
 		}
 		dev->cdev = c->cdev;
 	}
-
 	ret = hid_register_driver(&acc_hid_driver);
 	if (ret)
 		return ret;
@@ -1216,7 +1196,7 @@ static int acc_bind_config(struct usb_configuration *c)
 	struct acc_dev *dev = _acc_dev;
 	int ret;
 
-	pr_info("acc_bind_config\n");
+	printk(KERN_INFO "acc_bind_config\n");
 
 	/* allocate a string ID for our interface */
 	if (acc_string_defs[INTERFACE_STRING_INDEX].id == 0) {

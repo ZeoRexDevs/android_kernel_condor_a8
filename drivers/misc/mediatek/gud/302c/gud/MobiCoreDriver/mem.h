@@ -114,9 +114,6 @@ struct mc_mem_context {
 	struct mutex		table_lock;
 };
 
-/* MobiCore Memory data. */
-extern struct mc_mem_context mem_ctx;
-
 /*
  * Allocate MMU table and map buffer into it.
  * That is, create respective table entries.
@@ -147,7 +144,5 @@ void mc_release_mmu_tables(void);
 
 /* Initialize all MMU tables structure */
 int mc_init_mmu_tables(void);
-
-struct mc_mmu_table *find_mmu_table(unsigned int handle);
 
 #endif /* _MC_MEM_H_ */

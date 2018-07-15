@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef _MT_SPM_
 #define _MT_SPM_
 
@@ -327,9 +314,6 @@ enum spm_clk_buf_pad_id {
 };
 
 typedef void (*twam_handler_t) (struct twam_sig *twamsig);
-
-/* check if spm firmware ready */
-extern int spm_load_firmware_status(void);
 
 /* for power management init */
 extern int spm_module_init(void);

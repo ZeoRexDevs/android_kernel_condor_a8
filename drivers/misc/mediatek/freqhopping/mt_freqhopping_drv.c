@@ -38,11 +38,7 @@ static struct freqhopping_ssc *g_fh_drv_usr_def;
 static unsigned int g_drv_pll_count;
 static int mt_freqhopping_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 
-
-
 #if !defined(DISABLE_FREQ_HOPPING)
-
-static unsigned long g_irq_flags;
 
 static struct miscdevice mt_fh_device = {
 	.minor = MISC_DYNAMIC_MINOR,
@@ -60,7 +56,7 @@ static int mt_fh_drv_probe(struct platform_device *dev)
 	if (err)
 		FH_MSG("register fh driver error!");
 
-	return 0;
+	return err;
 }
 
 static int mt_fh_drv_remove(struct platform_device *dev)
@@ -76,15 +72,7 @@ static int mt_fh_drv_remove(struct platform_device *dev)
 
 static void mt_fh_drv_shutdown(struct platform_device *dev)
 {
-	int id = 0;
-
 	FH_MSG("mt_fh_shutdown");
-
-	pr_alert("Disable SSC before system reset.\n");
-
-	for (id = 0; id < FH_PLL_COUNT; id++)
-		freqhopping_config(id, 0, false);
-
 }
 
 static int mt_fh_drv_suspend(struct platform_device *dev, pm_message_t state)
@@ -105,13 +93,6 @@ static int mt_fh_drv_resume(struct platform_device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
-static const struct of_device_id mt_fhctl_of_match[] = {
-	{ .compatible = "mediatek,FHCTL", },
-	{ .compatible = "mediatek,fhctl", },
-	{},
-};
-#endif
 
 static struct platform_driver freqhopping_driver = {
 	.probe = mt_fh_drv_probe,
@@ -122,9 +103,6 @@ static struct platform_driver freqhopping_driver = {
 	.driver = {
 		   .name = FREQ_HOPPING_DEVICE,
 		   .owner = THIS_MODULE,
-#ifdef CONFIG_OF
-		   .of_match_table = mt_fhctl_of_match,
-#endif
 		   },
 };
 #endif
@@ -274,10 +252,6 @@ static ssize_t freqhopping_userdefine_proc_write(struct file *file, const char *
 	fh_ctl.ssc_setting.dds = p7;
 	/* fh_ctl.ssc_setting.freq = 0; */
 
-	/* Check validity of PLL ID */
-	if (fh_ctl.pll_id >= FH_PLL_COUNT)
-		return -1;
-
 
 	if (p1 == FH_CMD_ENABLE) {
 		ret = mt_fh_enable_usrdef(&fh_ctl);
@@ -358,11 +332,6 @@ static ssize_t freqhopping_status_proc_write(struct file *file, const char *buff
 	fh_ctl.ssc_setting.upbnd = 0;
 	fh_ctl.ssc_setting.lowbnd = 0;
 
-	/* Check validity of PLL ID */
-	if (fh_ctl.pll_id >= FH_PLL_COUNT)
-		return -1;
-
-
 	if (p1 == 0)
 		mt_freqhopping_ioctl(NULL, FH_CMD_DISABLE, (unsigned long)(&fh_ctl));
 	else
@@ -420,11 +389,6 @@ static ssize_t freqhopping_debug_proc_write(struct file *file, const char *buffe
 	fh_ctl.ssc_setting.lowbnd = p7;
 	/* fh_ctl.ssc_setting.freq = 0; */
 
-	/* Check validity of PLL ID */
-	if (fh_ctl.pll_id >= FH_PLL_COUNT)
-		return -1;
-
-
 	if (cmd < FH_CMD_INTERNAL_MAX_CMD)
 		mt_freqhopping_ioctl(NULL, cmd, (unsigned long)(&fh_ctl));
 	else if ((cmd > FH_DCTL_CMD_ID) && (cmd < FH_DCTL_CMD_MAX))
@@ -460,8 +424,7 @@ static int freqhopping_dvfs_proc_open(struct inode *inode, struct file *file)
 static ssize_t freqhopping_dvfs_proc_write(struct file *file, const char *buffer, size_t count,
 					   loff_t *data)
 {
-	/* return (ssize_t) (g_p_fh_hal_drv->proc.dvfs_write(file, buffer, count, data)); */
-	return (ssize_t) 0;
+	return (ssize_t) (g_p_fh_hal_drv->proc.dvfs_write(file, buffer, count, data));
 }
 
 static int freqhopping_dumpregs_proc_open(struct inode *inode, struct file *file)
@@ -686,13 +649,6 @@ int mt_dfs_mpll(unsigned int target_dds)
 }
 EXPORT_SYMBOL(mt_dfs_mpll);
 
-int mt_dfs_general_pll(unsigned int pll_id, unsigned int target_dds)
-{
-	return 0;
-}
-EXPORT_SYMBOL(mt_dfs_general_pll);
-
-
 int mt_is_support_DFS_mode(void)
 {
 	return 0;
@@ -738,18 +694,6 @@ int mt_freqhopping_devctl(unsigned int cmd, void *args)
 	return 0;
 }
 EXPORT_SYMBOL(mt_freqhopping_devctl);
-
-void mt_fh_lock(void)
-{
-}
-EXPORT_SYMBOL(mt_fh_lock);
-
-
-void mt_fh_unlock(void)
-{
-}
-EXPORT_SYMBOL(mt_fh_unlock);
-
 
 #else
 
@@ -893,18 +837,6 @@ int mt_dfs_mempll(unsigned int target_dds)
 }
 EXPORT_SYMBOL(mt_dfs_mempll);
 
-int mt_dfs_general_pll(unsigned int pll_id, unsigned int target_dds)
-{
-	if ((!g_p_fh_hal_drv) || (!g_p_fh_hal_drv->mt_dfs_general_pll)) {
-		FH_MSG("[%s]: g_p_fh_hal_drv->mt_dfs_general_pll is uninitialized.", __func__);
-		return 1;
-	}
-
-	return g_p_fh_hal_drv->mt_dfs_general_pll(pll_id, target_dds);
-
-}
-EXPORT_SYMBOL(mt_dfs_general_pll);
-
 
 int mt_is_support_DFS_mode(void)
 {
@@ -977,29 +909,5 @@ int mt_freqhopping_devctl(unsigned int cmd, void *args)
 
 }
 EXPORT_SYMBOL(mt_freqhopping_devctl);
-
-void mt_fh_lock(void)
-{
-	if (!g_p_fh_hal_drv) {
-		FH_MSG("[%s]: g_p_fh_hal_drv is uninitialized.", __func__);
-		return;
-	}
-
-	g_p_fh_hal_drv->mt_fh_lock(&g_irq_flags);
-}
-EXPORT_SYMBOL(mt_fh_lock);
-
-
-void mt_fh_unlock(void)
-{
-	if (!g_p_fh_hal_drv) {
-		FH_MSG("[%s]: g_p_fh_hal_drv is uninitialized.", __func__);
-		return;
-	}
-
-	g_p_fh_hal_drv->mt_fh_unlock(&g_irq_flags);
-}
-EXPORT_SYMBOL(mt_fh_unlock);
-
 
 #endif

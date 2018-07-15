@@ -53,7 +53,7 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
  */
 #define IDX1		32
 #define IDX2		32400
-#define IDX3		1
+#define IDX3		1511
 #define IDX4		8193
 #define IDX5		22222
 #define IDX6		17101
@@ -2302,6 +2302,21 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "chacha20",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = chacha20_enc_tv_template,
+					.count = CHACHA20_ENC_TEST_VECTORS
+				},
+				.dec = {
+					.vecs = chacha20_enc_tv_template,
+					.count = CHACHA20_ENC_TEST_VECTORS
+				},
+			}
+		}
+	}, {
 		.alg = "cmac(aes)",
 		.test = alg_test_hash,
 		.suite = {
@@ -2909,6 +2924,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 				.dec = {
 					.vecs = serpent_dec_tv_template,
 					.count = SERPENT_DEC_TEST_VECTORS
+				}
+			}
+		}
+	}, {
+		.alg = "ecb(speck128)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck128_enc_tv_template,
+					.count = ARRAY_SIZE(speck128_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck128_dec_tv_template,
+					.count = ARRAY_SIZE(speck128_dec_tv_template)
+				}
+			}
+		}
+	}, {
+		.alg = "ecb(speck64)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck64_enc_tv_template,
+					.count = ARRAY_SIZE(speck64_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck64_dec_tv_template,
+					.count = ARRAY_SIZE(speck64_dec_tv_template)
 				}
 			}
 		}
@@ -3569,6 +3614,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 				.dec = {
 					.vecs = serpent_xts_dec_tv_template,
 					.count = SERPENT_XTS_DEC_TEST_VECTORS
+				}
+			}
+		}
+	}, {
+		.alg = "xts(speck128)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck128_xts_enc_tv_template,
+					.count = ARRAY_SIZE(speck128_xts_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck128_xts_dec_tv_template,
+					.count = ARRAY_SIZE(speck128_xts_dec_tv_template)
+				}
+			}
+		}
+	}, {
+		.alg = "xts(speck64)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = speck64_xts_enc_tv_template,
+					.count = ARRAY_SIZE(speck64_xts_enc_tv_template)
+				},
+				.dec = {
+					.vecs = speck64_xts_dec_tv_template,
+					.count = ARRAY_SIZE(speck64_xts_dec_tv_template)
 				}
 			}
 		}

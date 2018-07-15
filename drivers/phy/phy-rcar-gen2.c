@@ -206,6 +206,11 @@ static struct phy *rcar_gen2_phy_xlate(struct device *dev,
 	struct device_node *np = args->np;
 	int i;
 
+	if (!of_device_is_available(np)) {
+		dev_warn(dev, "Requested PHY is disabled\n");
+		return ERR_PTR(-ENODEV);
+	}
+
 	drv = dev_get_drvdata(dev);
 	if (!drv)
 		return ERR_PTR(-EINVAL);
@@ -299,7 +304,7 @@ static int rcar_gen2_phy_probe(struct platform_device *pdev)
 			phy->select_value = select_value[channel_num][n];
 
 			phy->phy = devm_phy_create(dev, NULL,
-						   &rcar_gen2_phy_ops);
+						   &rcar_gen2_phy_ops, NULL);
 			if (IS_ERR(phy->phy)) {
 				dev_err(dev, "Failed to create PHY\n");
 				return PTR_ERR(phy->phy);

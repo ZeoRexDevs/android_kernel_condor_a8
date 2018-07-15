@@ -24,7 +24,6 @@
 #include <mt-plat/met_drv.h>
 
 #include "ddp_mmp.h"
-#include "disp_debug.h"
 
 #include "disp_log.h"
 
@@ -32,6 +31,7 @@
 #include "disp_utils.h"
 #include "mtkfb_info.h"
 #include "mtkfb.h"
+#include "ddp_debug.h"
 #include "ddp_info.h"
 #include "ddp_hal.h"
 #include "ddp_dump.h"
@@ -117,12 +117,14 @@ unsigned int dprec_error_log_id = 0;
 static dprec_logger old_logger[DPREC_LOGGER_NUM];
 char dprec_error_log_buffer[DPREC_ERROR_LOG_BUFFER_LENGTH];
 static dprec_logger_event dprec_vsync_irq_event;
+#ifdef CONFIG_TRACING
 static met_log_map dprec_met_info[DISP_SESSION_MEMORY + 2] = {
 	{"UNKWON", 0, 0},
 	{"OVL0-DSI", 0, 0},
 	{"OVL1-MHL", 0, 0},
 	{"OVL1-SMS", 0, 0},
 };
+#endif
 
 static MMP_Event dprec_mmp_event_spy(DPREC_LOGGER_ENUM l)
 {

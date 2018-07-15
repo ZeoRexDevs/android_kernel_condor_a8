@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /*****************************************************************************
  *
  * Filename:
@@ -246,7 +233,7 @@ static const struct file_operations pmic_fops = {
 	.owner = THIS_MODULE,
 };
 
-int ccci_pmic_init(void)
+int __init ccci_pmic_init(void)
 {
 	int ret;
 
@@ -275,7 +262,7 @@ int ccci_pmic_init(void)
 	return 0;
 }
 
-void ccci_pmic_exit(void)
+void __exit ccci_pmic_exit(void)
 {
 	ccci_pmic_stop();
 

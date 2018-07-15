@@ -35,11 +35,11 @@
 	MODULE_PARM_DESC(qmult, "queue length multiplier at high/super speed");\
 									\
 	static char *dev_addr;						\
-	module_param(dev_addr, charp, S_IRUGO|S_IWUSR);				\
+	module_param(dev_addr, charp, S_IRUGO);				\
 	MODULE_PARM_DESC(dev_addr, "Device Ethernet Address");		\
 									\
 	static char *host_addr;						\
-	module_param(host_addr, charp, S_IRUGO|S_IWUSR);			\
+	module_param(host_addr, charp, S_IRUGO);			\
 	MODULE_PARM_DESC(host_addr, "Host Ethernet Address")
 
 struct eth_dev;
@@ -274,22 +274,5 @@ static inline bool can_support_ecm(struct usb_gadget *gadget)
 	 */
 	return true;
 }
-
-extern unsigned int rndis_test_last_resp_id;
-extern unsigned int rndis_test_last_msg_id;
-
-extern unsigned long rndis_test_reset_msg_cnt;
-
-extern unsigned long rndis_test_rx_usb_in;
-extern unsigned long rndis_test_rx_net_out;
-extern unsigned long rndis_test_rx_nomem;
-extern unsigned long rndis_test_rx_error;
-
-extern unsigned long rndis_test_tx_net_in;
-extern unsigned long rndis_test_tx_busy;
-extern unsigned long rndis_test_tx_stop;
-
-extern unsigned long rndis_test_tx_usb_out;
-extern unsigned long rndis_test_tx_complete;
 
 #endif /* __U_ETHER_H */

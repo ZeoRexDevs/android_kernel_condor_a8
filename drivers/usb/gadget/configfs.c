@@ -130,28 +130,21 @@ struct gadget_config_name {
 	struct list_head list;
 };
 
-#define MAX_USB_STRING_LEN	126
-#define MAX_USB_STRING_WITH_NULL_LEN	(MAX_USB_STRING_LEN+1)
-
 static int usb_string_copy(const char *s, char **s_copy)
 {
 	int ret;
 	char *str;
 	char *copy = *s_copy;
 	ret = strlen(s);
-	if (ret > MAX_USB_STRING_LEN)
+	if (ret > 126)
 		return -EOVERFLOW;
 
-	if (copy) {
-		str = copy;
-	} else {
-		str = kmalloc(MAX_USB_STRING_WITH_NULL_LEN, GFP_KERNEL);
-		if (!str)
-			return -ENOMEM;
-	}
-	strncpy(str, s, MAX_USB_STRING_WITH_NULL_LEN);
+	str = kstrdup(s, GFP_KERNEL);
+	if (!str)
+		return -ENOMEM;
 	if (str[ret - 1] == '\n')
 		str[ret - 1] = '\0';
+	kfree(copy);
 	*s_copy = str;
 	return 0;
 }
@@ -304,6 +297,7 @@ static ssize_t gadget_dev_desc_UDC_store(struct gadget_info *gi,
 		ret = unregister_gadget(gi);
 		if (ret)
 			goto err;
+		kfree(name);
 	} else {
 		if (gi->udc_name) {
 			ret = -EBUSY;
@@ -443,6 +437,11 @@ static int config_usb_cfg_link(
 	}
 
 	f = usb_get_function(fi);
+	if (f == NULL) {
+		/* Are we trying to symlink PTP without MTP function? */
+		ret = -EINVAL; /* Invalid Configuration */
+		goto out;
+	}
 	if (IS_ERR(f)) {
 		ret = PTR_ERR(f);
 		goto out;
@@ -1199,7 +1198,6 @@ static ssize_t interf_grp_compatible_id_store(struct usb_os_desc *desc,
 	if (desc->opts_mutex)
 		mutex_lock(desc->opts_mutex);
 	memcpy(desc->ext_compat_id, page, l);
-	desc->ext_compat_id[l] = '\0';
 
 	if (desc->opts_mutex)
 		mutex_unlock(desc->opts_mutex);
@@ -1230,7 +1228,6 @@ static ssize_t interf_grp_sub_compatible_id_store(struct usb_os_desc *desc,
 	if (desc->opts_mutex)
 		mutex_lock(desc->opts_mutex);
 	memcpy(desc->ext_compat_id + 8, page, l);
-	desc->ext_compat_id[l + 8] = '\0';
 
 	if (desc->opts_mutex)
 		mutex_unlock(desc->opts_mutex);

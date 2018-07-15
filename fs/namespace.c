@@ -1087,7 +1087,6 @@ static void mntput_no_expire(struct mount *mnt)
 		unlock_mount_hash();
 		return;
 	}
-
 	mnt->mnt.mnt_flags |= MNT_DOOMED;
 	rcu_read_unlock();
 

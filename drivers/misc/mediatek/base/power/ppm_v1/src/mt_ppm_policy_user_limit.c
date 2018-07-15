@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -63,7 +50,6 @@ static enum ppm_power_state ppm_userlimit_get_power_state_cb(enum ppm_power_stat
 static void ppm_userlimit_update_limit_cb(enum ppm_power_state new_state)
 {
 	unsigned int i;
-	struct ppm_policy_req *req = &userlimit_policy.req;
 
 	FUNC_ENTER(FUNC_LV_POLICY);
 
@@ -73,30 +59,22 @@ static void ppm_userlimit_update_limit_cb(enum ppm_power_state new_state)
 	if (userlimit_data.is_freq_limited_by_user || userlimit_data.is_core_limited_by_user) {
 		ppm_hica_set_default_limit_by_state(new_state, &userlimit_policy);
 
-		for (i = 0; i < req->cluster_num; i++) {
-			req->limit[i].min_cpu_core = (userlimit_data.limit[i].min_core_num == -1)
-				? req->limit[i].min_cpu_core
+		for (i = 0; i < userlimit_policy.req.cluster_num; i++) {
+			userlimit_policy.req.limit[i].min_cpu_core = (userlimit_data.limit[i].min_core_num == -1)
+				? userlimit_policy.req.limit[i].min_cpu_core
 				: userlimit_data.limit[i].min_core_num;
-			req->limit[i].max_cpu_core = (userlimit_data.limit[i].max_core_num == -1)
-				? req->limit[i].max_cpu_core
+			userlimit_policy.req.limit[i].max_cpu_core = (userlimit_data.limit[i].max_core_num == -1)
+				? userlimit_policy.req.limit[i].max_cpu_core
 				: userlimit_data.limit[i].max_core_num;
-			req->limit[i].min_cpufreq_idx = (userlimit_data.limit[i].min_freq_idx == -1)
-				? req->limit[i].min_cpufreq_idx
+			userlimit_policy.req.limit[i].min_cpufreq_idx = (userlimit_data.limit[i].min_freq_idx == -1)
+				? userlimit_policy.req.limit[i].min_cpufreq_idx
 				: userlimit_data.limit[i].min_freq_idx;
-			req->limit[i].max_cpufreq_idx = (userlimit_data.limit[i].max_freq_idx == -1)
-				? req->limit[i].max_cpufreq_idx
+			userlimit_policy.req.limit[i].max_cpufreq_idx = (userlimit_data.limit[i].max_freq_idx == -1)
+				? userlimit_policy.req.limit[i].max_cpufreq_idx
 				: userlimit_data.limit[i].max_freq_idx;
 		}
 
-		ppm_limit_check_for_user_limit(new_state, req, userlimit_data);
-
-		/* error check */
-		for (i = 0; i < req->cluster_num; i++) {
-			if (req->limit[i].max_cpu_core < req->limit[i].min_cpu_core)
-				req->limit[i].min_cpu_core = req->limit[i].max_cpu_core;
-			if (req->limit[i].max_cpufreq_idx > req->limit[i].min_cpufreq_idx)
-				req->limit[i].min_cpufreq_idx = req->limit[i].max_cpufreq_idx;
-		}
+		ppm_limit_check_for_user_limit(new_state, &userlimit_policy.req, userlimit_data);
 	}
 
 	FUNC_EXIT(FUNC_LV_POLICY);
@@ -118,149 +96,6 @@ static void ppm_userlimit_mode_change_cb(enum ppm_mode mode)
 	ppm_ver("@%s: ppm mode changed to %d\n", __func__, mode);
 
 	FUNC_EXIT(FUNC_LV_POLICY);
-}
-
-unsigned int mt_ppm_userlimit_cpu_core(unsigned int cluster_num, struct ppm_limit_data *data)
-{
-	int i = 0;
-	int min_core, max_core;
-	bool is_limit = false;
-
-	/* Error check */
-	if (cluster_num > NR_PPM_CLUSTERS) {
-		ppm_err("@%s: Invalid cluster num = %d\n", __func__, cluster_num);
-		return -1;
-	}
-
-	if (!data) {
-		ppm_err("@%s: limit data is NULL!\n", __func__);
-		return -1;
-	}
-
-	for (i = 0; i < cluster_num; i++) {
-		min_core = data[i].min;
-		max_core = data[i].max;
-
-		/* invalid input check */
-		if (min_core != -1 && min_core < (int)get_cluster_min_cpu_core(i)) {
-			ppm_err("@%s: Invalid input! min_core for cluster %d = %d\n", __func__, i, min_core);
-			return -1;
-		}
-		if (max_core != -1 && max_core > (int)get_cluster_max_cpu_core(i)) {
-			ppm_err("@%s: Invalid input! max_core for cluster %d = %d\n", __func__, i, max_core);
-			return -1;
-		}
-
-#ifdef PPM_IC_SEGMENT_CHECK
-		if (!max_core) {
-			if ((i == 0 && ppm_main_info.fix_state_by_segment == PPM_POWER_STATE_LL_ONLY)
-					|| (i == 1 && ppm_main_info.fix_state_by_segment == PPM_POWER_STATE_L_ONLY)) {
-				ppm_err("@%s: Cannot disable cluster %d due to fix_state_by_segment is %s\n",
-					__func__, i, ppm_get_power_state_name(ppm_main_info.fix_state_by_segment));
-				return -1;
-			}
-		}
-#endif
-
-		/* check is all limit clear or not */
-		if (min_core != -1 || max_core != -1)
-			is_limit = true;
-
-		/* sync to max_core if min > max */
-		if (min_core != -1 && max_core != -1 && min_core > max_core)
-			data[i].min = data[i].max;
-	}
-
-	ppm_lock(&userlimit_policy.lock);
-	if (!userlimit_policy.is_enabled) {
-		ppm_warn("@%s: userlimit policy is not enabled!\n", __func__);
-		ppm_unlock(&userlimit_policy.lock);
-		return -1;
-	}
-
-	/* update policy data */
-	for (i = 0; i < cluster_num; i++) {
-		min_core = data[i].min;
-		max_core = data[i].max;
-
-		if (min_core != userlimit_data.limit[i].min_core_num ||
-				max_core != userlimit_data.limit[i].max_core_num) {
-			userlimit_data.limit[i].min_core_num = min_core;
-			userlimit_data.limit[i].max_core_num = max_core;
-			ppm_dbg(USER_LIMIT, "update userlimit min/max core for cluster %d = %d/%d\n",
-					i, min_core, max_core);
-		}
-	}
-
-	userlimit_data.is_core_limited_by_user = is_limit;
-	userlimit_policy.is_activated = ppm_userlimit_is_policy_active();
-
-	ppm_unlock(&userlimit_policy.lock);
-	mt_ppm_main();
-
-	return 0;
-}
-
-unsigned int mt_ppm_userlimit_cpu_freq(unsigned int cluster_num, struct ppm_limit_data *data)
-{
-	int i = 0;
-	int min_freq, max_freq, min_freq_idx, max_freq_idx;
-	bool is_limit = false;
-
-	/* Error check */
-	if (cluster_num > NR_PPM_CLUSTERS) {
-		ppm_err("@%s: Invalid cluster num = %d\n", __func__, cluster_num);
-		return -1;
-	}
-
-	if (!data) {
-		ppm_err("@%s: limit data is NULL!\n", __func__);
-		return -1;
-	}
-
-	ppm_lock(&userlimit_policy.lock);
-	if (!userlimit_policy.is_enabled) {
-		ppm_warn("@%s: userlimit policy is not enabled!\n", __func__);
-		ppm_unlock(&userlimit_policy.lock);
-		return -1;
-	}
-
-	/* update policy data */
-	for (i = 0; i < cluster_num; i++) {
-		min_freq = data[i].min;
-		max_freq = data[i].max;
-
-		/* check is all limit clear or not */
-		if (min_freq != -1 || max_freq != -1)
-			is_limit = true;
-
-		/* freq to idx */
-		min_freq_idx = (min_freq == -1) ? -1
-			: ppm_main_freq_to_idx(i, min_freq, CPUFREQ_RELATION_L);
-		max_freq_idx = (max_freq == -1) ? -1
-			: ppm_main_freq_to_idx(i, max_freq, CPUFREQ_RELATION_H);
-
-		/* sync to max_freq if min < max */
-		if (min_freq_idx != -1 && max_freq_idx != -1 && min_freq_idx < max_freq_idx)
-			min_freq_idx = max_freq_idx;
-
-		/* write to policy data */
-		if (min_freq_idx != userlimit_data.limit[i].min_freq_idx ||
-				max_freq_idx != userlimit_data.limit[i].max_freq_idx) {
-			userlimit_data.limit[i].min_freq_idx = min_freq_idx;
-			userlimit_data.limit[i].max_freq_idx = max_freq_idx;
-			ppm_dbg(USER_LIMIT, "update user limit min/max freq for cluster %d = %d(%d)/%d(%d)\n",
-					i, min_freq, min_freq_idx, max_freq, max_freq_idx);
-		}
-	}
-
-	userlimit_data.is_freq_limited_by_user = is_limit;
-	userlimit_policy.is_activated = ppm_userlimit_is_policy_active();
-
-	ppm_unlock(&userlimit_policy.lock);
-	mt_ppm_main();
-
-	return 0;
 }
 
 static int ppm_userlimit_min_cpu_core_proc_show(struct seq_file *m, void *v)
@@ -309,14 +144,15 @@ static ssize_t ppm_userlimit_min_cpu_core_proc_write(struct file *file, const ch
 		if (userlimit_data.limit[id].max_core_num != -1
 			&& min_core != -1
 			&& min_core > userlimit_data.limit[id].max_core_num) {
-			ppm_warn("@%s: min_core(%d) > max_core(%d), sync to max core!\n",
-				__func__, min_core, userlimit_data.limit[id].max_core_num);
-			min_core = userlimit_data.limit[id].max_core_num;
+			ppm_err("@%s: min_core(%d) > max_core(%d)\n", __func__, min_core,
+				userlimit_data.limit[id].max_core_num);
+			ppm_unlock(&userlimit_policy.lock);
+			goto out;
 		}
 
 		if (min_core != userlimit_data.limit[id].min_core_num) {
 			userlimit_data.limit[id].min_core_num = min_core;
-			ppm_dbg(USER_LIMIT, "user limit min_core_num = %d for cluster %d\n", min_core, id);
+			ppm_info("user limit min_core_num = %d for cluster %d\n", min_core, id);
 		}
 
 		/* check is core limited or not */
@@ -375,17 +211,6 @@ static ssize_t ppm_userlimit_max_cpu_core_proc_write(struct file *file, const ch
 			goto out;
 		}
 
-#ifdef PPM_IC_SEGMENT_CHECK
-		if (!max_core) {
-			if ((id == 0 && ppm_main_info.fix_state_by_segment == PPM_POWER_STATE_LL_ONLY)
-				|| (id == 1 && ppm_main_info.fix_state_by_segment == PPM_POWER_STATE_L_ONLY)) {
-				ppm_err("@%s: Cannot disable cluster %d due to fix_state_by_segment is %s\n",
-					__func__, id, ppm_get_power_state_name(ppm_main_info.fix_state_by_segment));
-				goto out;
-			}
-		}
-#endif
-
 		ppm_lock(&userlimit_policy.lock);
 
 		if (!userlimit_policy.is_enabled) {
@@ -398,14 +223,15 @@ static ssize_t ppm_userlimit_max_cpu_core_proc_write(struct file *file, const ch
 		if (userlimit_data.limit[id].min_core_num != -1
 			&& max_core != -1
 			&& max_core < userlimit_data.limit[id].min_core_num) {
-			ppm_warn("@%s: max_core(%d) < min_core(%d), overwrite min core!\n",
-				__func__, max_core, userlimit_data.limit[id].min_core_num);
-			userlimit_data.limit[id].min_core_num = max_core;
+			ppm_err("@%s: max_core(%d) < min_core(%d)\n", __func__, max_core,
+				userlimit_data.limit[id].min_core_num);
+			ppm_unlock(&userlimit_policy.lock);
+			goto out;
 		}
 
 		if (max_core != userlimit_data.limit[id].max_core_num) {
 			userlimit_data.limit[id].max_core_num = max_core;
-			ppm_dbg(USER_LIMIT, "user limit max_core_num = %d for cluster %d\n", max_core, id);
+			ppm_info("user limit max_core_num = %d for cluster %d\n", max_core, id);
 		}
 
 		/* check is core limited or not */
@@ -477,8 +303,7 @@ static ssize_t ppm_userlimit_min_cpu_freq_proc_write(struct file *file, const ch
 
 		if (idx != userlimit_data.limit[id].min_freq_idx) {
 			userlimit_data.limit[id].min_freq_idx = idx;
-			ppm_dbg(USER_LIMIT, "user limit min_freq = %d KHz(idx = %d) for cluster %d\n",
-				min_freq, idx, id);
+			ppm_info("user limit min_freq = %d KHz(idx = %d) for cluster %d\n", min_freq, idx, id);
 		}
 
 		/* check is freq limited or not */
@@ -550,8 +375,7 @@ static ssize_t ppm_userlimit_max_cpu_freq_proc_write(struct file *file, const ch
 
 		if (idx != userlimit_data.limit[id].max_freq_idx) {
 			userlimit_data.limit[id].max_freq_idx = idx;
-			ppm_dbg(USER_LIMIT, "user limit max_freq = %d KHz(idx = %d) for cluster %d\n",
-				max_freq, idx, id);
+			ppm_info("user limit max_freq = %d KHz(idx = %d) for cluster %d\n", max_freq, idx, id);
 		}
 
 		/* check is freq limited or not */
@@ -624,7 +448,6 @@ static int __init ppm_userlimit_policy_init(void)
 
 	if (ppm_main_register_policy(&userlimit_policy)) {
 		ppm_err("@%s: userlimit policy register failed\n", __func__);
-		kfree(userlimit_data.limit);
 		ret = -EINVAL;
 		goto out;
 	}

@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #define pr_fmt(fmt) "["KBUILD_MODNAME"] " fmt
 #include <linux/module.h>
 #include <linux/device.h>
@@ -42,7 +29,7 @@ enum {
 	BM_INITIALIZED = 2,
 } BM_INIT_STATE;
 
-enum boot_mode_t g_boot_mode = UNKNOWN_BOOT;
+enum boot_mode_t g_boot_mode __nosavedata = UNKNOWN_BOOT;
 static atomic_t g_boot_init = ATOMIC_INIT(BM_UNINIT);
 static atomic_t g_boot_errcnt = ATOMIC_INIT(0);
 static atomic_t g_boot_status = ATOMIC_INIT(0);
@@ -75,7 +62,7 @@ static int __init dt_get_boot_common(unsigned long node, const char *uname, int 
 #endif
 
 
-void __init init_boot_common(unsigned int line)
+void init_boot_common(unsigned int line)
 {
 #ifdef CONFIG_OF
 	int rc;
@@ -111,10 +98,7 @@ void __init init_boot_common(unsigned int line)
 /* return boot mode */
 unsigned int get_boot_mode(void)
 {
-	if (BM_INITIALIZED != atomic_read(&g_boot_init)) {
-		pr_warn("%s (%d) state(%d,%d)\n", __func__, __LINE__, atomic_read(&g_boot_init),
-			g_boot_mode);
-	}
+	init_boot_common(__LINE__);
 	return g_boot_mode;
 }
 EXPORT_SYMBOL(get_boot_mode);
@@ -122,10 +106,7 @@ EXPORT_SYMBOL(get_boot_mode);
 /* for convenience, simply check is meta mode or not */
 bool is_meta_mode(void)
 {
-	if (BM_INITIALIZED != atomic_read(&g_boot_init)) {
-		pr_warn("%s (%d) state(%d,%d)\n", __func__, __LINE__, atomic_read(&g_boot_init),
-			g_boot_mode);
-	}
+	init_boot_common(__LINE__);
 
 	if (g_boot_mode == META_BOOT)
 		return true;
@@ -136,10 +117,7 @@ EXPORT_SYMBOL(is_meta_mode);
 
 bool is_advanced_meta_mode(void)
 {
-	if (BM_INITIALIZED != atomic_read(&g_boot_init)) {
-		pr_warn("%s (%d) state(%d,%d)\n", __func__, __LINE__, atomic_read(&g_boot_init),
-			g_boot_mode);
-	}
+	init_boot_common(__LINE__);
 
 	if (g_boot_mode == ADVMETA_BOOT)
 		return true;
@@ -300,7 +278,7 @@ static int __init boot_common_init(void)
 	return 0;
 }
 
-pure_initcall(boot_common_core);
+core_initcall(boot_common_core);
 module_init(boot_common_init);
 MODULE_DESCRIPTION("MTK Boot Information Common Driver");
 MODULE_LICENSE("GPL");

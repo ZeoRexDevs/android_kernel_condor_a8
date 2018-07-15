@@ -11,9 +11,6 @@
 # Copyright (C) 1995-2001 by Russell King
 
 LDFLAGS_vmlinux	:=-p --no-undefined -X
-ifeq ($(CONFIG_ARM64_ERRATUM_843419),y)
-LDFLAGS_vmlinux += --fix-cortex-a53-843419
-endif
 CPPFLAGS_vmlinux.lds = -DTEXT_OFFSET=$(TEXT_OFFSET)
 OBJCOPYFLAGS	:=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 GZFLAGS		:=-9
@@ -23,7 +20,7 @@ LIBGCC 		:= $(shell $(CC) $(KBUILD_CFLAGS) -print-libgcc-file-name)
 KBUILD_DEFCONFIG := defconfig
 
 KBUILD_CFLAGS	+= -mgeneral-regs-only
-KBUILD_CFLAGS	+= -fno-pic -fstack-usage
+KBUILD_CFLAGS	+= -fno-pic
 KBUILD_CFLAGS	+= $(call cc-option, -mpc-relative-literal-loads)
 
 ifeq ($(CONFIG_CPU_BIG_ENDIAN), y)
@@ -89,12 +86,12 @@ zinstall install: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $@
 
 %.dtb: scripts
-	$(Q)$(MAKE) $(build)=$(boot)/dts $(boot)/dts/$@ DTC_FLAGS=$(DTC_FLAGS)
+	$(Q)$(MAKE) $(build)=$(boot)/dts $(boot)/dts/$@
 
 dtbs: scripts
-	$(Q)$(MAKE) $(build)=$(boot)/dts dtbs DTC_FLAGS=$(DTC_FLAGS)
+	$(Q)$(MAKE) $(build)=$(boot)/dts dtbs
 
-Image-dtb Image.gz-dtb: vmlinux scripts dtbs $(DTB_OVERLAY_IMAGE_TAGERT)
+Image-dtb Image.gz-dtb: vmlinux scripts dtbs
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 PHONY += vdso_install

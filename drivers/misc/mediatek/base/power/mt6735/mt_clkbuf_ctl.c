@@ -1,17 +1,4 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
-/*
  * @file    mt_clk_buf_ctl.c
  * @brief   Driver for RF clock buffer control
  */
@@ -214,7 +201,6 @@ bool clk_buf_ctrl(enum clk_buf_id id, bool onoff)
 
 	return true;
 }
-EXPORT_SYMBOL(clk_buf_ctrl);
 
 
 void clk_buf_get_swctrl_status(CLK_BUF_SWCTRL_STATUS_T *status)
@@ -231,7 +217,7 @@ static ssize_t clk_buf_ctrl_store(struct kobject *kobj, struct kobj_attribute *a
 	u32 clk_buf_en[CLKBUF_NUM], i;
 	char cmd[32];
 
-	if (sscanf(buf, "%31s %x %x %x %x", cmd, &clk_buf_en[0], &clk_buf_en[1], &clk_buf_en[2], &clk_buf_en[3]) != 5)
+	if (sscanf(buf, "%s %x %x %x %x", cmd, &clk_buf_en[0], &clk_buf_en[1], &clk_buf_en[2], &clk_buf_en[3]) != 5)
 		return -EPERM;
 
 	for (i = 0; i < CLKBUF_NUM; i++)

@@ -193,19 +193,19 @@ static inline int c2k_dbg_level(unsigned level)
 #define C2K_USB_DBG_ON
 #ifdef C2K_USB_DBG_ON
 #define C2K_ERR(format, args...) do {if (c2k_dbg_level(C2K_LOG_ERR)) \
-	pr_notice("C2K_USB_ERR,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
+	pr_warn("C2K_USB_ERR,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
 while (0)
 #define C2K_WARN(format, args...) do {if (c2k_dbg_level(C2K_LOG_WARN)) \
-	pr_notice("C2K_USB_WARN,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
+	pr_warn("C2K_USB_WARN,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
 while (0)
 #define C2K_NOTE(format, args...) do {if (c2k_dbg_level(C2K_LOG_NOTICE)) \
-	pr_notice("C2K_USB_NOTE,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
+	pr_warn("C2K_USB_NOTE,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
 while (0)
 #define C2K_INFO(format, args...) do {if (c2k_dbg_level(C2K_LOG_INFO)) \
-	pr_notice("C2K_USB_INFO,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
+	pr_warn("C2K_USB_INFO,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
 while (0)
 #define C2K_DBG(format, args...) do {if (c2k_dbg_level(C2K_LOG_DBG)) \
-	pr_notice("C2K_USB_DBG,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
+	pr_warn("C2K_USB_DBG,<%s %d>, " format , __func__, __LINE__ , ## args);  } \
 while (0)
 #else
 #define C2K_ERR(format, args...) do {} while (0)
@@ -228,7 +228,5 @@ extern int modem_buffer_push(int port_num, void *buf, int count);
 extern int delay_set;
 extern int ut_err;
 #endif
-extern int rawbulk_bind_config(struct usb_configuration *c, int transfer_id);
-extern int rawbulk_function_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl);
 
 #endif				/* __RAWBULK_HEADER_FILE__ */

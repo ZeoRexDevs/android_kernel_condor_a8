@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -842,6 +829,7 @@ static int __match_id(u32 axi_id, int tbl_idx, u32 port_ID)
 	}
 }
 
+#ifdef CONFIG_MTK_AEE_FEATURE
 static u32 __id2mst(u32 id)
 {
 
@@ -861,6 +849,7 @@ static u32 __id2mst(u32 id)
 
 	return MST_INVALID;
 }
+#endif
 
 static char *__id2name(u32 id)
 {
@@ -1967,7 +1956,7 @@ const char *buf, size_t count)
 	if (!command)
 		return count;
 
-	strncpy(command, buf, (size_t) MAX_EMI_MPU_STORE_CMD_LEN);
+	strcpy(command, buf);
 	ptr = (char *)buf;
 
 	if (!strncmp(buf, EN_MPU_STR, strlen(EN_MPU_STR))) {
@@ -2459,7 +2448,7 @@ const char *buf, size_t count)
 	if (!command)
 		return count;
 
-	strncpy(command, buf, (size_t)MAX_EMI_MPU_STORE_CMD_LEN);
+	strcpy(command, buf);
 	ptr = (char *)buf;
 
 	if (!strncmp(buf, EN_WP_STR, strlen(EN_WP_STR))) {
@@ -2699,7 +2688,7 @@ static int __init emi_mpu_mod_init(void)
 	emi_axi_vio_timer.data = ((unsigned long) 0);
 #endif /*#ifdef ENABLE_EMI_CHKER*/
 
-#if !defined(USER_BUILD_KERNEL)
+#if 0 // !defined(USER_BUILD_KERNEL)
 #ifdef ENABLE_EMI_CHKER
 	/* Enable AXI 4KB boundary violation monitor timer */
 	/*emi_axi_set_chker(1 << AXI_ADR_CHK_EN);*/

@@ -31,9 +31,9 @@ int sysctl_tcp_retries1 __read_mostly = TCP_RETR1;
 int sysctl_tcp_retries2 __read_mostly = TCP_RETR2;
 int sysctl_tcp_orphan_retries __read_mostly;
 int sysctl_tcp_thin_linear_timeouts __read_mostly;
-u32 sysctl_tcp_rto_min __read_mostly = TCP_RTO_MIN;
+int sysctl_tcp_rto_min __read_mostly = TCP_RTO_MIN;
 EXPORT_SYMBOL(sysctl_tcp_rto_min);
-u32 sysctl_tcp_rto_max __read_mostly = TCP_RTO_MAX;
+int sysctl_tcp_rto_max __read_mostly = TCP_RTO_MAX;
 EXPORT_SYMBOL(sysctl_tcp_rto_max);
 static void tcp_write_err(struct sock *sk)
 {
@@ -49,11 +49,19 @@ static void tcp_write_err(struct sock *sk)
  * to prevent DoS attacks. It is called when a retransmission timeout
  * or zero probe timeout occurs on orphaned socket.
  *
+ * Also close if our net namespace is exiting; in that case there is no
+ * hope of ever communicating again since all netns interfaces are already
+ * down (or about to be down), and we need to release our dst references,
+ * which have been moved to the netns loopback interface, so the namespace
+ * can finish exiting.  This condition is only possible if we are a kernel
+ * socket, as those do not hold references to the namespace.
+ *
  * Criteria is still not confirmed experimentally and may change.
  * We kill the socket, if:
  * 1. If number of orphaned sockets exceeds an administratively configured
  *    limit.
  * 2. If we have strong memory pressure.
+ * 3. If our net namespace is exiting.
  */
 static int tcp_out_of_resources(struct sock *sk, bool do_reset)
 {
@@ -82,6 +90,13 @@ static int tcp_out_of_resources(struct sock *sk, bool do_reset)
 		NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPABORTONMEMORY);
 		return 1;
 	}
+
+	if (!check_net(sock_net(sk))) {
+		/* Not possible to send reset; just close */
+		tcp_done(sk);
+		return 1;
+	}
+
 	return 0;
 }
 

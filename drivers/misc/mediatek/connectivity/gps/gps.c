@@ -54,7 +54,7 @@
  * Definition
 ******************************************************************************/
 /* device name and major number */
-#define GPS_DEVNAME            "mt3326-gps"
+#define GPS_DEVNAME            "gps"
 /******************************************************************************
  * Debug configuration
 ******************************************************************************/
@@ -67,7 +67,7 @@
 #define PFX "GPS: "
 #else
 #define GPS_DBG_NONE(fmt, arg...)    do {} while (0)
-#define GPS_DBG pr_debug
+#define GPS_DBG GPS_DBG_NONE
 #define GPS_TRC GPS_DBG_NONE
 #define GPS_VER pr_debug
 #define GPS_ERR pr_err

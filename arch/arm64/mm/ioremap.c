@@ -24,7 +24,6 @@
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/io.h>
-#include <mt-plat/mtk_hooks.h>
 
 #include <asm/fixmap.h>
 #include <asm/tlbflush.h>
@@ -76,9 +75,6 @@ static void __iomem *__ioremap_caller(phys_addr_t phys_addr, size_t size,
 
 void __iomem *__ioremap(phys_addr_t phys_addr, size_t size, pgprot_t prot)
 {
-	if (ioremap_debug_hook_func)
-		ioremap_debug_hook_func(phys_addr, size, prot);
-
 	return __ioremap_caller(phys_addr, size, prot,
 				__builtin_return_address(0));
 }

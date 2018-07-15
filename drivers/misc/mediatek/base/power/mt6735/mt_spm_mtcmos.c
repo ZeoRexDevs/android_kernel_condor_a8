@@ -25,6 +25,7 @@
 
 #include "mt_spm_cpu.h"
 #include "hotplug.h"
+#include <mt-plat/mtk_ram_console.h>
 
 /*
  * for CPU MTCMOS
@@ -183,44 +184,64 @@ int spm_mtcmos_ctrl_cpu1(int state, int chkWfiBeforePdn)
 	spm_write(SPM_POWERON_CONFIG_SET, (SPM_PROJECT_CODE << 16) | (1U << 0));
 
 	if (state == STA_POWER_DOWN) {
+		aee_rr_rec_hotplug(0, 0xF0, 0xF0, 0);
 		if (chkWfiBeforePdn)
 			while ((spm_read(SPM_SLEEP_TIMER_STA) &
 				CA7_CPU1_STANDBYWFI) == 0)
 				;
-
+	aee_rr_rec_hotplug(0, 0xF1, 0xF1, 0);
 		spm_mtcmos_cpu_lock(&flags);
+	aee_rr_rec_hotplug(0, 0xF2, 0xF2, 0);
 
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) | PWR_ISO);
+	aee_rr_rec_hotplug(0, 0xF3, 0xF3, 0);
 
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) | SRAM_CKISO);
+	aee_rr_rec_hotplug(0, 0xF4, 0xF4, 0);
+
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) & ~SRAM_ISOINT_B);
+	aee_rr_rec_hotplug(0, 0xF5, 0xF5, 0);
+
 		spm_write(SPM_CA7_CPU1_L1_PDN,
 			  spm_read(SPM_CA7_CPU1_L1_PDN) | L1_PDN);
+	aee_rr_rec_hotplug(0, 0xF6, 0xF6, 0);
+
 #ifndef CONFIG_MTK_FPGA
 		while ((spm_read(SPM_CA7_CPU1_L1_PDN) & L1_PDN_ACK) !=
 		       L1_PDN_ACK)
 			;
 #endif
+	aee_rr_rec_hotplug(0, 0xF7, 0xF7, 0);
 
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) & ~PWR_RST_B);
+	aee_rr_rec_hotplug(0, 0xF8, 0xF8, 0);
+
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) | PWR_CLK_DIS);
+	aee_rr_rec_hotplug(0, 0xF9, 0xF9, 0);
 
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) & ~PWR_ON);
+	aee_rr_rec_hotplug(0, 0xFA, 0xFA, 0);
+
 		spm_write(SPM_CA7_CPU1_PWR_CON,
 			  spm_read(SPM_CA7_CPU1_PWR_CON) & ~PWR_ON_2ND);
+	aee_rr_rec_hotplug(0, 0xFB, 0xFB, 0);
+
 #ifndef CONFIG_MTK_FPGA
 		while (((spm_read(SPM_PWR_STATUS) & CA7_CPU1) != 0)
 		       || ((spm_read(SPM_PWR_STATUS_2ND) & CA7_CPU1) != 0))
 			;
 #endif
+	aee_rr_rec_hotplug(0, 0xFC, 0xFC, 0);
 
 		spm_mtcmos_cpu_unlock(&flags);
+	aee_rr_rec_hotplug(0, 0xFD, 0xFD, 0);
+
 	} else {		/* STA_POWER_ON */
 
 		spm_mtcmos_cpu_lock(&flags);

@@ -252,6 +252,8 @@ static struct fdvt_device *fdvt_devs;
 static int nr_fdvt_devs;
 #endif
 
+bool haveConfig = 0;
+
 void FDVT_basic_config(void)
 {
 	FDVT_WR32(0x00000111, FDVT_ENABLE);
@@ -560,6 +562,11 @@ static int MT6573FDVT_WaitIRQ(u32 *u4IRQMask)
 	*u4IRQMask = g_u4MT6573FDVTIRQ;
 	/* LOG_DBG("[FDVT] IRQ : 0x%8x\n",g_u4MT6573FDVTIRQ); */
 
+	if (timeout != 0 && !(g_u4MT6573FDVTIRQMSK & g_u4MT6573FDVTIRQ)) {
+		LOG_DBG("interrupted by system signal, return value(%d)\n", timeout);
+		return -ERESTARTSYS;
+	}
+
 	if (!(g_u4MT6573FDVTIRQMSK & g_u4MT6573FDVTIRQ)) {
 		LOG_DBG("wait_event_interruptible Not FDVT, %d, %d\n", g_u4MT6573FDVTIRQMSK, g_u4MT6573FDVTIRQ);
 		MT6573FDVT_DUMPREG();
@@ -611,10 +618,13 @@ static long FDVT_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	case MT6573FDVTIOC_STARTFD_CMD:
 		/* LOG_DBG("[FDVT] MT6573FDVTIOC_STARTFD_CMD\n"); */
-		FDVT_WR32(0x00000001, FDVT_INT_EN);
-		FDVT_WR32(0x00000000, FDVT_START);
-		FDVT_WR32(0x00000001, FDVT_START);
-		FDVT_WR32(0x00000000, FDVT_START);
+		if (haveConfig) {
+			FDVT_WR32(0x00000001, FDVT_INT_EN);
+			FDVT_WR32(0x00000000, FDVT_START);
+			FDVT_WR32(0x00000001, FDVT_START);
+			FDVT_WR32(0x00000000, FDVT_START);
+			haveConfig = 0;
+		}
 		/* MT6573FDVT_DUMPREG(); */
 		break;
 	case MT6573FDVTIOC_G_WAITIRQ:
@@ -626,11 +636,13 @@ static long FDVT_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		/* LOG_DBG("[FDVT] MT6573FDVT set FD config\n"); */
 		FaceDetecteConfig();  /* LDVT Disable, Due to the different feature number between FD/SD/BD/REC */
 		MT6573FDVT_SetRegHW((MT6573FDVTRegIO *)pBuff);
+		haveConfig = 1;
 		break;
 	case MT6573FDVTIOC_T_SET_SDCONF_CMD:
 		/* LOG_DBG("[FDVT] MT6573FDVT set SD config\n"); */
 		SmileDetecteConfig();
 		MT6573FDVT_SetRegHW((MT6573FDVTRegIO *)pBuff);
+		haveConfig = 1;
 		break;
 	case MT6573FDVTIOC_G_READ_FDREG_CMD:
 		/* LOG_DBG("[FDVT] MT6573FDVT read FD config\n"); */
@@ -817,6 +829,7 @@ static int FDVT_open(struct inode *inode, struct file *file)
 		LOG_DBG("pread_buf is not null\n");
 
 	pBuff = kmalloc(buf_size, GFP_KERNEL);
+	memset(pBuff, 0, buf_size);
 	if (NULL == pBuff) {
 		LOG_DBG(" ioctl allocate mem failed\n");
 		ret = -ENOMEM;

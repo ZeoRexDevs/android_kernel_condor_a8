@@ -127,28 +127,11 @@ static _osal_inline_ VOID stp_dbg_cpupcr_deinit(P_STP_DBG_CPUPCR_T pCpupcr);
 static _osal_inline_ P_STP_DBG_DMAREGS_T stp_dbg_dmaregs_init(VOID);
 static _osal_inline_ VOID stp_dbg_dmaregs_deinit(P_STP_DBG_DMAREGS_T pDmaRegs);
 
-UINT32 __weak wmt_plat_read_cpupcr(VOID)
-{
-	STP_DBG_ERR_FUNC("wmt_plat_read_cpupcr is not define!!!\n");
-
-	return 0;
-}
-
 INT32 __weak mtk_btif_rxd_be_blocked_flag_get(VOID)
 {
 	STP_DBG_ERR_FUNC("mtk_btif_rxd_be_blocked_flag_get is not define!!!\n");
 
 	return 0;
-}
-
-VOID __weak wmt_plat_cpu_sw_rst(VOID)
-{
-	STP_DBG_ERR_FUNC("wmt_plat_cpu_sw_rst is not define!!!\n");
-}
-
-VOID __weak wmt_plat_cpu_sw_rst_deassert(VOID)
-{
-	STP_DBG_ERR_FUNC("wmt_plat_cpu_sw_rst_deassert is not define!!!\n");
 }
 
 /* operation definition */
@@ -176,16 +159,12 @@ static struct genl_ops stp_dbg_gnl_ops_array[] = {
  */
 static VOID stp_dbg_core_dump_timeout_handler(ULONG data)
 {
-	P_WCN_CORE_DUMP_T dmp = (P_WCN_CORE_DUMP_T) data;
 
 	STP_DBG_INFO_FUNC(" start\n");
 
-	if (dmp) {
-		STP_DBG_WARN_FUNC
-		    (" coredump timer timeout, coredump maybe not finished successfully\n");
-		dmp->sm = CORE_DUMP_TIMEOUT;
-	}
+	stp_dbg_set_coredump_timer_state(CORE_DUMP_TIMEOUT);
 	stp_btm_notify_coredump_timeout_wq(g_stp_dbg->btm);
+	STP_DBG_WARN_FUNC(" coredump timer timeout, coredump maybe not finished successfully\n");
 
 	STP_DBG_INFO_FUNC(" end\n");
 
@@ -233,11 +212,6 @@ static _osal_inline_ P_WCN_CORE_DUMP_T stp_dbg_core_dump_init(UINT32 packet_num,
 	return core_dmp;
 
 fail:
-	if (core_dmp && core_dmp->compressor) {
-		stp_dbg_compressor_deinit(core_dmp->compressor);
-		core_dmp->compressor = NULL;
-	}
-	osal_sleepable_lock_deinit(&core_dmp->dmp_lock);
 	if (core_dmp)
 		osal_free(core_dmp);
 	return NULL;
@@ -1266,17 +1240,19 @@ INT32 stp_dbg_dmp_print(MTKSTP_DBG_T *stp_dbg)
 		len = stp_dbg->logsys->queue[outIndex].len - sizeof(STP_DBG_HDR_T);
 		len = len > STP_PKT_SZ ? STP_PKT_SZ : len;
 		if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_COMBO)
-			pr_debug("STP-DBG:%d.%ds, %s:pT%sn(%d)l(%d)s(%d)a(%d)\n",
+			pr_warn("STP-DBG:%d.%ds, %s:pT%sn(%d)l(%d)s(%d)a(%d), time[%llu.%06lu]\n",
 					pHdr->sec,
 					pHdr->usec,
 					pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx",
-					comboStpDbgType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq, pHdr->ack);
+					comboStpDbgType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq,
+					pHdr->ack, pHdr->l_sec, pHdr->l_nsec);
 		else
-			pr_debug("STP-DBG:%d.%ds, %s:pT%sn(%d)l(%d)s(%d)a(%d)\n",
+			pr_warn("STP-DBG:%d.%ds, %s:pT%sn(%d)l(%d)s(%d)a(%d), time[%llu.%06lu]\n",
 					pHdr->sec,
 					pHdr->usec,
 					pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx",
-					socStpDbgType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq, pHdr->ack);
+					socStpDbgType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq,
+					pHdr->ack, pHdr->l_sec, pHdr->l_nsec);
 
 		if (0 < len)
 			stp_dbg_dump_data(pBuf, pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx", len);
@@ -1339,6 +1315,8 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 {
 
 	struct timeval now;
+	UINT64 ts;
+	ULONG nsec;
 
 	if (!hdr) {
 		STP_DBG_ERR_FUNC("function invalid\n");
@@ -1346,6 +1324,7 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 	}
 
 	do_gettimeofday(&now);
+	osal_get_local_time(&ts, &nsec);
 	hdr->last_dbg_type = gStpDbgDumpType;
 	gStpDbgDumpType = dbg_type;
 	hdr->dbg_type = dbg_type;
@@ -1358,6 +1337,8 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 	hdr->dmy = 0xffffffff;
 	hdr->len = len;
 	hdr->type = type;
+	hdr->l_sec = ts;
+	hdr->l_nsec = nsec;
 
 	return 0;
 }
@@ -1867,7 +1848,6 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 	INT32 i = 0;
 	UINT32 value = 0x0;
 	ENUM_WMT_CHIP_TYPE chip_type;
-	INT32 count = 0;
 
 	if (!g_stp_dbg_cpupcr) {
 		STP_DBG_ERR_FUNC("NULL reference pointer\n");
@@ -1902,35 +1882,7 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 			}
 			STP_DBG_INFO_FUNC("i:%d,cpupcr:%08x\n", i,
 					g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count + i]);
-			if (chip_type == WMT_CHIP_TYPE_SOC) {
-				if (g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count + i] == 0x0e968)
-					count++;
-				else
-					count = 0;
-				if (count == 5)
-					break;
-			}
 			osal_sleep_ms(sleep);
-		}
-		if (chip_type == WMT_CHIP_TYPE_SOC) {
-			if (count == 5) {
-				wmt_plat_cpu_sw_rst();
-				for (i = 0; i < times; i++) {
-					STP_DBG_INFO_FUNC("again i:%d, cpupcr:%08x\n", i,
-							wmt_plat_read_cpupcr());
-					g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count + i] =
-						wmt_plat_read_cpupcr();
-					osal_sleep_ms(sleep);
-				}
-				wmt_plat_cpu_sw_rst_deassert();
-				for (i = 0; i < times; i++) {
-					STP_DBG_INFO_FUNC("again2 i:%d, cpupcr:%08x\n", i,
-							wmt_plat_read_cpupcr());
-					g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count + i] =
-						wmt_plat_read_cpupcr();
-					osal_sleep_ms(sleep);
-				}
-			}
 		}
 		g_stp_dbg_cpupcr->count += times;
 
@@ -1961,33 +1913,7 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 				STP_DBG_ERR_FUNC("error chip type(%d)\n", chip_type);
 			}
 			STP_DBG_INFO_FUNC("i:%d,cpupcr:%08x\n", i, g_stp_dbg_cpupcr->buffer[i]);
-			if (chip_type == WMT_CHIP_TYPE_SOC) {
-				if (g_stp_dbg_cpupcr->buffer[i] == 0x0e968)
-					count++;
-				else
-					count = 0;
-				if (count == 5)
-					break;
-			}
 			osal_sleep_ms(sleep);
-		}
-		if (chip_type == WMT_CHIP_TYPE_SOC) {
-			if (count == 5) {
-				wmt_plat_cpu_sw_rst();
-				for (i = 0; i < times; i++) {
-					STP_DBG_INFO_FUNC("again i:%d, cpupcr:%08x\n", i,
-							wmt_plat_read_cpupcr());
-					g_stp_dbg_cpupcr->buffer[i] = wmt_plat_read_cpupcr();
-					osal_sleep_ms(sleep);
-				}
-				wmt_plat_cpu_sw_rst_deassert();
-				for (i = 0; i < times; i++) {
-					STP_DBG_INFO_FUNC("again2 i:%d, cpupcr:%08x\n", i,
-							wmt_plat_read_cpupcr());
-					g_stp_dbg_cpupcr->buffer[i] = wmt_plat_read_cpupcr();
-					osal_sleep_ms(sleep);
-				}
-			}
 		}
 		g_stp_dbg_cpupcr->count = times;
 
@@ -2004,8 +1930,6 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 				stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR1));
 		STP_DBG_INFO_FUNC("CONNSYS debug cr2 0x1807040c:0x%08x\n",
 				stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR2));
-		STP_DBG_INFO_FUNC("CONNSYS debug cr3 0x18070110:0x%08x\n",
-				stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR3));
 	}
 
 	return 0;
@@ -2128,6 +2052,12 @@ INT32 stp_dbg_set_host_assert_info(UINT32 drv_type, UINT32 reason, UINT32 en)
 UINT32 stp_dbg_get_host_trigger_assert(VOID)
 {
 	return g_stp_dbg_cpupcr->host_assert_info.assert_from_host;
+}
+
+VOID stp_dbg_set_coredump_timer_state(CORE_DUMP_STA state)
+{
+	if (g_core_dump)
+		g_core_dump->sm = state;
 }
 
 INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE issue_type)

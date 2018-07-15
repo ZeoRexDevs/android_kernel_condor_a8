@@ -74,10 +74,12 @@
 #include <linux/uprobes.h>
 #include <linux/aio.h>
 #include <linux/compiler.h>
-#include <linux/kcov.h>
 #ifdef CONFIG_MTPROF
+#include "mt_sched_mon.h"
 #include "mt_cputime.h"
 #endif
+#include <linux/kcov.h>
+
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/uaccess.h>
@@ -827,7 +829,8 @@ struct mm_struct *mm_access(struct task_struct *task, unsigned int mode)
 
 	mm = get_task_mm(task);
 	if (mm && mm != current->mm &&
-			!ptrace_may_access(task, mode)) {
+			!ptrace_may_access(task, mode) &&
+			!capable(CAP_SYS_RESOURCE)) {
 		mmput(mm);
 		mm = ERR_PTR(-EACCES);
 	}
@@ -1807,7 +1810,6 @@ long do_fork(unsigned long clone_flags,
 
 		end = sched_clock();
 		dur = end - start;
-		trace_sched_fork_time(current, p, dur);
 		if (dur > WARN_FORK_DUR) {
 			pr_err("[%d:%s] fork [%d:%s] total fork time[%llu us] > 1s\n",
 			current->pid, current->comm, p->pid, p->comm, dur);
@@ -1817,6 +1819,8 @@ long do_fork(unsigned long clone_flags,
 		/* mt shceduler profiling*/
 		save_mtproc_info(p, sched_clock());
 #endif
+		/* mt throttle monitor */
+		save_mt_rt_mon_info(p, sched_clock());
 #endif
 		wake_up_new_task(p);
 
