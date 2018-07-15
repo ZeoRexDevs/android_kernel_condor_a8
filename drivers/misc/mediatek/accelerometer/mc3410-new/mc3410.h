@@ -113,9 +113,5 @@
 
 #define MC3XXX_PCODE_RESERVE_10    0x99
 
-#ifdef CONFIG_CUSTOM_KERNEL_ACCELEROMETER_MODULE
-extern bool success_Flag;
-#endif
-
 #endif    /* END OF _MC3XXX_H_ */
 

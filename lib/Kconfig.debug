@@ -145,7 +145,7 @@ config DEBUG_INFO_REDUCED
 
 config DEBUG_INFO_SPLIT
 	bool "Produce split debuginfo in .dwo files"
-	depends on DEBUG_INFO
+	depends on DEBUG_INFO && !FRV
 	help
 	  Generate debug info into separate .dwo files. This significantly
 	  reduces the build directory size for builds with DEBUG_INFO,
@@ -226,22 +226,6 @@ config UNUSED_SYMBOLS
 	  mail to the linux kernel mailing list mentioning the symbol and why
 	  you really need it, and what the merge plan to the mainline kernel for
 	  your module is.
-
-config PAGE_OWNER
-	bool "Track page owner"
-	depends on DEBUG_KERNEL && STACKTRACE_SUPPORT
-	select DEBUG_FS
-	select STACKTRACE
-	select PAGE_EXTENSION
-	help
-	  This keeps track of what call chain is the owner of a page, may
-	  help to find bare alloc_page(s) leaks. Even if you include this
-	  feature on your build, it is disabled in default. You should pass
-	  "page_owner=on" to boot parameter in order to enable it. Eats
-	  a fair amount of memory if enabled. See tools/vm/page_owner_sort.c
-	  for user-space helper.
-
-	  If unsure, say N.
 
 config DEBUG_FS
 	bool "Debug Filesystem"
@@ -652,6 +636,27 @@ config DEBUG_STACKOVERFLOW
 source "lib/Kconfig.kmemcheck"
 
 endmenu # "Memory Debugging"
+
+config ARCH_HAS_KCOV
+	bool
+	help
+	  KCOV does not have any arch-specific code, but currently it is enabled
+	  only for x86_64. KCOV requires testing on other archs, and most likely
+	  disabling of instrumentation for some early boot code.
+
+config KCOV
+	bool "Code coverage for fuzzing"
+	depends on ARCH_HAS_KCOV
+	select DEBUG_FS
+	help
+	  KCOV exposes kernel code coverage information in a form suitable
+	  for coverage-guided fuzzing (randomized testing).
+
+	  If RANDOMIZE_BASE is enabled, PC values will not be stable across
+	  different machines and across reboots. If you need stable PC values,
+	  disable RANDOMIZE_BASE.
+
+	  For more details, see Documentation/kcov.txt.
 
 config DEBUG_SHIRQ
 	bool "Debug shared IRQ handlers"

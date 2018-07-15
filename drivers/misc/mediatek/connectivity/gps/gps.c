@@ -54,7 +54,7 @@
  * Definition
 ******************************************************************************/
 /* device name and major number */
-#define GPS_DEVNAME            "gps"
+#define GPS_DEVNAME            "mt3326-gps"
 /******************************************************************************
  * Debug configuration
 ******************************************************************************/
@@ -851,7 +851,7 @@ static ssize_t mt3326_gps_write(struct file *file, const char __user *buf, size_
 {
 	struct gps_data *dev = file->private_data;
 	ssize_t ret = 0;
-	int copy_size = 0;
+	size_t copy_size = 0;
 
 	GPS_TRC();
 
@@ -867,7 +867,7 @@ static ssize_t mt3326_gps_write(struct file *file, const char __user *buf, size_
 	if (down_interruptible(&dev->sem))
 		return -ERESTARTSYS;
 
-	copy_size = (count < 4096) ? count : 4096;
+	copy_size = min(count, sizeof(dev->dat_buf));
 	if (copy_from_user(dev->dat_buf, buf, copy_size)) {
 		GPS_DBG("copy_from_user error");
 		ret = -EFAULT;
@@ -1098,7 +1098,7 @@ static int mt3326_gps_resume(struct platform_device *dev)
 /*****************************************************************************/
 #ifdef CONFIG_OF
 static const struct of_device_id apgps_of_ids[] = {
-	{.compatible = "mediatek,gps",},
+	{.compatible = "mediatek,mt3326-gps",},
 	{}
 };
 #endif

@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <generated/autoconf.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -50,10 +37,7 @@
 #include <mt-plat/battery_common.h>
 #endif
 #include <linux/time.h>
-
-#ifdef CONFIG_MTK_USB2JTAG_SUPPORT
-#include <mt-plat/mt_usb2jtag.h>
-#endif
+#include <mt-plat/mt_boot.h>
 
 /* ============================================================ // */
 /* extern function */
@@ -81,6 +65,16 @@ static void hw_bc11_dump_register(void)
 static void hw_bc11_init(void)
 {
 	msleep(200);
+
+	/* add make sure USB Ready */
+	if (is_usb_rdy() == KAL_FALSE) {
+		battery_log(BAT_LOG_CRTI, "CDP, block\n");
+		while(is_usb_rdy() == KAL_FALSE)
+			msleep(100);
+		battery_log(BAT_LOG_CRTI, "CDP, free\n");
+	} else
+		battery_log(BAT_LOG_CRTI, "CDP, PASS\n");
+
 #if defined(CONFIG_MTK_SMART_BATTERY)
 	Charger_Detect_Init();
 #endif
@@ -281,13 +275,6 @@ int hw_charging_get_charger_type(void)
 	/* return STANDARD_CHARGER; //adaptor */
 #else
 	CHARGER_TYPE CHR_Type_num = CHARGER_UNKNOWN;
-
-#ifdef CONFIG_MTK_USB2JTAG_SUPPORT
-	if (usb2jtag_mode()) {
-		pr_err("[USB2JTAG] in usb2jtag mode, skip charger detection\n");
-		return STANDARD_HOST;
-	}
-#endif
 
 	/********* Step initial  ***************/
 	hw_bc11_init();

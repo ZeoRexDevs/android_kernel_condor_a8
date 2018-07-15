@@ -1,16 +1,3 @@
-/*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -51,7 +38,7 @@
 
 #define SKIP_TIMER
 
-static u32 debug_level = (255 - K_DEBUG);
+static u32 debug_level = 255;
 static struct usbtypc *g_exttypec;
 static struct i2c_client *typec_client;
 static int trigger_driver(struct usbtypc *typec, int type, int stat, int dir);
@@ -216,9 +203,10 @@ void EnableFUSB300StateMachine(void)
  ******************************************************************************/
 void StateMachineFUSB300(struct usbtypc *typec)
 {
+#ifdef SKIP_TIMER
 	ConnectionState pre_ConnState = ConnState;
 	ConnectionState new_ConnState;
-
+#endif
 	if (!blnSMEnabled)
 		return;
 
@@ -301,13 +289,9 @@ void StateMachineFUSB300(struct usbtypc *typec)
 	/* Clear the advanced interrupt registers once we've gone through the state machines */
 	Registers.Status.InterruptAdv = 0;
 
-	new_ConnState = ConnState;
-
-	fusb_printk(K_INFO, "StateMachineFUSB300- ConnState=%s -> %s\n",
-		string_conection_state[pre_ConnState],
-		string_conection_state[new_ConnState]);
 
 #ifdef SKIP_TIMER
+	new_ConnState = ConnState;
 	if (new_ConnState != pre_ConnState)
 		StateMachineFUSB300(typec);
 #endif
@@ -316,6 +300,8 @@ void StateMachineFUSB300(struct usbtypc *typec)
 		typec->en_irq = 1;
 		enable_irq(typec->irqnum);
 	}
+	fusb_printk(K_DEBUG, "StateMachineFUSB300- ConnState=%s\n",
+		    string_conection_state[ConnState]);
 }
 
 
@@ -1577,7 +1563,7 @@ CCTermType DecodeCCTermination(void)
 			break;
 		}
 	}
-	fusb_printk(K_INFO, "DecodeCCTermination Termination=%x\n", Termination);
+	fusb_printk(K_DEBUG, "DecodeCCTermination Termination=%x\n", Termination);
 	return Termination;	/* Return the termination type */
 }
 
@@ -1617,16 +1603,16 @@ void ConfigurePortType(unsigned char Control)
 	switch (value) {
 	case 1:
 		PortType = USBTypeC_Source;
-		fusb_printk(K_INFO, "%s USBTypeC_Source\n", __func__);
+		fusb_printk(K_DEBUG, "%s USBTypeC_Source\n", __func__);
 
 		break;
 	case 2:
 		PortType = USBTypeC_DRP;
-		fusb_printk(K_INFO, "%s USBTypeC_DRP\n", __func__);
+		fusb_printk(K_DEBUG, "%s USBTypeC_DRP\n", __func__);
 		break;
 	default:
 		PortType = USBTypeC_Sink;
-		fusb_printk(K_INFO, "%s USBTypeC_Sink\n", __func__);
+		fusb_printk(K_DEBUG, "%s USBTypeC_Sink\n", __func__);
 		break;
 	}
 	if (Control & 0x04)
@@ -1642,19 +1628,19 @@ void ConfigurePortType(unsigned char Control)
 	switch (value) {
 	case 1:
 		SourceCurrent = utccDefault;
-		fusb_printk(K_INFO, "%s tcc utccDefault\n", __func__);
+		fusb_printk(K_DEBUG, "%s tcc utccDefault\n", __func__);
 		break;
 	case 2:
 		SourceCurrent = utcc1p5A;
-		fusb_printk(K_INFO, "%s tcc utcc1p5A\n", __func__);
+		fusb_printk(K_DEBUG, "%s tcc utcc1p5A\n", __func__);
 		break;
 	case 3:
 		SourceCurrent = utcc3p0A;
-		fusb_printk(K_INFO, "%s tcc utcc3p0A\n", __func__);
+		fusb_printk(K_DEBUG, "%s tcc utcc3p0A\n", __func__);
 		break;
 	default:
 		SourceCurrent = utccNone;
-		fusb_printk(K_INFO, "%s tcc utccNone\n", __func__);
+		fusb_printk(K_DEBUG, "%s tcc utccNone\n", __func__);
 		break;
 	}
 	if (Control & 0x80)
@@ -1756,9 +1742,10 @@ BOOL FUSB300Read(unsigned char regAddr, unsigned char length, unsigned char *dat
 
 
 /* /////////////////////////////////////////////////////////////////////////////// */
+/* /////////////////////////////////////////////////////////////////////////////// */
 int register_typec_switch_callback(struct typec_switch_data *new_driver)
 {
-	fusb_printk(K_INFO, "Register driver %s %d\n", new_driver->name, new_driver->type);
+	fusb_printk(K_DEBUG, "Register driver %s %d\n", new_driver->name, new_driver->type);
 
 	if (new_driver->type == DEVICE_TYPE) {
 		g_exttypec->device_driver = new_driver;
@@ -1780,7 +1767,7 @@ EXPORT_SYMBOL_GPL(register_typec_switch_callback);
 
 int unregister_typec_switch_callback(struct typec_switch_data *new_driver)
 {
-	fusb_printk(K_INFO, "Unregister driver %s %d\n", new_driver->name, new_driver->type);
+	fusb_printk(K_DEBUG, "Unregister driver %s %d\n", new_driver->name, new_driver->type);
 
 	if ((new_driver->type == DEVICE_TYPE) && (g_exttypec->device_driver == new_driver))
 		g_exttypec->device_driver = NULL;
@@ -1855,11 +1842,6 @@ static int usb3_switch_en(struct usbtypc *typec, int on)
 {
 	int retval = 0;
 
-	if (!typec->pinctrl || !typec->pin_cfg || !typec->u3_sw) {
-		fusb_printk(K_ERR, "%s not init\n", __func__);
-		goto end;
-	}
-
 	fusb_printk(K_DEBUG, "%s on=%d\n", __func__, on);
 
 	if (on == ENABLE) {	/*enable usb switch */
@@ -1870,8 +1852,8 @@ static int usb3_switch_en(struct usbtypc *typec, int on)
 		typec->u3_sw->en = DISABLE;
 	}
 
-	/*fusb_printk(K_DEBUG, "%s gpio=%d\n", __func__, gpio_get_value(typec->u3_sw->en_gpio));*/
-end:
+	fusb_printk(K_DEBUG, "%s gpio=%d\n", __func__, gpio_get_value(typec->u3_sw->en_gpio));
+
 	return retval;
 }
 
@@ -1879,11 +1861,6 @@ end:
 static int usb3_switch_sel(struct usbtypc *typec, int sel)
 {
 	int retval = 0;
-
-	if (!typec->pinctrl || !typec->pin_cfg || !typec->u3_sw) {
-		fusb_printk(K_ERR, "%s not init\n", __func__);
-		goto end;
-	}
 
 	fusb_printk(K_DEBUG, "%s on=%d\n", __func__, sel);
 
@@ -1895,19 +1872,13 @@ static int usb3_switch_sel(struct usbtypc *typec, int sel)
 		typec->u3_sw->sel = sel;
 	}
 
-	/*fusb_printk(K_DEBUG, "%s gpio=%d\n", __func__, gpio_get_value(typec->u3_sw->sel_gpio));*/
-end:
+	fusb_printk(K_DEBUG, "%s gpio=%d\n", __func__, gpio_get_value(typec->u3_sw->sel_gpio));
+
 	return retval;
 }
 
 static int trigger_driver(struct usbtypc *typec, int type, int stat, int dir)
 {
-#ifdef CONFIG_MTK_SIB_USB_SWITCH
-	if (typec->sib_enable) {
-		fusb_printk(K_INFO, "SIB enable!\n");
-		goto end;
-	}
-#endif
 	fusb_printk(K_DEBUG, "trigger_driver: type:%d, stat:%d, dir%d\n", type, stat, dir);
 
 	if (stat == ENABLE)
@@ -1920,10 +1891,8 @@ static int trigger_driver(struct usbtypc *typec, int type, int stat, int dir)
 			typec->device_driver->on = DISABLE;
 
 			usb_redriver_enter_dps(typec);
-
 			usb3_switch_en(typec, DISABLE);
-
-			fusb_printk(K_INFO, "trigger_driver: disable dev drv\n");
+			fusb_printk(K_DEBUG, "trigger_driver:[1]\n");
 		} else if ((stat == ENABLE) && (typec->device_driver->enable)
 			   && (typec->device_driver->on == DISABLE)) {
 			typec->device_driver->enable(typec->device_driver->priv_data);
@@ -1932,10 +1901,9 @@ static int trigger_driver(struct usbtypc *typec, int type, int stat, int dir)
 			usb_redriver_exit_dps(typec);
 
 			usb3_switch_en(typec, ENABLE);
-
-			fusb_printk(K_INFO, "trigger_driver: enable dev drv\n");
+			fusb_printk(K_DEBUG, "trigger_driver:[2]\n");
 		} else {
-			fusb_printk(K_INFO, "%s No device driver to enable\n", __func__);
+			fusb_printk(K_DEBUG, "%s No device driver to enable\n", __func__);
 		}
 	} else if (type == HOST_TYPE && typec->host_driver) {
 		if ((stat == DISABLE) && (typec->host_driver->disable)
@@ -1944,10 +1912,8 @@ static int trigger_driver(struct usbtypc *typec, int type, int stat, int dir)
 			typec->host_driver->on = DISABLE;
 
 			usb_redriver_enter_dps(typec);
-
 			usb3_switch_en(typec, DISABLE);
-
-			fusb_printk(K_INFO, "trigger_driver: disable host drv\n");
+			fusb_printk(K_DEBUG, "trigger_driver:[3]\n");
 		} else if ((stat == ENABLE) &&
 			   (typec->host_driver->enable) && (typec->host_driver->on == DISABLE)) {
 			typec->host_driver->enable(typec->host_driver->priv_data);
@@ -1955,19 +1921,15 @@ static int trigger_driver(struct usbtypc *typec, int type, int stat, int dir)
 
 			usb_redriver_exit_dps(typec);
 
-			/*ALPS02376554*/
-			/*usb3_switch_en(typec, ENABLE);*/
-
-			fusb_printk(K_INFO, "trigger_driver: enable host drv\n");
+			usb3_switch_en(typec, ENABLE);
+			fusb_printk(K_DEBUG, "trigger_driver:[4]\n");
 		} else {
-			fusb_printk(K_INFO, "%s No device driver to enable\n", __func__);
+			fusb_printk(K_DEBUG, "%s No device driver to enable\n", __func__);
 		}
 	} else {
-		fusb_printk(K_INFO, "trigger_driver: no callback func\n");
+		fusb_printk(K_DEBUG, "trigger_driver:[5]\n");
 	}
-#ifdef CONFIG_MTK_SIB_USB_SWITCH
-end:
-#endif
+
 	return 0;
 }
 
@@ -1993,7 +1955,13 @@ static irqreturn_t fusb300_eint_isr(int irqnum, void *data)
 	}
 
 	ret = schedule_delayed_work_on(WORK_CPU_UNBOUND, &typec->fsm_work, 0);
-
+/*
+	fusb_printk(K_DEBUG, "fusb300_eint_isr %d, gpio_mode(%d),"
+		    " gpio_pull_enable(%d), gpio_pull_select(%d)\n", irqnum,
+		    mt_get_gpio_mode(GPIO_USB_TYPEC_EINT_PIN),
+		    mt_get_gpio_pull_enable(GPIO_USB_TYPEC_EINT_PIN),
+		    mt_get_gpio_pull_select(GPIO_USB_TYPEC_EINT_PIN));
+*/
 	return IRQ_HANDLED;
 }
 
@@ -2014,11 +1982,11 @@ int usb3_switch_init(struct usbtypc *typec)
 	/*dir selection */
 	pinctrl_select_state(typec->pinctrl, typec->pin_cfg->fusb340_sel_init);
 
-	/*fusb_printk(K_DEBUG, "en_gpio=0x%X, out=%d\n", typec->u3_sw->en_gpio,
-		    gpio_get_value(typec->u3_sw->en_gpio));*/
+	fusb_printk(K_DEBUG, "en_gpio=0x%X, out=%d\n", typec->u3_sw->en_gpio,
+		    gpio_get_value(typec->u3_sw->en_gpio));
 
-	/*fusb_printk(K_DEBUG, "sel_gpio=0x%X, out=%d\n", typec->u3_sw->sel_gpio,
-		    gpio_get_value(typec->u3_sw->sel_gpio));*/
+	fusb_printk(K_DEBUG, "sel_gpio=0x%X, out=%d\n", typec->u3_sw->sel_gpio,
+		    gpio_get_value(typec->u3_sw->sel_gpio));
 
 
 	return retval;
@@ -2028,23 +1996,23 @@ int usb_redriver_init(struct usbtypc *typec)
 {
 	int retval = 0;
 	int u3_eq_c1 = 197;
-	int u3_eq_c2 = 196;
+	int u3_eq_c2 = 198;
 
 	typec->u_rd = kzalloc(sizeof(struct usb_redriver), GFP_KERNEL);
 	typec->u_rd->c1_gpio = u3_eq_c1;
 	typec->u_rd->eq_c1 = U3_EQ_HIGH;
 
 	typec->u_rd->c2_gpio = u3_eq_c2;
-	typec->u_rd->eq_c2 = U3_EQ_LOW;
+	typec->u_rd->eq_c2 = U3_EQ_HIGH;
 
 	pinctrl_select_state(typec->pinctrl, typec->pin_cfg->re_c1_init);
 	pinctrl_select_state(typec->pinctrl, typec->pin_cfg->re_c2_init);
 
-	/*fusb_printk(K_DEBUG, "c1_gpio=0x%X, out=%d\n", typec->u_rd->c1_gpio,
-		    gpio_get_value(typec->u_rd->c1_gpio));*/
+	fusb_printk(K_DEBUG, "c1_gpio=0x%X, out=%d\n", typec->u_rd->c1_gpio,
+		    gpio_get_value(typec->u_rd->c1_gpio));
 
-	/*fusb_printk(K_DEBUG, "c2_gpio=0x%X, out=%d\n", typec->u_rd->c2_gpio,
-		    gpio_get_value(typec->u_rd->c2_gpio));*/
+	fusb_printk(K_DEBUG, "c2_gpio=0x%X, out=%d\n", typec->u_rd->c2_gpio,
+		    gpio_get_value(typec->u_rd->c2_gpio));
 
 	return retval;
 }
@@ -2061,52 +2029,42 @@ int usb_redriver_config(struct usbtypc *typec, int ctrl_pin, int stat)
 	int retval = 0;
 	int pin_num = 0;
 
-	if (!typec->pinctrl || !typec->pin_cfg || !typec->u_rd) {
-		fusb_printk(K_ERR, "%s not init\n", __func__);
-		goto end;
-	}
-
 	fusb_printk(K_DEBUG, "%s pin=%d, stat=%d\n", __func__, ctrl_pin, stat);
 
 	if (ctrl_pin == U3_EQ_C1) {
 		pin_num = typec->u_rd->c1_gpio;
 	} else if (ctrl_pin == U3_EQ_C2) {
 		pin_num = typec->u_rd->c2_gpio;
-	}
-
-	switch (stat) {
-	case U3_EQ_LOW:
-		if (ctrl_pin == U3_EQ_C1)
-			pinctrl_select_state(typec->pinctrl,
-					typec->pin_cfg->re_c1_low);
-		else
-			pinctrl_select_state(typec->pinctrl,
-					typec->pin_cfg->re_c2_low);
-		break;
-	case U3_EQ_HZ:
-		if (ctrl_pin == U3_EQ_C1)
-			pinctrl_select_state(typec->pinctrl,
-					typec->pin_cfg->re_c1_hiz);
-		else
-			pinctrl_select_state(typec->pinctrl,
-					typec->pin_cfg->re_c2_hiz);
-		break;
-	case U3_EQ_HIGH:
-		if (ctrl_pin == U3_EQ_C1)
-			pinctrl_select_state(typec->pinctrl,
-					typec->pin_cfg->re_c1_high);
-		else
-			pinctrl_select_state(typec->pinctrl,
-					typec->pin_cfg->re_c2_high);
-		break;
-	default:
+	} else {
 		retval = -EINVAL;
-		break;
+		goto end;
 	}
 
-	/*fusb_printk(K_DEBUG, "%s gpio=%d, out=%d\n", __func__, pin_num,
-		    gpio_get_value(pin_num));*/
+	/* switch(stat) { */
+	/* case U3_EQ_LOW: */
+	/* retval |= mt_set_gpio_dir( pin_num, GPIO_DIR_OUT); */
+	/* retval |= mt_set_gpio_out( pin_num, GPIO_OUT_ZERO); */
+	/* retval |= mt_set_gpio_pull_enable( pin_num, GPIO_PULL_ENABLE); */
+	/* break; */
+	/* case U3_EQ_HZ: */
+	/* retval |= mt_set_gpio_dir( pin_num, GPIO_DIR_IN); */
+	/* retval |= mt_set_gpio_pull_enable( pin_num, GPIO_PULL_DISABLE); */
+	/* break; */
+	/* case U3_EQ_HIGH: */
+	/* retval |= mt_set_gpio_dir( pin_num, GPIO_DIR_OUT); */
+	/* retval |= mt_set_gpio_out( pin_num, GPIO_OUT_ONE); */
+	/* retval |= mt_set_gpio_pull_enable( pin_num, GPIO_PULL_ENABLE); */
+	/* break; */
+	/* default: */
+	/* retval = -EINVAL; */
+	/* break; */
+	/* } */
+
+	fusb_printk(K_DEBUG, "%s gpio=%d, out=%d\n", __func__, pin_num,
+		    gpio_get_value(pin_num));
+
 end:
+
 	return retval;
 }
 
@@ -2123,11 +2081,6 @@ int usb_redriver_exit_dps(struct usbtypc *typec)
 {
 	int retval = 0;
 
-	if (!typec->u_rd) {
-		fusb_printk(K_ERR, "%s not init\n", __func__);
-		goto end;
-	}
-
 	if ((typec->u_rd->eq_c1 == U3_EQ_HIGH) || (typec->u_rd->eq_c2 == U3_EQ_HIGH)) {
 		retval |= usb_redriver_config(typec, U3_EQ_C1, typec->u_rd->eq_c1);
 		retval |= usb_redriver_config(typec, U3_EQ_C2, typec->u_rd->eq_c2);
@@ -2140,7 +2093,6 @@ int usb_redriver_exit_dps(struct usbtypc *typec)
 		retval |= usb_redriver_config(typec, U3_EQ_C1, typec->u_rd->eq_c1);
 		retval |= usb_redriver_config(typec, U3_EQ_C2, typec->u_rd->eq_c2);
 	}
-end:
 	return retval;
 }
 
@@ -2163,12 +2115,12 @@ int fusb300_eint_init(struct usbtypc *typec)
 	typec->irqnum = irq_of_parse_and_map(node, 0);
 	typec->en_irq = 1;
 
-	fusb_printk(K_INFO, "request_irq irqnum=0x%x\n", typec->irqnum);
+	fusb_printk(K_DEBUG, "request_irq irqnum=0x%x\n", typec->irqnum);
 
 	retval =
 	    request_irq(typec->irqnum, fusb300_eint_isr, IRQF_TRIGGER_NONE, "fusb300_eint", typec);
 	if (retval != 0) {
-		fusb_printk(K_ERR, "request_irq fail, ret %d, irqnum %d!!!\n", retval,
+		fusb_printk(K_DEBUG, "request_irq fail, ret %d, irqnum %d!!!\n", retval,
 			    typec->irqnum);
 	}
 	return retval;
@@ -2230,7 +2182,7 @@ static int fusb300_debugfs_i2c_show(struct seq_file *s, void *unused)
 		if ((i > 0x9 && i < 0x3C))
 			continue;
 		val = fusb300_i2c_r_reg(client, i);
-		fusb_printk(K_INFO, "%s %x\n", __func__, val);
+		fusb_printk(K_DEBUG, "%s %x\n", __func__, val);
 		seq_printf(s, "[%02x]%-10s: %02x\n", i, strings[str_idx], val);
 		str_idx++;
 	}
@@ -2258,19 +2210,19 @@ static ssize_t fusb300_debugfs_i2c_write(struct file *file,
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
 		return -EFAULT;
 
-	fusb_printk(K_INFO, "%s %s\n", __func__, buf);
+	fusb_printk(K_DEBUG, "%s %s\n", __func__, buf);
 
 	if (sscanf(buf, "a0x%x v0x%x", &addr, &val) == 2) {
 		val = val & 0xFF;
 		addr = addr & 0xFF;
 		if (addr == 0x8 || addr == 0x9 || (addr > 0x0C && addr < 0x40) || addr > 0x44) {
-			fusb_printk(K_ERR, "%s invalid address=0x%x\n", __func__, addr);
+			fusb_printk(K_DEBUG, "%s invalid address=0x%x\n", __func__, addr);
 			return count;
 		}
-		fusb_printk(K_INFO, "%s write address=0x%x, value=0x%x\n", __func__, addr, val);
+		fusb_printk(K_DEBUG, "%s write address=0x%x, value=0x%x\n", __func__, addr, val);
 		fusb300_i2c_w_reg8(client, addr, val);
 		val = fusb300_i2c_r_reg(client, addr);
-		fusb_printk(K_INFO, "%s result=0x%x\n", __func__, val);
+		fusb_printk(K_DEBUG, "%s result=0x%x\n", __func__, val);
 	}
 
 	return count;
@@ -2293,14 +2245,14 @@ static int usb_gpio_debugfs_show(struct seq_file *s, void *unused)
 	seq_puts(s, "---U3 SWITCH---\n");
 	pin = typec->u3_sw->en_gpio;
 	if (pin) {
-		fusb_printk(K_INFO, "en=%d, out=%d\n", pin, gpio_get_value(pin));
+		fusb_printk(K_DEBUG, "en=%d, out=%d\n", pin, gpio_get_value(pin));
 
 		seq_printf(s, "OEN[%x] out=%d\n", pin, gpio_get_value(pin));
 	}
 
 	pin = typec->u3_sw->sel_gpio;
 	if (pin) {
-		fusb_printk(K_INFO, "sel=%d, out=%d\n", pin, gpio_get_value(pin));
+		fusb_printk(K_DEBUG, "sel=%d, out=%d\n", pin, gpio_get_value(pin));
 
 		seq_printf(s, "SEL[%x] out=%d\n", pin, gpio_get_value(pin));
 	}
@@ -2308,14 +2260,14 @@ static int usb_gpio_debugfs_show(struct seq_file *s, void *unused)
 	seq_puts(s, "---REDRIVER---\n");
 	pin = typec->u_rd->c1_gpio;
 	if (pin) {
-		fusb_printk(K_INFO, "C1=%d, out=%d\n", pin, gpio_get_value(pin));
+		fusb_printk(K_DEBUG, "C1=%d, out=%d\n", pin, gpio_get_value(pin));
 
 		seq_printf(s, "C1[%x] out=%d\n", pin, gpio_get_value(pin));
 	}
 
 	pin = typec->u_rd->c2_gpio;
 	if (pin) {
-		fusb_printk(K_INFO, "C2=%d, out=%d\n", pin, gpio_get_value(pin));
+		fusb_printk(K_DEBUG, "C2=%d, out=%d\n", pin, gpio_get_value(pin));
 
 		seq_printf(s, "C2[%x] out=%d\n", pin, gpio_get_value(pin));
 	}
@@ -2353,10 +2305,10 @@ static ssize_t usb_gpio_debugfs_write(struct file *file,
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
 		return -EFAULT;
 
-	fusb_printk(K_INFO, "%s %s\n", __func__, buf);
+	fusb_printk(K_DEBUG, "%s %s\n", __func__, buf);
 
 	if (sscanf(buf, "sw %s %d", gpio, &val) == 2) {
-		fusb_printk(K_INFO, "%s %d\n", gpio, val);
+		fusb_printk(K_DEBUG, "%s %d\n", gpio, val);
 		if (strncmp(gpio, "en", 2) == 0)
 			usb3_switch_en(typec, ((val == 0) ? DISABLE : ENABLE));
 		else if (strncmp(gpio, "sel", 3) == 0)
@@ -2364,7 +2316,7 @@ static ssize_t usb_gpio_debugfs_write(struct file *file,
 	} else if (sscanf(buf, "rd %s %c", gpio, &type) == 2) {
 		int stat = 0;
 
-		fusb_printk(K_INFO, "%s %c\n", gpio, val);
+		fusb_printk(K_DEBUG, "%s %c\n", gpio, val);
 
 		if (type == 'H')
 			stat = U3_EQ_HIGH;
@@ -2393,90 +2345,22 @@ static const struct file_operations usb_gpio_debugfs_fops = {
 	.release = single_release,
 };
 
-#ifdef CONFIG_MTK_SIB_USB_SWITCH
-static int usb_sib_get(void *data, u64 *val)
-{
-	struct usbtypc *typec = data;
-
-	*val = typec->sib_enable;
-
-	fusb_printk(K_INFO, "usb_sib_get %d %llu\n", typec->sib_enable, *val);
-
-	return 0;
-}
-
-static int usb_sib_set(void *data, u64 val)
-{
-	struct usbtypc *typec = data;
-
-	typec->sib_enable = !!val;
-
-	fusb_printk(K_INFO, "usb_sib_set %d %llu\n", typec->sib_enable, val);
-
-	if (typec->sib_enable) {
-		usb_redriver_exit_dps(typec);
-		usb3_switch_en(typec, ENABLE);
-	} else {
-		usb_redriver_enter_dps(typec);
-		usb3_switch_en(typec, DISABLE);
-	}
-
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(usb_sib_debugfs_fops, usb_sib_get, usb_sib_set, "%llu\n");
-#endif
-
-#ifdef CONFIG_U3_PHY_SMT_LOOP_BACK_SUPPORT
-static int usb_smt_set(void *data, u64 val)
-{
-	struct usbtypc *typec = data;
-	int sel = val;
-
-	fusb_printk(K_INFO, "usb_smt_set %d\n", sel);
-
-	if (sel == 0) {
-		usb_redriver_enter_dps(typec);
-		usb3_switch_en(typec, DISABLE);
-	} else {
-		usb_redriver_exit_dps(typec);
-		usb3_switch_en(typec, ENABLE);
-
-		if (sel == 1)
-			usb3_switch_sel(typec, UP_SIDE);
-		else
-			usb3_switch_sel(typec, DOWN_SIDE);
-	}
-
-	return 0;
-}
-DEFINE_SIMPLE_ATTRIBUTE(usb_smt_debugfs_fops, NULL, usb_smt_set, "%llu\n");
-#endif
-
 int fusb300_init_debugfs(struct usbtypc *typec)
 {
 	struct dentry *root;
 	struct dentry *file;
 	int ret;
 
-	root = debugfs_create_dir("usb_c", NULL);
+	root = debugfs_create_dir(dev_name(&typec->i2c_hd->dev), NULL);
 	if (!root) {
 		ret = -ENOMEM;
 		goto err0;
 	}
 
-	file = debugfs_create_file("i2c_rw", S_IRUGO|S_IWUSR, root, typec->i2c_hd,
+	file = debugfs_create_file("i2c_rw", S_IRUGO, root, typec->i2c_hd,
 				   &fusb300_debugfs_i2c_fops);
 
-	file = debugfs_create_file("gpio", S_IRUGO|S_IWUSR, root, typec, &usb_gpio_debugfs_fops);
-
-#ifdef CONFIG_MTK_SIB_USB_SWITCH
-	file = debugfs_create_file("sib", S_IRUGO|S_IWUSR, root, typec, &usb_sib_debugfs_fops);
-#endif
-#ifdef CONFIG_U3_PHY_SMT_LOOP_BACK_SUPPORT
-	file = debugfs_create_file("smt", S_IWUSR, root, typec,
-						&usb_smt_debugfs_fops);
-#endif
+	file = debugfs_create_file("gpio", S_IRUGO, root, typec, &usb_gpio_debugfs_fops);
 
 	if (!file) {
 		ret = -ENOMEM;
@@ -2504,7 +2388,7 @@ static int usbc_pinctrl_probe(struct platform_device *pdev)
 
 	typec->pinctrl = devm_pinctrl_get(&pdev->dev);
 	if (IS_ERR(typec->pinctrl)) {
-		fusb_printk(K_ERR, "Cannot find usb pinctrl!\n");
+		fusb_printk(K_DEBUG, "Cannot find usb pinctrl!\n");
 	} else {
 		typec->pin_cfg = kzalloc(sizeof(struct usbc_pin_ctrl), GFP_KERNEL);
 
@@ -2513,91 +2397,91 @@ static int usbc_pinctrl_probe(struct platform_device *pdev)
 		/********************************************************/
 		typec->pin_cfg->re_c1_init = pinctrl_lookup_state(typec->pinctrl, "redriver_c1_init");
 		if (IS_ERR(typec->pin_cfg->re_c1_init))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c1_init\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c1_init\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c1_init\n");
 
 		typec->pin_cfg->re_c1_low = pinctrl_lookup_state(typec->pinctrl, "redriver_c1_low");
 		if (IS_ERR(typec->pin_cfg->re_c1_low))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c1_low\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c1_low\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c1_low\n");
 
 		typec->pin_cfg->re_c1_hiz = pinctrl_lookup_state(typec->pinctrl, "redriver_c1_hiz");
 		if (IS_ERR(typec->pin_cfg->re_c1_hiz))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c1_hiz\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c1_hiz\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c1_hiz\n");
 
 		typec->pin_cfg->re_c1_high = pinctrl_lookup_state(typec->pinctrl, "redriver_c1_high");
 		if (IS_ERR(typec->pin_cfg->re_c1_high))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c1_high\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c1_high\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c1_high\n");
 		/********************************************************/
 
 		typec->pin_cfg->re_c2_init = pinctrl_lookup_state(typec->pinctrl, "redriver_c2_init");
 		if (IS_ERR(typec->pin_cfg->re_c2_init))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c2_init\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c2_init\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c2_init\n");
 
 		typec->pin_cfg->re_c2_low = pinctrl_lookup_state(typec->pinctrl, "redriver_c2_low");
 		if (IS_ERR(typec->pin_cfg->re_c2_low))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c2_low\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c2_low\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c2_low\n");
 
 		typec->pin_cfg->re_c2_hiz = pinctrl_lookup_state(typec->pinctrl, "redriver_c2_hiz");
 		if (IS_ERR(typec->pin_cfg->re_c2_hiz))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c2_hiz\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c2_hiz\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c2_hiz\n");
 
 		typec->pin_cfg->re_c2_high = pinctrl_lookup_state(typec->pinctrl, "redriver_c2_high");
 		if (IS_ERR(typec->pin_cfg->re_c2_high))
-			fusb_printk(K_ERR, "Can *NOT* find redriver_c2_high\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find redriver_c2_high\n");
 		else
 			fusb_printk(K_DEBUG, "Find redriver_c2_high\n");
 		/********************************************************/
 
 		typec->pin_cfg->fusb340_oen_init = pinctrl_lookup_state(typec->pinctrl, "fusb340_noe_init");
 		if (IS_ERR(typec->pin_cfg->fusb340_oen_init))
-			fusb_printk(K_ERR, "Can *NOT* find fusb340_noe_init\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find fusb340_noe_init\n");
 		else
 			fusb_printk(K_DEBUG, "Find fusb340_noe_init\n");
 
 		typec->pin_cfg->fusb340_oen_low = pinctrl_lookup_state(typec->pinctrl, "fusb340_noe_low");
 		if (IS_ERR(typec->pin_cfg->fusb340_oen_low))
-			fusb_printk(K_ERR, "Can *NOT* find fusb340_noe_low\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find fusb340_noe_low\n");
 		else
 			fusb_printk(K_DEBUG, "Find fusb340_noe_low\n");
 
 		typec->pin_cfg->fusb340_oen_high = pinctrl_lookup_state(typec->pinctrl, "fusb340_noe_high");
 		if (IS_ERR(typec->pin_cfg->fusb340_oen_high))
-			fusb_printk(K_ERR, "Can *NOT* find fusb340_noe_high\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find fusb340_noe_high\n");
 		else
 			fusb_printk(K_DEBUG, "Find fusb340_noe_high\n");
 		/********************************************************/
 		typec->pin_cfg->fusb340_sel_init = pinctrl_lookup_state(typec->pinctrl, "fusb340_sel_init");
 		if (IS_ERR(typec->pin_cfg->fusb340_sel_init))
-			fusb_printk(K_ERR, "Can *NOT* find fusb340_sel_init\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find fusb340_sel_init\n");
 		else
 			fusb_printk(K_DEBUG, "Find fusb340_sel_init\n");
 
 		typec->pin_cfg->fusb340_sel_low = pinctrl_lookup_state(typec->pinctrl, "fusb340_sel_low");
 		if (IS_ERR(typec->pin_cfg->fusb340_sel_low))
-			fusb_printk(K_ERR, "Can *NOT* find fusb340_sel_low\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find fusb340_sel_low\n");
 		else
 			fusb_printk(K_DEBUG, "Find fusb340_sel_low\n");
 
 		typec->pin_cfg->fusb340_sel_high = pinctrl_lookup_state(typec->pinctrl, "fusb340_sel_high");
 		if (IS_ERR(typec->pin_cfg->fusb340_sel_high))
-			fusb_printk(K_ERR, "Can *NOT* find fusb340_sel_high\n");
+			fusb_printk(K_DEBUG, "Can *NOT* find fusb340_sel_high\n");
 		else
 			fusb_printk(K_DEBUG, "Find fusb340_sel_high\n");
 		/********************************************************/
-		fusb_printk(K_INFO, "Finish parsing pinctrl\n");
+		fusb_printk(K_DEBUG, "Finish parsing pinctrl\n");
 	}
 
 	return retval;
@@ -2629,10 +2513,10 @@ static int fusb300_i2c_probe(struct i2c_client *client, const struct i2c_device_
 	struct usbtypc *typec;
 	unsigned char port_type;
 
-	fusb_printk(K_INFO, "%s 0x%x\n", __func__, client->addr);
+	fusb_printk(K_DEBUG, "%s 0x%x\n", __func__, client->addr);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		fusb_printk(K_ERR, "fusb300 i2c functionality check fail.\n");
+		fusb_printk(K_DEBUG, "fusb300 i2c functionality check fail.\n");
 		return -ENODEV;
 	}
 
@@ -2670,10 +2554,10 @@ static int fusb300_i2c_probe(struct i2c_client *client, const struct i2c_device_
 	port_type = 0x92;
 	ConfigurePortType(port_type);
 
+	fusb300_eint_init(typec);
 	usb_redriver_init(typec);
 	usb3_switch_init(typec);
-	fusb300_eint_init(typec);
-	fusb_printk(K_INFO, "%s %x\n", __func__, fusb300_i2c_r_reg(client, 0x1));
+	fusb_printk(K_DEBUG, "%s %x\n", __func__, fusb300_i2c_r_reg(client, 0x1));
 
 	/*precheck status */
 	/* StateMachineFUSB300(typec); */
@@ -2712,14 +2596,14 @@ static int __init fusb300_init(void)
 	int ret = 0;
 
 	if (i2c_add_driver(&usb_i2c_driver) != 0) {
-		fusb_printk(K_ERR, "fusb300_init initialization failed!!\n");
+		fusb_printk(K_DEBUG, "fusb300_init initialization failed!!\n");
 		ret = -1;
 	} else {
 		fusb_printk(K_DEBUG, "fusb300_init initialization succeed!!\n");
 		if (!platform_driver_register(&usbc_pinctrl_driver))
 			fusb_printk(K_DEBUG, "register usbc pinctrl succeed!!\n");
 		else {
-			fusb_printk(K_ERR, "register usbc pinctrl fail!!\n");
+			fusb_printk(K_DEBUG, "register usbc pinctrl fail!!\n");
 			ret = -1;
 		}
 	}

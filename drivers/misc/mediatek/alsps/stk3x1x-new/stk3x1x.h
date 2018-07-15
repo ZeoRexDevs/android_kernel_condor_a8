@@ -1,4 +1,4 @@
-/*
+/* 
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -126,23 +126,4 @@
 
 #define STK_ALS_CODE_CHANGE_THD	5
 
-#if defined(CONFIG_CUSTOM_KERNEL_SENSORHUB)
-/*----------------------------------------------------------------------------*/
-enum STK3X1X_NOTIFY_TYPE {
-	STK3X1X_NOTIFY_PROXIMITY_CHANGE = 1,
-	STK3X1X_NOTIFY_ALS_RAW_DATA,
-	STK3X1X_NOTIFY_PS_RAW_DATA,
-	STK3X1X_NOTIFY_PROXIMITY_NOT_CHANGE
-};
-/*----------------------------------------------------------------------------*/
-enum STK3X1X_CUST_ACTION {
-	STK3X1X_CUST_ACTION_SET_CUST = 1,
-	STK3X1X_CUST_ACTION_CLR_CALI,
-	STK3X1X_CUST_ACTION_SET_CALI,
-	STK3X1X_CUST_ACTION_SET_PS_THRESHODL,
-	STK3X1X_CUST_ACTION_SET_EINT_INFO,
-	STK3X1X_CUST_ACTION_GET_ALS_RAW_DATA,
-	STK3X1X_CUST_ACTION_GET_PS_RAW_DATA,
-};
-#endif
 #endif

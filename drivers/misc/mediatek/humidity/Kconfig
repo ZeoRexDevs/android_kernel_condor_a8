@@ -5,4 +5,3 @@ config CUSTOM_KERNEL_HUMIDITY
 	  To detect humidity raw data
 
 source "drivers/misc/mediatek/humidity/hts221/Kconfig"
-source "drivers/misc/mediatek/humidity/hmdyhub/Kconfig"

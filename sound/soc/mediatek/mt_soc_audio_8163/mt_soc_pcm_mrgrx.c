@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -81,7 +79,7 @@ static bool mPrepareDone;
 static int Audio_mrgrx_Volume_Get(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("Audio_mrgrx_Volume_Get = %d\n", mmrgrx_Volume);
+	pr_debug("Audio_mrgrx_Volume_Get = %d\n", mmrgrx_Volume);
 	ucontrol->value.integer.value[0] = mmrgrx_Volume;
 	return 0;
 
@@ -91,7 +89,7 @@ static int Audio_mrgrx_Volume_Set(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
 	mmrgrx_Volume = ucontrol->value.integer.value[0];
-	PRINTK_AUDDRV("%s mmrgrx_Volume = 0x%x\n", __func__, mmrgrx_Volume);
+	pr_debug("%s mmrgrx_Volume = 0x%x\n", __func__, mmrgrx_Volume);
 
 	if (GetMemoryPathEnable(Soc_Aud_Digital_Block_MRG_I2S_OUT) == true)
 		SetHwDigitalGain(mmrgrx_Volume, Soc_Aud_Hw_Digital_Gain_HW_DIGITAL_GAIN1);
@@ -100,7 +98,7 @@ static int Audio_mrgrx_Volume_Set(struct snd_kcontrol *kcontrol,
 }
 
 static const char * const wcn_stub_audio_ctr[] = {
-	"CMB_STUB_AIF_0", "CMB_STUB_AIF_1", "CMB_STUB_AIF_2", "CMB_STUB_AIF_3" };
+	"XXXXXXXXXXXXXX", "XXXXXXXXXXXXXX", "XXXXXXXXXXXXXX", "XXXXXXXXXXXXXX" };
 
 static const struct soc_enum wcn_stub_audio_ctr_Enum[] = {
 
@@ -116,7 +114,7 @@ static int mAudio_Wcn_Cmb;
 
 static int Audio_Wcn_Cmb_Get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("Audio_Wcn_Cmb_Get = %d\n", mAudio_Wcn_Cmb);
+	pr_debug("Audio_Wcn_Cmb_Get = %d\n", mAudio_Wcn_Cmb);
 	ucontrol->value.integer.value[0] = mAudio_Wcn_Cmb;
 	return 0;
 }
@@ -124,7 +122,7 @@ static int Audio_Wcn_Cmb_Get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_
 static int Audio_Wcn_Cmb_Set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	mAudio_Wcn_Cmb = ucontrol->value.integer.value[0];
-	PRINTK_AUDDRV("%s mAudio_Wcn_Cmb = 0x%x\n", __func__, mAudio_Wcn_Cmb);
+	pr_debug("%s mAudio_Wcn_Cmb = 0x%x\n", __func__, mAudio_Wcn_Cmb);
 #ifndef DENALI_FPGA_EARLYPORTING
 #ifdef _WCN_SUPPORT
 	mtk_wcn_cmb_stub_audio_ctrl((CMB_STUB_AIF_X) mAudio_Wcn_Cmb);
@@ -160,7 +158,7 @@ static struct snd_pcm_hardware mtk_mrgrx_hardware = {
 
 static int mtk_pcm_mrgrx_stop(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("mtk_pcm_mrgrx_stop\n");
+	pr_debug("mtk_pcm_mrgrx_stop\n");
 	return 0;
 }
 
@@ -176,13 +174,13 @@ static int mtk_pcm_mrgrx_hw_params(struct snd_pcm_substream *substream,
 {
 	int ret = 0;
 
-	PRINTK_AUDDRV("mtk_pcm_mrgrx_hw_params\n");
+	pr_debug("mtk_pcm_mrgrx_hw_params\n");
 	return ret;
 }
 
 static int mtk_pcm_mrgrx_hw_free(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("mtk_pcm_mrgrx_hw_free\n");
+	pr_debug("mtk_pcm_mrgrx_hw_free\n");
 	return snd_pcm_lib_free_pages(substream);
 }
 
@@ -202,6 +200,7 @@ static int mtk_pcm_mrgrx_open(struct snd_pcm_substream *substream)
 	AudDrv_ANA_Clk_On();
 	AudDrv_Clk_On();
 
+	pr_debug("mtk_pcm_mrgrx_open\n");
 	runtime->hw = mtk_mrgrx_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_mrgrx_hardware,
 	       sizeof(struct snd_pcm_hardware));
@@ -213,20 +212,20 @@ static int mtk_pcm_mrgrx_open(struct snd_pcm_substream *substream)
 	if (ret < 0)
 		pr_warn("snd_pcm_hw_constraint_integer failed\n");
 
-	PRINTK_AUDDRV("%s, runtime->rate = %d, channels = %d, substream->pcm->device = %d\n",
+	pr_debug("%s, runtime->rate = %d, channels = %d, substream->pcm->device = %d\n",
 		__func__, runtime->rate, runtime->channels, substream->pcm->device);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		PRINTK_AUDDRV("%s SNDRV_PCM_STREAM_PLAYBACK\n", __func__);
+		pr_debug("SNDRV_PCM_STREAM_PLAYBACK mtkalsa_mrgrx_playback_constraints\n");
 
 	if (ret < 0) {
-		pr_warn("%s ret < 0, close\n", __func__);
+		pr_warn("mtk_pcm_mrgrx_close\n");
 		mtk_pcm_mrgrx_close(substream);
 		return ret;
 	}
 	SetFMEnableFlag(true);
 
-	PRINTK_AUDDRV("mtk_pcm_mrgrx_open return\n");
+	pr_debug("mtk_pcm_mrgrx_open return\n");
 	return 0;
 }
 
@@ -234,7 +233,7 @@ static int mtk_pcm_mrgrx_close(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 
 #ifndef DENALI_FPGA_EARLYPORTING
 #ifdef _WCN_SUPPORT
@@ -277,7 +276,7 @@ static int mtk_pcm_mrgrx_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	PRINTK_AUDDRV("%s rate = %d mPrepareDone = %d\n", __func__, runtime->rate, mPrepareDone);
+	pr_debug("%s rate = %d\n", __func__, runtime->rate);
 
 	if (mPrepareDone == false) {
 #ifndef DENALI_FPGA_EARLYPORTING
@@ -324,13 +323,13 @@ static int mtk_pcm_mrgrx_prepare(struct snd_pcm_substream *substream)
 
 static int mtk_pcm_mrgrx_start(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	return 0;
 }
 
 static int mtk_pcm_mrgrx_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	PRINTK_AUDDRV("mtk_pcm_mrgrx_trigger cmd = %d\n", cmd);
+	pr_debug("mtk_pcm_mrgrx_trigger cmd = %d\n", cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -354,7 +353,7 @@ static int mtk_pcm_mrgrx_copy(struct snd_pcm_substream *substream,
 static int mtk_pcm_mrgrx_silence(struct snd_pcm_substream *substream,
 				 int channel, snd_pcm_uframes_t pos, snd_pcm_uframes_t count)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	return 0;		/* do nothing */
 }
 

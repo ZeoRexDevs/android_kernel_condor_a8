@@ -75,8 +75,11 @@
 #include <linux/aio.h>
 #include <linux/compiler.h>
 #ifdef CONFIG_MTPROF
+#include "mt_sched_mon.h"
 #include "mt_cputime.h"
 #endif
+#include <linux/kcov.h>
+
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/uaccess.h>
@@ -403,7 +406,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	set_task_stack_end_magic(tsk);
 
 #ifdef CONFIG_CC_STACKPROTECTOR
-	tsk->stack_canary = get_random_int();
+	tsk->stack_canary = get_random_long();
 #endif
 
 	/*
@@ -418,6 +421,8 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	tsk->task_frag.page = NULL;
 
 	account_kernel_stack(ti, 1);
+
+	kcov_task_init(tsk);
 
 	return tsk;
 
@@ -1785,7 +1790,6 @@ long do_fork(unsigned long clone_flags,
 
 		end = sched_clock();
 		dur = end - start;
-		trace_sched_fork_time(current, p, dur);
 		if (dur > WARN_FORK_DUR) {
 			pr_err("[%d:%s] fork [%d:%s] total fork time[%llu us] > 1s\n",
 			current->pid, current->comm, p->pid, p->comm, dur);
@@ -1795,6 +1799,8 @@ long do_fork(unsigned long clone_flags,
 		/* mt shceduler profiling*/
 		save_mtproc_info(p, sched_clock());
 #endif
+		/* mt throttle monitor */
+		save_mt_rt_mon_info(p, sched_clock());
 #endif
 		wake_up_new_task(p);
 

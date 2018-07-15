@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -78,7 +65,7 @@ static void ppm_pwrthro_bat_per_protect(BATTERY_PERCENT_LEVEL level)
 
 	FUNC_ENTER(FUNC_LV_API);
 
-	ppm_ver("@%s: bat percent lv = %d\n", __func__, level);
+	ppm_info("@%s: bat percent lv = %d\n", __func__, level);
 
 	ppm_lock(&pwrthro_policy.lock);
 
@@ -115,7 +102,7 @@ static void ppm_pwrthro_bat_oc_protect(BATTERY_OC_LEVEL level)
 
 	FUNC_ENTER(FUNC_LV_API);
 
-	ppm_ver("@%s: bat OC lv = %d\n", __func__, level);
+	ppm_info("@%s: bat OC lv = %d\n", __func__, level);
 
 	ppm_lock(&pwrthro_policy.lock);
 
@@ -152,7 +139,7 @@ void ppm_pwrthro_low_bat_protect(LOW_BATTERY_LEVEL level)
 
 	FUNC_ENTER(FUNC_LV_API);
 
-	ppm_ver("@%s: low bat lv = %d\n", __func__, level);
+	ppm_info("@%s: low bat lv = %d\n", __func__, level);
 
 	ppm_lock(&pwrthro_policy.lock);
 

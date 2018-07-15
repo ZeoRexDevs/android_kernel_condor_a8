@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
@@ -29,7 +16,7 @@
 #include "smi_common.h"
 #include "smi_priv.h"
 
-static void mt8173_init_setting(struct mtk_smi_data *smidev, bool *default_saved,
+static void initSetting(struct mtk_smi_data *smidev, bool *default_saved,
 			u32 *default_smi_val, unsigned int larbid)
 {
 
@@ -98,7 +85,7 @@ static void mt8173_init_setting(struct mtk_smi_data *smidev, bool *default_saved
 	}
 }
 
-static void mt8173_vp_setting(struct mtk_smi_data *smidev)
+static void vpSetting(struct mtk_smi_data *smidev)
 {
 	/* VP 4K */
 	M4U_WriteReg32(SMI_COMMON_EXT_BASE, REG_OFFSET_SMI_L1ARB0, 0x17C0);	/* LARB0, DISP+MDP */
@@ -128,7 +115,7 @@ static void mt8173_vp_setting(struct mtk_smi_data *smidev)
 
 }
 
-static void mt8173_vr_setting(struct mtk_smi_data *smidev)
+static void vrSetting(struct mtk_smi_data *smidev)
 {
 	/* VR 4K */
 	M4U_WriteReg32(SMI_COMMON_EXT_BASE, REG_OFFSET_SMI_L1ARB0, 0x1614);	/* LARB0, DISP+MDP */
@@ -197,7 +184,7 @@ static void mt8173_vr_setting(struct mtk_smi_data *smidev)
 }
 
 
-static void mt8173_hdmi_setting(struct mtk_smi_data *smidev)
+static void hdmiSetting(struct mtk_smi_data *smidev)
 {
 	/* VP 4K */
 	M4U_WriteReg32(SMI_COMMON_EXT_BASE, REG_OFFSET_SMI_L1ARB0, 0x1117);	/* LARB0, DISP+MDP */
@@ -227,7 +214,7 @@ static void mt8173_hdmi_setting(struct mtk_smi_data *smidev)
 
 }
 
-static void mt8173_hdmi4k_setting(struct mtk_smi_data *smidev)
+static void hdmi4kSetting(struct mtk_smi_data *smidev)
 {
 
 	/* VP 4K */
@@ -260,13 +247,12 @@ static void mt8173_hdmi4k_setting(struct mtk_smi_data *smidev)
 
 /* Make sure all the clock is enabled */
 const struct mtk_smi_priv smi_mt8173_priv = {
-	.plat = MTK_PLAT_MT8173,
 	.larb_port_num = {8, 9, 21, 15, 6, 9},
 	.larb_vc_setting = { 0, 2, 0, 1, 0, 1 },
-	.init_setting = mt8173_init_setting,
-	.vp_setting = mt8173_vp_setting,
-	.vr_setting = mt8173_vr_setting,
-	.hdmi_setting = mt8173_hdmi_setting,
-	.hdmi_4k_setting = mt8173_hdmi4k_setting,
+	.init_setting = initSetting,
+	.vp_setting = vpSetting,
+	.vr_setting = vrSetting,
+	.hdmi_setting = hdmiSetting,
+	.hdmi_4k_setting = hdmi4kSetting,
 };
 

@@ -1,16 +1,3 @@
-#
-# Copyright (C) 2015 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-
 # MTK Platform Support
 MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include
@@ -34,4 +21,11 @@ obj-$(CONFIG_MT_SND_SOC_V3) += mt_soc_pcm_dl1_awb.o mt_soc_pcm_dl1_bt.o mt_soc_p
 obj-$(CONFIG_MT_SND_SOC_V3) += mt_soc_dai_stub.o mt_soc_dai_routing.o mt_soc_codec_dummy.o mt_soc_codec_63xx.o mt_soc_pcm_fmtx.o mt_soc_tdm_capture.o
 obj-$(CONFIG_MT_SND_SOC_V3) += mt_soc_pcm_hp_impedance.o
 obj-$(CONFIG_MT_SND_SOC_V3) += mt_soc_machine.o
-obj-$(CONFIG_MTK_SPEAKER) += mt_soc_codec_speaker_63xx.o
+#obj-$(CONFIG_MTK_SPEAKER) += mt_soc_codec_speaker_63xx.o
+#ifeq ($(strip $(LYCONFIG_COMB_SPEAKER_SUPPORT)),CLASS_D)
+obj-y += mt_soc_codec_speaker_63xx.o
+#endif
+
+ifeq ($(strip $(LYCONFIG_KERNEL_SMARTPA_TFA98XX)),true)
+obj-y += tfa98xx/tfa98xx.o
+endif

@@ -2,8 +2,6 @@
 # Makefile for the linux kernel.
 #
 
-subdir-ccflags-y += -Werror
-
 CPPFLAGS_vmlinux.lds	:= -DTEXT_OFFSET=$(TEXT_OFFSET)
 AFLAGS_head.o		:= -DTEXT_OFFSET=$(TEXT_OFFSET)
 CFLAGS_efi-stub.o 	:= -DTEXT_OFFSET=$(TEXT_OFFSET)
@@ -15,12 +13,8 @@ CFLAGS_REMOVE_return_address.o = -pg
 
 ccflags-y += -Idrivers/misc/mediatek/mtprof/
 ccflags-y += -Idrivers/misc/mediatek/include/
-ccflags-y += -Idrivers/misc/mediatek/power/
-ccflags-y += -Idrivers/watchdog/mediatek/include/
-ccflags-y += -Idrivers/watchdog/mediatek/wdt/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/hibcore
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/$(MTK_PLATFORM)/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
 
 # Object file lists.
 arm64-obj-y		:= cputable.o debug-monitors.o entry.o irq.o fpsimd.o	\
@@ -50,7 +44,3 @@ obj-y					+= $(arm64-obj-y) vdso/
 obj-m					+= $(arm64-obj-m)
 head-y					:= head.o
 extra-y					:= $(head-y) vmlinux.lds
-
-# vDSO - this must be built first to generate the symbol offsets
-$(call objectify,$(arm64-obj-y)): $(obj)/vdso/vdso-offsets.h
-$(obj)/vdso/vdso-offsets.h: $(obj)/vdso

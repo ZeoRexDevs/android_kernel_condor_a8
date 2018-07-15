@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -93,6 +91,12 @@
 #include <sound/pcm.h>
 #include <sound/jack.h>*/
 
+#ifdef DEBUG_AUDDRV
+#define PRINTK_AUDDRV(format, args...) printk(format, ##args)
+#else
+#define PRINTK_AUDDRV(format, args...)
+#endif
+
 /* mutex lock */
 static DEFINE_MUTEX(afe_connection_mutex);
 
@@ -117,7 +121,7 @@ static char mConnectionState[Soc_Aud_InterConnectionInput_Num_Input]
 static bool CheckBitsandReg(short regaddr, char bits)
 {
 	if (regaddr <= 0 || bits < 0) {
-		pr_debug("regaddr = %x bits = %d\n", regaddr, bits);
+		printk("regaddr = %x bits = %d\n", regaddr, bits);
 		return false;
 	}
 	return true;

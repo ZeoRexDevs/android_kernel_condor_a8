@@ -1,15 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
 #ifdef BUILD_LK
 #include <platform/mt_gpio.h>
 #include <platform/mt_i2c.h>
@@ -53,12 +41,6 @@
 #define GPIO_LCD_PWR      0xFFFFFFFF
 #endif
 
-#ifdef GPIO_LCM_RST
-#define GPIO_LCD_RST      GPIO_LCM_RST
-#else
-#define GPIO_LCD_RST      0xFFFFFFFF
-#endif
-
 static void lcm_set_gpio_output(unsigned int GPIO, unsigned int output)
 {
 	mt_set_gpio_mode(GPIO, GPIO_MODE_00);
@@ -69,23 +51,42 @@ static void lcm_set_gpio_output(unsigned int GPIO, unsigned int output)
 
 /*static unsigned int GPIO_LCD_PWR_EN;*/
 static struct regulator *lcm_vgp;
-static unsigned int GPIO_LCD_PWR_EN;
-static unsigned int GPIO_LCD_RST_EN;
+static struct pinctrl *lcmctrl;
+static struct pinctrl_state *lcd_pwr_high;
+static struct pinctrl_state *lcd_pwr_low;
 
-void lcm_get_gpio_infor(void)
+static int lcm_get_gpio(struct device *dev)
 {
-	static struct device_node *node;
+	int ret = 0;
 
-	node = of_find_compatible_node(NULL, NULL, "mediatek,lcm");
-
-	GPIO_LCD_PWR_EN = of_get_named_gpio(node, "lcm_power_gpio", 0);
-	GPIO_LCD_RST_EN = of_get_named_gpio(node, "lcm_reset_gpio", 0);
+	lcmctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(lcmctrl)) {
+		dev_err(dev, "Cannot find lcm pinctrl!");
+		ret = PTR_ERR(lcmctrl);
+	}
+	/*lcm power pin lookup */
+	lcd_pwr_high = pinctrl_lookup_state(lcmctrl, "lcm_pwr_high");
+	if (IS_ERR(lcd_pwr_high)) {
+		ret = PTR_ERR(lcd_pwr_high);
+		pr_debug("%s : pinctrl err, lcd_pwr_high\n", __func__);
+	}
+	lcd_pwr_low = pinctrl_lookup_state(lcmctrl, "lcm_pwr_low");
+	if (IS_ERR(lcd_pwr_low)) {
+		ret = PTR_ERR(lcd_pwr_low);
+		pr_debug("%s : pinctrl err, lcd_pwr_low\n", __func__);
+	}
+	return ret;
 }
 
-static void lcm_set_gpio_output(unsigned int GPIO, unsigned int output)
+void lcm_set_gpio(int val)
 {
-	gpio_direction_output(GPIO, output);
-	gpio_set_value(GPIO, output);
+	if (val == 0) {
+		pinctrl_select_state(lcmctrl, lcd_pwr_low);
+		pr_debug("LCM: lcm set power off\n");
+	} else {
+		pinctrl_select_state(lcmctrl, lcd_pwr_high);
+		pr_debug("LCM: lcm set power on\n");
+	}
 }
 
 /* get LDO supply */
@@ -180,7 +181,7 @@ int lcm_vgp_supply_disable(void)
 static int lcm_probe(struct device *dev)
 {
 	lcm_get_vgp_supply(dev);
-	lcm_get_gpio_infor();
+	lcm_get_gpio(dev);
 
 	return 0;
 }
@@ -279,7 +280,7 @@ static void lcm_suspend_power(void)
 
 #else
 	pr_debug("[Kernel/LCM] lcm_suspend_power() enter\n");
-	lcm_set_gpio_output(GPIO_LCD_PWR_EN, 0);
+	lcm_set_gpio(0);
 	MDELAY(20);
 
 	lcm_vgp_supply_disable();
@@ -299,7 +300,7 @@ static void lcm_resume_power(void)
 
 #else
 	pr_debug("[Kernel/LCM] lcm_resume_power() enter\n");
-	lcm_set_gpio_output(GPIO_LCD_PWR_EN, 1);
+	lcm_set_gpio(1);
 	MDELAY(20);
 
 	lcm_vgp_supply_enable();
@@ -370,13 +371,14 @@ static void lcm_init_lcm(void)
 {
 #ifdef BUILD_LK
 	printf("[LK/LCM] lcm_init() enter\n");
-	lcm_set_gpio_output(GPIO_LCD_RST, 1);
+
+	SET_RESET_PIN(1);
 	MDELAY(20);
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 0);
+	SET_RESET_PIN(0);
 	MDELAY(20);
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 1);
+	SET_RESET_PIN(1);
 	MDELAY(20);
 #else
 	pr_debug("[Kernel/LCM] lcm_init() enter\n");
@@ -388,18 +390,17 @@ void lcm_suspend(void)
 #ifdef BUILD_LK
 	printf("[LK/LCM] lcm_suspend() enter\n");
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 1);
+	SET_RESET_PIN(1);
 	MDELAY(10);
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 0);
+	SET_RESET_PIN(0);
 	MDELAY(10);
 #else
 	pr_debug("[Kernel/LCM] lcm_suspend() enter\n");
-
-	lcm_set_gpio_output(GPIO_LCD_RST_EN, 1);
+	SET_RESET_PIN(1);
 	MDELAY(10);
 
-	lcm_set_gpio_output(GPIO_LCD_RST_EN, 0);
+	SET_RESET_PIN(0);
 	MDELAY(10);
 #endif
 }
@@ -409,25 +410,24 @@ void lcm_resume(void)
 #ifdef BUILD_LK
 	printf("[LK/LCM] lcm_resume() enter\n");
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 1);
+	SET_RESET_PIN(1);
 	MDELAY(20);
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 0);
+	SET_RESET_PIN(0);
 	MDELAY(20);
 
-	lcm_set_gpio_output(GPIO_LCD_RST, 1);
+	SET_RESET_PIN(1);
 	MDELAY(20);
 
 #else
 	pr_debug("[Kernel/LCM] lcm_resume() enter\n");
-
-	lcm_set_gpio_output(GPIO_LCD_RST_EN, 1);
+	SET_RESET_PIN(1);
 	MDELAY(20);
 
-	lcm_set_gpio_output(GPIO_LCD_RST_EN, 0);
+	SET_RESET_PIN(0);
 	MDELAY(20);
 
-	lcm_set_gpio_output(GPIO_LCD_RST_EN, 1);
+	SET_RESET_PIN(1);
 	MDELAY(20);
 #endif
 }

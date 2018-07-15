@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef _KD_CAMERA_HW_H_
 #define _KD_CAMERA_HW_H_
 
@@ -23,11 +10,11 @@
 #include "pmic_drv.h"
 
 #ifndef FALSE
-#define FALSE (0)
+  #define FALSE (0)
 #endif
 
 #ifndef TRUE
-#define TRUE  (1)
+  #define TRUE  (1)
 #endif
 
 /*  */
@@ -77,7 +64,7 @@
 #define GPIO_OUT_ONE 1
 #define GPIO_OUT_ZERO 0
 
-#endif				/* End of #if defined CONFIG_MTK_LEGACY */
+#endif /* End of #if defined CONFIG_MTK_LEGACY */
 
 
 typedef enum KD_REGULATOR_TYPE_TAG {
@@ -85,9 +72,8 @@ typedef enum KD_REGULATOR_TYPE_TAG {
 	VCAMD,
 	VCAMIO,
 	VCAMAF,
-	VCAMA_PM,
-	VCAMD_PM,
-	VCAMIO_PM,
+	VSUBCAMA,
+	VSUBCAMD,
 } KD_REGULATOR_TYPE_T;
 
 typedef enum {
@@ -96,9 +82,16 @@ typedef enum {
 	CAM1PDN,
 	CAM1RST,
 	CAMLDO,
-	CAMMIPI_SWT_EN,
-	CAMMIPI_SWT_SEL,
+	CAM1AVDD
 } CAMPowerType;
+
+//ly_xinchao add for camera start
+typedef struct {
+       char *camera_name;
+       int digit_vol;
+       int pwd_valid_state;
+}CAMERA_POWER_INFO;
+//ly_xinchao add for camera end
 
 extern void ISP_MCLK1_EN(bool En);
 extern void ISP_MCLK2_EN(bool En);

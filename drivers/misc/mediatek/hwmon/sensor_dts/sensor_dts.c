@@ -31,7 +31,7 @@ struct acc_hw *get_accel_dts_func(const char *name, struct acc_hw *hw)
 	int i, ret;
 	u32 i2c_num[] = {0};
 	u32 i2c_addr[G_CUST_I2C_ADDR_NUM] = {0};
-	u32 direction[] = {0};
+	//u32 direction[] = {0};
 	u32 power_id[] = {0};
 	u32 power_vol[] = {0};
 	u32 firlen[] = {0};
@@ -54,9 +54,10 @@ struct acc_hw *get_accel_dts_func(const char *name, struct acc_hw *hw)
 				hw->i2c_addr[i] = i2c_addr[i];
 		}
 
-		ret = of_property_read_u32_array(node , "direction", direction, ARRAY_SIZE(direction));
-		if (ret == 0)
-			hw->direction = direction[0];
+		//deleted by xiehaifei for gsensor diretion move to gsensor driver!
+		//ret = of_property_read_u32_array(node , "direction", direction, ARRAY_SIZE(direction));
+		//if (ret == 0)
+		//	hw->direction = direction[0];
 
 		ret = of_property_read_u32_array(node , "power_id", power_id, ARRAY_SIZE(power_id));
 		if (ret == 0) {
@@ -85,7 +86,7 @@ struct acc_hw *get_accel_dts_func(const char *name, struct acc_hw *hw)
 
 	return hw;
 }
-EXPORT_SYMBOL_GPL(get_accel_dts_func);
+
 
 struct alsps_hw *get_alsps_dts_func(const char *name, struct alsps_hw *hw)
 {
@@ -175,7 +176,6 @@ struct alsps_hw *get_alsps_dts_func(const char *name, struct alsps_hw *hw)
 	}
 	return hw;
 }
-EXPORT_SYMBOL_GPL(get_alsps_dts_func);
 
 struct mag_hw *get_mag_dts_func(const char *name, struct mag_hw *hw)
 {
@@ -230,7 +230,6 @@ struct mag_hw *get_mag_dts_func(const char *name, struct mag_hw *hw)
 	}
 	return hw;
 }
-EXPORT_SYMBOL_GPL(get_mag_dts_func);
 
 struct gyro_hw *get_gyro_dts_func(const char *name, struct gyro_hw *hw)
 {
@@ -290,7 +289,6 @@ struct gyro_hw *get_gyro_dts_func(const char *name, struct gyro_hw *hw)
 	}
 	return hw;
 }
-EXPORT_SYMBOL_GPL(get_gyro_dts_func);
 
 struct baro_hw *get_baro_dts_func(const char *name, struct baro_hw *hw)
 {
@@ -350,7 +348,6 @@ struct baro_hw *get_baro_dts_func(const char *name, struct baro_hw *hw)
 	}
 	return hw;
 }
-EXPORT_SYMBOL_GPL(get_baro_dts_func);
 
 struct hmdy_hw *get_hmdy_dts_func(const char *name, struct hmdy_hw *hw)
 {
@@ -410,5 +407,4 @@ struct hmdy_hw *get_hmdy_dts_func(const char *name, struct hmdy_hw *hw)
 	}
 	return hw;
 }
-EXPORT_SYMBOL_GPL(get_hmdy_dts_func);
 

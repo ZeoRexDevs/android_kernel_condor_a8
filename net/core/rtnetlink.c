@@ -54,76 +54,6 @@
 #include <net/rtnetlink.h>
 #include <net/net_namespace.h>
 
-#ifdef CONFIG_MTK_NET_LOGGING
-#include <linux/stacktrace.h>
-#define RTNL_DEBUG_ADDRS_COUNT 10
-#define RTNL_LOCK_MAX_HOLD_TIME 3
-
-struct rtnl_debug_btrace_t {
-	char *process_name;
-	int    pid;
-	unsigned long long when;
-	unsigned long addrs[RTNL_DEBUG_ADDRS_COUNT];
-	unsigned int entry_nr;
-	char flag;/*1 this process has already get rtnl_lock,0 : relase rtnl_lock*/
-	struct task_struct *rtnl_lock_owner;
-	struct timer_list    timer;
-};
-
-static struct rtnl_debug_btrace_t rtnl_instance = {
-	.process_name = NULL,
-	.pid = 0,
-	.when = 0,
-	.entry_nr = 0,
-	.flag = 0,
-	.rtnl_lock_owner = NULL,
-};
-
-static void rtnl_print_btrace(unsigned long data);
-static DEFINE_TIMER(rtnl_chk_timer, rtnl_print_btrace, 0, 0);
-
-void rtnl_get_btrace(void *who)
-{
-	struct stack_trace debug_trace;
-
-	debug_trace.max_entries = RTNL_DEBUG_ADDRS_COUNT;
-	debug_trace.nr_entries = 0;
-	debug_trace.entries = rtnl_instance.addrs;
-	debug_trace.skip = 0;
-	save_stack_trace(&debug_trace);
-	rtnl_instance.process_name = who;
-	rtnl_instance.when = sched_clock();
-	rtnl_instance.flag = 1;
-	rtnl_instance.pid = current->pid;
-	rtnl_instance.rtnl_lock_owner  = current;
-	rtnl_instance.entry_nr = debug_trace.nr_entries;
-	rtnl_instance.flag = 1;
-	mod_timer(&rtnl_chk_timer, jiffies + RTNL_LOCK_MAX_HOLD_TIME * HZ);
-}
-
-void rtnl_print_btrace(unsigned long data)
-{	if (rtnl_instance.flag) {
-		struct stack_trace show_trace;
-
-		show_trace.nr_entries = rtnl_instance.entry_nr;
-		show_trace.entries = rtnl_instance.addrs;
-		show_trace.max_entries = RTNL_DEBUG_ADDRS_COUNT;
-		pr_info("-----------------rtnl_print_btrace start--------------------\n");
-		pr_info("[mtk_net][rtnl_lock] %s[%d] hold lock more than 2 sec,start time: %lld\n",
-			rtnl_instance.process_name, rtnl_instance.pid, rtnl_instance.when);
-		print_stack_trace(&show_trace, 0);
-		pr_info("-----------------rtnl_print_btrace end--------------------\n");
-		/*TODO:  Here Maybe  I will triger a AEE coredump for getting more info about this issue*/
-		} else {
-				pr_info("[mtk_net][rtnl_lock]There is no process hold rtnl lock\n");
-		}
-}
-
-void rtnl_relase_btrace(void)
-{
-	rtnl_instance.flag = 0;
-}
-#endif
 struct rtnl_link {
 	rtnl_doit_func		doit;
 	rtnl_dumpit_func	dumpit;
@@ -134,19 +64,22 @@ static DEFINE_MUTEX(rtnl_mutex);
 
 void rtnl_lock(void)
 {
+	#ifdef CONFIG_MTK_NET_LOGGING
+	pr_debug("[mtk_net][rtnl_lock]rtnl_lock++\n");
+	#endif
 	mutex_lock(&rtnl_mutex);
-#ifdef CONFIG_MTK_NET_LOGGING
-	rtnl_get_btrace(current->comm);
-#endif
+	#ifdef CONFIG_MTK_NET_LOGGING
+	pr_debug("[mtk_net][rtnl_lock]rtnl_lock--\n");
+	#endif
 }
 EXPORT_SYMBOL(rtnl_lock);
 
 void __rtnl_unlock(void)
 {
 	mutex_unlock(&rtnl_mutex);
-#ifdef CONFIG_MTK_NET_LOGGING
-	rtnl_relase_btrace();
-#endif
+	#ifdef CONFIG_MTK_NET_LOGGING
+	pr_debug("[mtk_net][rtnl_lock]rtnl_unlock done\n");
+	#endif
 }
 
 void rtnl_unlock(void)
@@ -1095,14 +1028,16 @@ static int rtnl_fill_ifinfo(struct sk_buff *skb, struct net_device *dev,
 		goto nla_put_failure;
 
 	if (1) {
-		struct rtnl_link_ifmap map = {
-			.mem_start   = dev->mem_start,
-			.mem_end     = dev->mem_end,
-			.base_addr   = dev->base_addr,
-			.irq         = dev->irq,
-			.dma         = dev->dma,
-			.port        = dev->if_port,
-		};
+		struct rtnl_link_ifmap map;
+
+		memset(&map, 0, sizeof(map));
+		map.mem_start   = dev->mem_start;
+		map.mem_end     = dev->mem_end;
+		map.base_addr   = dev->base_addr;
+		map.irq         = dev->irq;
+		map.dma         = dev->dma;
+		map.port        = dev->if_port;
+
 		if (nla_put(skb, IFLA_MAP, sizeof(map), &map))
 			goto nla_put_failure;
 	}
@@ -1628,7 +1563,8 @@ static int do_setlink(const struct sk_buff *skb,
 		struct sockaddr *sa;
 		int len;
 
-		len = sizeof(sa_family_t) + dev->addr_len;
+		len = sizeof(sa_family_t) + max_t(size_t, dev->addr_len,
+						  sizeof(*sa));
 		sa = kmalloc(len, GFP_KERNEL);
 		if (!sa) {
 			err = -ENOMEM;
@@ -3180,3 +3116,4 @@ void __init rtnetlink_init(void)
 	rtnl_register(PF_BRIDGE, RTM_DELLINK, rtnl_bridge_dellink, NULL, NULL);
 	rtnl_register(PF_BRIDGE, RTM_SETLINK, rtnl_bridge_setlink, NULL, NULL);
 }
+

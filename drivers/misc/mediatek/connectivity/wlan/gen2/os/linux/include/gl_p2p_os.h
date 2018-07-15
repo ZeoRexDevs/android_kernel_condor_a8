@@ -1,14 +1,15 @@
 /*
-* Copyright (C) 2016 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+** Id:
+//Department/DaVinci/TRUNK/MT6620_5931_WiFi_Driver/os/linux/include/gl_p2p_os.h#28
+*/
+
+/*! \file   gl_p2p_os.h
+    \brief  List the external reference to OS for p2p GLUE Layer.
+
+    In this file we define the data structure - GLUE_INFO_T to store those objects
+    we acquired from OS - e.g. TIMER, SPINLOCK, NET DEVICE ... . And all the
+    external reference (header file, extern func() ..) to OS for GLUE Layer should
+    also list down here.
 */
 
 #ifndef _GL_P2P_OS_H
@@ -23,12 +24,6 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
-#include <linux/netdevice.h>
-#if CFG_ENABLE_WIFI_DIRECT_CFG_80211
-#include <net/cfg80211.h>
-#endif
-
-#include "wlan_oid.h"
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -127,11 +122,8 @@ struct _GL_P2P_INFO_T {
 	UINT_8 aucSecCheckRsp[256];
 #endif
 
-	/*
-	 * Hotspot Client Management
-	 */
-	/* TODO: It is better to maintain the black MAC address with a linked list. */
-	PARAM_MAC_ADDRESS aucBlackMACList[10];
+	/* Hotspot Client Management */
+	PARAM_MAC_ADDRESS aucblackMACList[8];
 	UINT_8 ucMaxClients;
 
 #if CFG_SUPPORT_HOTSPOT_OPTIMIZATION
@@ -216,15 +208,19 @@ typedef struct _NL80211_DRIVER_WFD_PARAMS {
 ********************************************************************************
 */
 
+BOOLEAN p2pRegisterToWlan(P_GLUE_INFO_T prGlueInfo);
+
+BOOLEAN p2pUnregisterToWlan(P_GLUE_INFO_T prGlueInfo);
+
 BOOLEAN p2pLaunch(P_GLUE_INFO_T prGlueInfo);
 
 BOOLEAN p2pRemove(P_GLUE_INFO_T prGlueInfo);
 
-VOID p2pSetMode(IN BOOLEAN fgIsAPMode);
+VOID p2pSetMode(IN BOOLEAN fgIsAPMOde);
 
 BOOLEAN glRegisterP2P(P_GLUE_INFO_T prGlueInfo, const char *prDevName, BOOLEAN fgIsApMode);
 
-VOID p2pEalySuspendReg(P_GLUE_INFO_T prGlueInfo, BOOLEAN fgIsEnable);
+void p2pEalySuspendReg(P_GLUE_INFO_T prGlueInfo, BOOLEAN fgIsEnable);
 
 BOOLEAN glUnregisterP2P(P_GLUE_INFO_T prGlueInfo);
 
@@ -235,11 +231,6 @@ BOOLEAN p2pNetUnregister(P_GLUE_INFO_T prGlueInfo, BOOLEAN fgIsRtnlLockAcquired)
 BOOLEAN p2pStopImmediate(P_GLUE_INFO_T prGlueInfo);
 
 BOOLEAN p2PFreeInfo(P_GLUE_INFO_T prGlueInfo);
-
 BOOLEAN glP2pCreateWirelessDevice(P_GLUE_INFO_T prGlueInfo);
-
-VOID glP2pDestroyWirelessDevice(VOID);
-
-VOID p2pSetMulticastListWorkQueueWrapper(P_GLUE_INFO_T prGlueInfo);
-
+void glP2pDestroyWirelessDevice(VOID);
 #endif

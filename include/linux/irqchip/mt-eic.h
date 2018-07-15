@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef __EINT_H
 #define __EINT_H
 
@@ -44,7 +31,6 @@
 #define EINT_EEVT_BASE	      (((unsigned long)EINT_BASE + 0x900))
 #define EINT_RAW_STA_BASE     (((unsigned long)EINT_BASE + 0xA00))
 #define EINT_EMUL_BASE        (((unsigned long)EINT_BASE + 0xF00))
-#define SECURE_DIR_EINT_EN    (((unsigned long)EINT_BASE + 0xB10))
 #define EINT_DBNC_SET_DBNC_BITS    (4)
 #define EINT_DBNC_CLR_DBNC_BITS    (4)
 #define EINT_DBNC_SET_EN_BITS      (0)
@@ -53,7 +39,7 @@
 #define EINT_DBNC_EN_BIT           (0x1)
 #define EINT_DBNC_RST_BIT          (0x1)
 #define EINT_DBNC_0_MS             (0x7)
-#define EINT_DBNC                  (0xF)
+#define EINT_DBNC                  (0x7)
 #define EINT_DBNC_SET_EN           (0x1)
 #define EINT_DBNC_CLR_EN           (0x1)
 #define EINT_STA_DEFAULT	0x00000000
@@ -78,6 +64,7 @@
  */
 #define MT_EINT_POL_NEG         0
 #define MT_EINT_POL_POS         1
+#define MAX_HW_DEBOUNCE_CNT     32
 #define EINTF_TRIGGER_RISING    0x00000001
 #define EINTF_TRIGGER_FALLING   0x00000002
 #define EINTF_TRIGGER_HIGH      0x00000004
@@ -97,18 +84,17 @@
  * Define function prototypes.
  */
 extern void _print_status(void);
-extern int mt_gpio_set_debounce(unsigned int gpio, unsigned int debounce);
-extern unsigned int mt_gpio_to_eint(unsigned int gpio);
+extern int mt_gpio_set_debounce(unsigned gpio, unsigned debounce);
 extern unsigned int mt_gpio_to_irq(unsigned gpio);
 extern int mt_get_supported_irq_num_ex(void) __attribute__((weak));
 
 void mt_eint_mask(unsigned int eint_num);
 void mt_eint_unmask(unsigned int eint_num);
-void mt_eint_set_hw_debounce(unsigned int eint_num, unsigned int us);
+void mt_eint_set_hw_debounce(unsigned int eint_num, unsigned int ms);
 void mt_eint_set_polarity(unsigned int eint_num, unsigned int pol);
 unsigned int mt_eint_set_sens(unsigned int eint_num, unsigned int sens);
 void mt_eint_virq_soft_clr(unsigned int virq);
-extern void dump_eint_trigger_history(void);
+
 /* used to access the gic device tree resource */
 extern int mt_get_supported_irq_num(void);
 

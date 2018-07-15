@@ -44,7 +44,7 @@
 #include <linux/major.h>
 #include "ubi.h"
 #ifdef CONFIG_MTK_COMBO_NAND_SUPPORT
-#ifdef CONFIG_MTK_MLC_NAND_SUPPORT
+#if defined(CONFIG_MTK_MLC_NAND_SUPPORT) || defined(CONFIG_MTK_SLC_BUFFER_SUPPORT)
 #define COMBO_NAND_BLOCK_SIZE (ubi->mtd->erasesize)
 #define COMBO_NAND_PAGE_SIZE  (ubi->mtd->writesize)
 #else
@@ -415,7 +415,7 @@ static ssize_t dev_attribute_store(struct device *dev, struct device_attribute *
 		int ret = kstrtoint(buf, 0, &th);
 
 		if (ret == 0) {
-			dbg_gen("set th=%d\n", th);
+			ubi_msg("set th=%d\n", th);
 			ubi->wl_th = th;
 		}
 #ifdef CONFIG_MTK_SLC_BUFFER_SUPPORT
@@ -944,7 +944,8 @@ static int io_init(struct ubi_device *ubi, int max_beb_per1024)
 	ubi->max_write_size = COMBO_NAND_PAGE_SIZE;
 #endif
 #if defined(CONFIG_MTK_MLC_NAND_SUPPORT) || defined(CONFIG_MTK_SLC_BUFFER_SUPPORT)
-	ubi->max_write_size = rounddown_pow_of_two(ubi->mtd->erasesize/4);
+	ubi->max_write_size = ubi->mtd->erasesize/4;
+	ubi->max_write_size = roundup_pow_of_two(ubi->max_write_size);
 #endif
 	/*
 	 * Maximum write size has to be greater or equivalent to min. I/O
@@ -1027,7 +1028,7 @@ static int io_init(struct ubi_device *ubi, int max_beb_per1024)
 	ubi->leb_size = ubi->peb_size - ubi->leb_start;
 
 	if (!(ubi->mtd->flags & MTD_WRITEABLE)) {
-		dbg_gen("MTD device %d is write-protected, attach in read-only mode",
+		ubi_msg("MTD device %d is write-protected, attach in read-only mode",
 			ubi->mtd->index);
 		ubi->ro_mode = 1;
 	}
@@ -1094,7 +1095,7 @@ static int autoresize(struct ubi_device *ubi, int vol_id)
 	if (err)
 		return err;
 
-	dbg_gen("volume %d (\"%s\") re-sized from %d to %d LEBs", vol_id,
+	ubi_msg("volume %d (\"%s\") re-sized from %d to %d LEBs", vol_id,
 		vol->name, old_reserved_pebs, vol->reserved_pebs);
 	return 0;
 }
@@ -1219,8 +1220,8 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 		ubi->fm_disabled = 1;
 	}
 
-	dbg_gen("default fastmap pool size: %d", ubi->fm_pool.max_size);
-	dbg_gen("default fastmap WL pool size: %d", ubi->fm_wl_pool.max_size);
+	ubi_msg("default fastmap pool size: %d", ubi->fm_pool.max_size);
+	ubi_msg("default fastmap WL pool size: %d", ubi->fm_wl_pool.max_size);
 #else
 	ubi->fm_disabled = 1;
 #endif
@@ -1235,7 +1236,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 #ifdef CONFIG_MTK_SLC_BUFFER_SUPPORT
 	mutex_init(&ubi->mtbl_mutex);
 #endif
-	dbg_gen("attaching mtd%d to ubi%d", mtd->index, ubi_num);
+	ubi_msg("attaching mtd%d to ubi%d", mtd->index, ubi_num);
 
 	err = io_init(ubi, max_beb_per1024);
 	if (err)
@@ -1273,6 +1274,9 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 			goto out_detach;
 	}
 
+	/* Make device "available" before it becomes accessible via sysfs */
+	ubi_devices[ubi_num] = ubi;
+
 	err = uif_init(ubi, &ref);
 	if (err)
 		goto out_detach;
@@ -1291,23 +1295,23 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 
 	attach_time = sched_clock() - attach_time;
 	do_div(attach_time, 1000000);
-	dbg_gen("attached mtd%d (name \"%s\", size %llu MiB) to ubi%d",
+	ubi_msg("attached mtd%d (name \"%s\", size %llu MiB) to ubi%d",
 		mtd->index, mtd->name, ubi->flash_size >> 20, ubi_num);
-	dbg_gen("PEB size: %d bytes (%d KiB), LEB size: %d bytes",
+	ubi_msg("PEB size: %d bytes (%d KiB), LEB size: %d bytes",
 		ubi->peb_size, ubi->peb_size >> 10, ubi->leb_size);
-	dbg_gen("min./max. I/O unit sizes: %d/%d, sub-page size %d",
+	ubi_msg("min./max. I/O unit sizes: %d/%d, sub-page size %d",
 		ubi->min_io_size, ubi->max_write_size, ubi->hdrs_min_io_size);
-	dbg_gen("VID header offset: %d (aligned %d), data offset: %d",
+	ubi_msg("VID header offset: %d (aligned %d), data offset: %d",
 		ubi->vid_hdr_offset, ubi->vid_hdr_aloffset, ubi->leb_start);
-	dbg_gen("good PEBs: %d, bad PEBs: %d, corrupted PEBs: %d",
+	ubi_msg("good PEBs: %d, bad PEBs: %d, corrupted PEBs: %d",
 		ubi->good_peb_count, ubi->bad_peb_count, ubi->corr_peb_count);
-	dbg_gen("user volume: %d, internal volumes: %d, max. volumes count: %d",
+	ubi_msg("user volume: %d, internal volumes: %d, max. volumes count: %d",
 		ubi->vol_count - UBI_INT_VOL_COUNT, UBI_INT_VOL_COUNT,
 		ubi->vtbl_slots);
-	dbg_gen("max/mean erase counter: %d/%d, WL threshold: %d, image sequence number: %u",
+	ubi_msg("max/mean erase counter: %d/%d, WL threshold: %d, image sequence number: %u",
 		ubi->max_ec, ubi->mean_ec, CONFIG_MTD_UBI_WL_THRESHOLD,
 		ubi->image_seq);
-	dbg_gen("available PEBs: %d, total reserved PEBs: %d, PEBs reserved for bad PEB handling: %d",
+	ubi_msg("available PEBs: %d, total reserved PEBs: %d, PEBs reserved for bad PEB handling: %d",
 		ubi->avail_pebs, ubi->rsvd_pebs, ubi->beb_rsvd_pebs);
 
 	/*
@@ -1319,7 +1323,6 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 	wake_up_process(ubi->bgt_thread);
 	spin_unlock(&ubi->wl_lock);
 
-	ubi_devices[ubi_num] = ubi;
 	ubi_notify_all(ubi, UBI_VOLUME_ADDED, NULL);
 	return ubi_num;
 
@@ -1330,6 +1333,7 @@ out_uif:
 	ubi_assert(ref);
 	uif_close(ubi);
 out_detach:
+	ubi_devices[ubi_num] = NULL;
 	ubi_wl_close(ubi);
 	ubi_free_internal_volumes(ubi);
 	vfree(ubi->vtbl);
@@ -1337,6 +1341,7 @@ out_free:
 #ifndef CONFIG_UBI_SHARE_BUFFER
 	vfree(ubi->peb_buf);
 #endif
+
 #ifdef CONFIG_MTK_SLC_BUFFER_SUPPORT
 	vfree(ubi->mtbl);
 	vfree(ubi->empty_mtbl_record);
@@ -1390,7 +1395,7 @@ int ubi_detach_mtd_dev(int ubi_num, int anyway)
 
 	ubi_assert(ubi_num == ubi->ubi_num);
 	ubi_notify_all(ubi, UBI_VOLUME_REMOVED, NULL);
-	dbg_gen("detaching mtd%d from ubi%d", ubi->mtd->index, ubi_num);
+	ubi_msg("detaching mtd%d from ubi%d", ubi->mtd->index, ubi_num);
 #ifdef CONFIG_MTD_UBI_FASTMAP
 	/* If we don't write a new fastmap at detach time we lose all
 	 * EC updates that have been made since the last written fastmap. */
@@ -1420,15 +1425,17 @@ int ubi_detach_mtd_dev(int ubi_num, int anyway)
 	vfree(ubi->databuf);
 	vfree(ubi->oobbuf);
 #endif
+
 #ifdef CONFIG_MTK_SLC_BUFFER_SUPPORT
 	vfree(ubi->mtbl);
 	vfree(ubi->empty_mtbl_record);
 #endif
+
 #ifndef CONFIG_UBI_SHARE_BUFFER
 	vfree(ubi->peb_buf);
 #endif
 	vfree(ubi->fm_buf);
-	dbg_gen("mtd%d is detached from ubi%d", ubi->mtd->index, ubi->ubi_num);
+	ubi_msg("mtd%d is detached from ubi%d", ubi->mtd->index, ubi->ubi_num);
 	put_device(&ubi->dev);
 	return 0;
 }

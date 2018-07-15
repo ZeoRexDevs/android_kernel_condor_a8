@@ -1,20 +1,4 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
-#include "dpi_dvt_test.h"
-
 #if defined(RDMA_DPI_PATH_SUPPORT) || defined(DPI_DVT_TEST_SUPPORT)
-
 #ifdef BUILD_UBOOT
 #include <asm/arch/disp_drv_platform.h>
 #else
@@ -22,7 +6,7 @@
 #include <linux/time.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
-/*#include "cmdq_record.h"*/
+#include "cmdq_record.h"
 #include <disp_drv_log.h>
 #endif
 #include <debug.h>
@@ -32,6 +16,7 @@
 #include <mach/mt_clkmgr.h>
 #endif
 #include <mach/irqs.h>
+#include <linux/xlog.h>
 #include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/wait.h>
@@ -47,12 +32,12 @@
 
 #include <linux/of.h>
 #include <linux/of_irq.h>
-/*#include "mach/eint.h"*/
+#include <mach/eint.h>
 
-/* #ifdef DPI_EXT_INREG32 */
-/* #undef DPI_EXT_INREG32 */
+#ifdef DPI_EXT_INREG32
+#undef DPI_EXT_INREG32
 #define DPI_EXT_INREG32(x)          (__raw_readl((unsigned long *)(x)))
-/* #endif */
+#endif
 
 #if 0
 static int dpi_reg_op_debug;
@@ -72,7 +57,7 @@ static int dpi_reg_op_debug;
 	}
 #endif
 
-#define DPI_EXT_LOG_PRINT(fmt, arg...)  \
+#define DPI_EXT_LOG_PRINT(level, sub_module, fmt, arg...)  \
 	{\
 		pr_warn(fmt, ##arg); \
 	}
@@ -80,33 +65,33 @@ static int dpi_reg_op_debug;
 /*****************************DPI DVT Case Start********************************/
 int configInterlaceMode(unsigned int resolution)
 {
-	/*Enable Interlace mode */
-	struct DPI_REG_CNTL ctr = DPI_REG->CNTL;
-	/*Set LODD,LEVEN Vsize */
-	struct DPI_REG_SIZE size = DPI_REG->SIZE;
-	/*Set LODD,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
-	struct DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
-	/*Set LEVEN,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_LEVEN vwidth_leven = DPI_REG->TGEN_VWIDTH_LEVEN;
-	struct DPI_REG_TGEN_VPORCH_LEVEN vporch_leven = DPI_REG->TGEN_VPORCH_LEVEN;
-
 	DPI_EXT_LOG_PRINT("enableInterlaceMode, resolution: %d\n", resolution);
 
 	if (resolution == 0x0D || resolution == 0x0E) {	/*HDMI_VIDEO_720x480i_60Hz */
+		/*Enable Interlace mode */
+		DPI_REG_CNTL ctr = DPI_REG->CNTL;
 
 		ctr.INTL_EN = 1;
 		ctr.VS_LODD_EN = 1;
 		ctr.VS_LEVEN_EN = 1;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->CNTL, AS_UINT32(&ctr));
 
+		/*Set LODD,LEVEN Vsize */
+		DPI_REG_SIZE size = DPI_REG->SIZE;
+
 		size.HEIGHT = 240;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->SIZE, AS_UINT32(&size));
+
+		/*Set LODD,VFP/VPW/VBP */
+		DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
 
 		vwidth_lodd.VPW_LODD = 3;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LODD, AS_UINT32(&vwidth_lodd));
 		DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LODD: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x28));
+
+
+		DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
 
 		vporch_lodd.VFP_LODD = 4;
 		vporch_lodd.VBP_LODD = 15;
@@ -114,11 +99,16 @@ int configInterlaceMode(unsigned int resolution)
 		DPI_EXT_LOG_PRINT("TGEN_VPORCH_LODD: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x2C));
 
+		/*Set LEVEN,VFP/VPW/VBP */
+		DPI_REG_TGEN_VWIDTH_LEVEN vwidth_leven = DPI_REG->TGEN_VWIDTH_LEVEN;
+
 		vwidth_leven.VPW_LEVEN = 3;
 		vwidth_leven.VPW_HALF_LEVEN = 1;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LEVEN, AS_UINT32(&vwidth_leven));
 		DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LEVEN: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x68));
+
+		DPI_REG_TGEN_VPORCH_LEVEN vporch_leven = DPI_REG->TGEN_VPORCH_LEVEN;
 
 		vporch_leven.VFP_LEVEN = 4;
 		vporch_leven.VBP_LEVEN = 16;
@@ -126,18 +116,30 @@ int configInterlaceMode(unsigned int resolution)
 		DPI_EXT_LOG_PRINT("TGEN_VPORCH_LEVEN: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x6C));
 	} else if (resolution == 0x0C) {	/*HDMI_VIDEO_1920x1080i_60Hz */
+		/*Enable Interlace mode */
+		DPI_REG_CNTL ctr = DPI_REG->CNTL;
+
 		ctr.INTL_EN = 1;
 		ctr.VS_LODD_EN = 1;
 		ctr.VS_LEVEN_EN = 1;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->CNTL, AS_UINT32(&ctr));
 
+		/*Set LODD,LEVEN Vsize */
+		DPI_REG_SIZE size = DPI_REG->SIZE;
+
 		size.HEIGHT = 540;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->SIZE, AS_UINT32(&size));
+
+		/*Set LODD,VFP/VPW/VBP */
+		DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
 
 		vwidth_lodd.VPW_LODD = 5;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LODD, AS_UINT32(&vwidth_lodd));
 		DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LODD: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x28));
+
+
+		DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
 
 		vporch_lodd.VFP_LODD = 2;
 		vporch_lodd.VBP_LODD = 15;
@@ -145,11 +147,16 @@ int configInterlaceMode(unsigned int resolution)
 		DPI_EXT_LOG_PRINT("TGEN_VPORCH_LODD: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x2C));
 
+		/*Set LEVEN,VFP/VPW/VBP */
+		DPI_REG_TGEN_VWIDTH_LEVEN vwidth_leven = DPI_REG->TGEN_VWIDTH_LEVEN;
+
 		vwidth_leven.VPW_LEVEN = 5;
 		vwidth_leven.VPW_HALF_LEVEN = 1;
 		DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LEVEN, AS_UINT32(&vwidth_leven));
 		DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LEVEN: 0x%x\n",
 				  DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x68));
+
+		DPI_REG_TGEN_VPORCH_LEVEN vporch_leven = DPI_REG->TGEN_VPORCH_LEVEN;
 
 		vporch_leven.VFP_LEVEN = 2;
 		vporch_leven.VBP_LEVEN = 16;
@@ -163,69 +170,61 @@ int configInterlaceMode(unsigned int resolution)
 
 int config3DMode(unsigned int resolution)
 {
-	/*Enable Interlace mode */
-	struct DPI_REG_CNTL ctr = DPI_REG->CNTL;
-	/*Set LODD,LEVEN Vsize */
-	struct DPI_REG_SIZE size = DPI_REG->SIZE;
-	/*Set LODD,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
-	struct DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
-	/*Set LEVEN,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_RODD vwidth_rodd = DPI_REG->TGEN_VWIDTH_RODD;
-	struct DPI_REG_TGEN_VPORCH_RODD vporch_rodd = DPI_REG->TGEN_VPORCH_RODD;
-
 	DPI_EXT_LOG_PRINT("config3DMode\n");
+
+	/*Enable Interlace mode */
+	DPI_REG_CNTL ctr = DPI_REG->CNTL;
 
 	ctr.TDFP_EN = 1;
 	ctr.VS_RODD_EN = 0;
 	ctr.FAKE_DE_RODD = 1;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->CNTL, AS_UINT32(&ctr));
 
+	/*Set LODD,LEVEN Vsize */
+	DPI_REG_SIZE size = DPI_REG->SIZE;
+
 	size.WIDTH = 1280;
 	size.HEIGHT = 720;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->SIZE, AS_UINT32(&size));
 
+	/*Set LODD,VFP/VPW/VBP */
+	DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
+
 	vwidth_lodd.VPW_LODD = 5;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LODD, AS_UINT32(&vwidth_lodd));
 	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LODD: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x28));
+
+
+	DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
 
 	vporch_lodd.VFP_LODD = 5;
 	vporch_lodd.VBP_LODD = 20;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VPORCH_LODD, AS_UINT32(&vporch_lodd));
 	DPI_EXT_LOG_PRINT("TGEN_VPORCH_LODD: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x2C));
 
+	/*Set LEVEN,VFP/VPW/VBP */
+	DPI_REG_TGEN_VWIDTH_RODD vwidth_rodd = DPI_REG->TGEN_VWIDTH_RODD;
+
 	vwidth_rodd.VPW_RODD = 5;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_RODD, AS_UINT32(&vwidth_rodd));
-	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_RODD: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x70));
+	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LEVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x70));
+
+	DPI_REG_TGEN_VPORCH_RODD vporch_rodd = DPI_REG->TGEN_VPORCH_RODD;
 
 	vporch_rodd.VFP_RODD = 5;
 	vporch_rodd.VBP_RODD = 20;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VPORCH_RODD, AS_UINT32(&vporch_rodd));
-	DPI_EXT_LOG_PRINT("TGEN_VPORCH_RODD: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x74));
+	DPI_EXT_LOG_PRINT("TGEN_VPORCH_LEVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x74));
 
 	return 0;
 }
 
 int config3DInterlaceMode(unsigned int resolution)
 {
-	/*Enable Interlace mode */
-	struct DPI_REG_CNTL ctr = DPI_REG->CNTL;
-	/*Set LODD,LEVEN Vsize */
-	struct DPI_REG_SIZE size = DPI_REG->SIZE;
-	/*Set LODD,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
-	struct DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
-	/*Set LEVEN,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_RODD vwidth_rodd = DPI_REG->TGEN_VWIDTH_RODD;
-	struct DPI_REG_TGEN_VPORCH_RODD vporch_rodd = DPI_REG->TGEN_VPORCH_RODD;
-	/*Set LEVEN,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_LEVEN vwidth_leven = DPI_REG->TGEN_VWIDTH_LEVEN;
-	struct DPI_REG_TGEN_VPORCH_LEVEN vporch_leven = DPI_REG->TGEN_VPORCH_LEVEN;
-	/*Set REVEN,VFP/VPW/VBP */
-	struct DPI_REG_TGEN_VWIDTH_REVEN vwidth_reven = DPI_REG->TGEN_VWIDTH_REVEN;
-	struct DPI_REG_TGEN_VPORCH_REVEN vporch_reven = DPI_REG->TGEN_VPORCH_REVEN;
-
 	DPI_EXT_LOG_PRINT("config3DInterlaceMode\n");
+
+	/*Enable Interlace mode */
+	DPI_REG_CNTL ctr = DPI_REG->CNTL;
 
 	ctr.INTL_EN = 1;
 	ctr.TDFP_EN = 1;
@@ -241,55 +240,84 @@ int config3DInterlaceMode(unsigned int resolution)
 	ctr.FAKE_DE_REVEN = 1;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->CNTL, AS_UINT32(&ctr));
 
+	/*Set LODD,LEVEN Vsize */
+	DPI_REG_SIZE size = DPI_REG->SIZE;
+
 	size.HEIGHT = 240;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->SIZE, AS_UINT32(&size));
+
+	/*Set LODD,VFP/VPW/VBP */
+	DPI_REG_TGEN_VWIDTH_LODD vwidth_lodd = DPI_REG->TGEN_VWIDTH_LODD;
 
 	vwidth_lodd.VPW_LODD = 3;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LODD, AS_UINT32(&vwidth_lodd));
 	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LODD: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x28));
+
+
+	DPI_REG_TGEN_VPORCH_LODD vporch_lodd = DPI_REG->TGEN_VPORCH_LODD;
 
 	vporch_lodd.VFP_LODD = 4;
 	vporch_lodd.VBP_LODD = 15;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VPORCH_LODD, AS_UINT32(&vporch_lodd));
 	DPI_EXT_LOG_PRINT("TGEN_VPORCH_LODD: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x2C));
 
+
+
+	/*Set LEVEN,VFP/VPW/VBP */
+	DPI_REG_TGEN_VWIDTH_RODD vwidth_rodd = DPI_REG->TGEN_VWIDTH_RODD;
+
 	vwidth_rodd.VPW_RODD = 3;
 	vwidth_rodd.VPW_HALF_RODD = 1;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_RODD, AS_UINT32(&vwidth_rodd));
 	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LEVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x70));
+
+	DPI_REG_TGEN_VPORCH_RODD vporch_rodd = DPI_REG->TGEN_VPORCH_RODD;
 
 	vporch_rodd.VFP_RODD = 4;
 	vporch_rodd.VBP_RODD = 16;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VPORCH_RODD, AS_UINT32(&vporch_rodd));
 	DPI_EXT_LOG_PRINT("TGEN_VPORCH_LEVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x74));
 
+
+
+	/*Set LEVEN,VFP/VPW/VBP */
+	DPI_REG_TGEN_VWIDTH_LEVEN vwidth_leven = DPI_REG->TGEN_VWIDTH_LEVEN;
+
 	vwidth_leven.VPW_LEVEN = 3;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_LEVEN, AS_UINT32(&vwidth_leven));
 	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_LEVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x68));
+
+
+	DPI_REG_TGEN_VPORCH_LEVEN vporch_leven = DPI_REG->TGEN_VPORCH_LEVEN;
 
 	vporch_leven.VFP_LEVEN = 4;
 	vporch_leven.VBP_LEVEN = 15;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VPORCH_LEVEN, AS_UINT32(&vporch_leven));
 	DPI_EXT_LOG_PRINT("TGEN_VPORCH_LEVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x6C));
 
+
+
+	/*Set REVEN,VFP/VPW/VBP */
+	DPI_REG_TGEN_VWIDTH_REVEN vwidth_reven = DPI_REG->TGEN_VWIDTH_REVEN;
+
 	vwidth_reven.VPW_REVEN = 3;
 	vwidth_reven.VPW_HALF_REVEN = 1;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VWIDTH_REVEN, AS_UINT32(&vwidth_reven));
 	DPI_EXT_LOG_PRINT("TGEN_VWIDTH_REVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x78));
 
+	DPI_REG_TGEN_VPORCH_REVEN vporch_reven = DPI_REG->TGEN_VPORCH_REVEN;
+
 	vporch_reven.VFP_REVEN = 4;
 	vporch_reven.VBP_REVEN = 16;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->TGEN_VPORCH_REVEN, AS_UINT32(&vporch_reven));
 	DPI_EXT_LOG_PRINT("TGEN_VPORCH_REVEN: 0x%x\n", DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x7C));
-
-	return 0;
 }
 
 unsigned int readDPIStatus(void)
 {
 	unsigned int status = DPI_EXT_INREG32(DISPSYS_DPI_BASE + 0x40);
 	unsigned int field = (status >> 20) & 0x01;
-	/* unsigned int line_num = status & 0x1FFF; */
+	unsigned int line_num = status & 0x1FFF;
 
 	return field;
 }
@@ -330,12 +358,12 @@ unsigned int ClearDPIIntrStatus(void)
 	return 0;
 }
 
-unsigned int enableRGB2YUV(enum AviColorSpace_e format)
+unsigned int enableRGB2YUV(AviColorSpace_e format)
 {
-	struct DPI_REG_CNTL ctr = DPI_REG->CNTL;
-	struct DPI_REG_OUTPUT_SETTING output_setting = DPI_REG->OUTPUT_SETTING;
-
 	DPI_EXT_LOG_PRINT("enableRGB2YUV\n");
+
+	DPI_REG_CNTL ctr = DPI_REG->CNTL;
+	DPI_REG_OUTPUT_SETTING output_setting = DPI_REG->OUTPUT_SETTING;
 
 	if (format == acsYCbCr444) {
 		ctr.RGB2YUV_EN = 1;
@@ -361,13 +389,13 @@ unsigned int enableRGB2YUV(enum AviColorSpace_e format)
 
 unsigned int enableSingleEdge(void)
 {
+	DPI_EXT_LOG_PRINT("enableSingleEdge\n");
+
 	/*
 	   Pixel clock = 2 * dpi clock
 	   Disable dual edge
 	 */
-	struct DPI_REG_DDR_SETTING ddr_setting = DPI_REG->DDR_SETTING;
-
-	DPI_EXT_LOG_PRINT("enableSingleEdge\n");
+	DPI_REG_DDR_SETTING ddr_setting = DPI_REG->DDR_SETTING;
 
 	ddr_setting.DDR_EN = 0;
 	ddr_setting.DDR_4PHASE = 0;
@@ -378,10 +406,10 @@ unsigned int enableSingleEdge(void)
 
 int enableAndGetChecksum(void)
 {
-	int checkSumNum = -1;
-	struct DPI_REG_CHKSUM checkSum = DPI_REG->CHKSUM;
-
 	DPI_EXT_LOG_PRINT("enableAndGetChecksum\n");
+
+	int checkSumNum = -1;
+	DPI_REG_CHKSUM checkSum = DPI_REG->CHKSUM;
 
 	checkSum.CHKSUM_EN = 1;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->CHKSUM, AS_UINT32(&checkSum));
@@ -440,9 +468,9 @@ int enableAndGetChecksumCmdq(cmdqRecHandle cmdq_handle)
 
 unsigned int configDpiRepetition(void)
 {
-	struct DPI_REG_CNTL ctrl = DPI_REG->CNTL;
-
 	DPI_EXT_LOG_PRINT("configDpiRepetition\n");
+
+	DPI_REG_CNTL ctrl = DPI_REG->CNTL;
 
 	ctrl.PIXREP = 1;
 
@@ -453,17 +481,19 @@ unsigned int configDpiRepetition(void)
 
 unsigned int configDpiEmbsync(void)
 {
-	struct DPI_REG_CNTL ctrl = DPI_REG->CNTL;
-	struct DPI_REG_DDR_SETTING ddr_setting = DPI_REG->DDR_SETTING;
-	struct DPI_REG_EMBSYNC_SETTING emb_setting = DPI_REG->EMBSYNC_SETTING;
-
 	DPI_EXT_LOG_PRINT("configDpiEmbsync\n");
+
+	DPI_REG_CNTL ctrl = DPI_REG->CNTL;
 
 	ctrl.EMBSYNC_EN = 1;
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->CNTL, AS_UINT32(&ctrl));
 
+	DPI_REG_DDR_SETTING ddr_setting = DPI_REG->DDR_SETTING;
+
 	ddr_setting.DATA_THROT = 0;	/*should sii8348 support */
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->DDR_SETTING, AS_UINT32(&ddr_setting));
+
+	DPI_REG_EMBSYNC_SETTING emb_setting = DPI_REG->EMBSYNC_SETTING;
 
 	emb_setting.EMBSYNC_OPT = 0;	/*should sii8348 support */
 	DPI_EXT_OUTREG32(NULL, &DPI_REG->EMBSYNC_SETTING, AS_UINT32(&emb_setting));
@@ -471,17 +501,15 @@ unsigned int configDpiEmbsync(void)
 	return 0;
 }
 
-/*
-
 unsigned int configDpiColorTransformToBT709(void)
 {
 	DPI_EXT_LOG_PRINT("configDpiColorTransform\n");
 
-
+/*
 	DPI_REG_CNTL ctrl = DPI_REG->CNTL;
 	ctrl.RGB2YUV_EN = 1;
 	DPI_EXT_OUTREG32(NULL,  &DPI_REG->CNTL, AS_UINT32(&ctrl));
-
+*/
 
 	DPI_REG_MATRIX_SET matrix_set = DPI_REG->MATRIX_SET;
 
@@ -548,11 +576,11 @@ unsigned int configDpiRGB888ToLimitRange(void)
 {
 	DPI_EXT_LOG_PRINT("configDpiRGB888ToLimitRange\n");
 
-
+/*
 	DPI_REG_CNTL ctrl = DPI_REG->CNTL;
 	ctrl.RGB2YUV_EN = 1;
 	DPI_EXT_OUTREG32(NULL,  &DPI_REG->CNTL, AS_UINT32(&ctrl));
-
+*/
 	DPI_REG_MATRIX_SET matrix_set = DPI_REG->MATRIX_SET;
 
 	matrix_set.EXT_MATRIX_EN = 1;
@@ -614,7 +642,6 @@ unsigned int configDpiRGB888ToLimitRange(void)
 	return 0;
 }
 
-
 void ddp_dpi_ConfigInputSwap(unsigned int order)
 {
 	DPI_REG_CNTL ctrl = DPI_REG->CNTL;
@@ -640,6 +667,6 @@ int mux_test_read(void)
 
 	return 0;
 }
-*/
+
 /*****************************DPI DVT Case End*********************************/
 #endif				/*#if defined(RDMA_DPI_PATH_SUPPORT) || defined(DPI_DVT_TEST_SUPPORT) */

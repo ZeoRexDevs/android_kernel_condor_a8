@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -62,12 +60,20 @@
 #include "AudDrv_Ana.h"
 #include "AudDrv_Clk.h"
 #include "mt_soc_analog_type.h"
+#if 0
+#include <mach/pmic_mt6323_sw.h>	/* no this */
+#endif
+
 #include "mt_soc_pcm_common.h"
 
+/* static DEFINE_MUTEX(Speaker_Ctrl_Mutex); */
+/* static DEFINE_SPINLOCK(Speaker_lock); */
+/* static int Speaker_Counter = 0; */
+/* static bool  Speaker_Trim_init = false; */
 
 void Speaker_ClassD_Open(void)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	Ana_Set_Reg(SPK_CON2, 0x0214, 0xffff);	/* enable classAB OC function */
 	Ana_Set_Reg(SPK_CON9, 0x0400, 0xffff);	/* Set Spk 6dB gain */
 
@@ -81,7 +87,7 @@ void Speaker_ClassD_Open(void)
 
 void Speaker_ClassD_close(void)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	/* Mute Spk amp, select to original class AB mode. disable class-D Amp */
 	Ana_Set_Reg(SPK_CON0, 0x0004, 0xffff);
 }
@@ -89,7 +95,7 @@ void Speaker_ClassD_close(void)
 
 void Speaker_ClassAB_Open(void)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	Ana_Set_Reg(SPK_CON2, 0x0214, 0xffff);	/* enable classAB OC function */
 	Ana_Set_Reg(SPK_CON9, 0x0400, 0xffff);	/* Set Spk 6dB gain */
 
@@ -104,14 +110,14 @@ void Speaker_ClassAB_Open(void)
 
 void Speaker_ClassAB_close(void)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	/* Mute Spk amp, select to original class D mode. disable class-AB Amp */
 	Ana_Set_Reg(SPK_CON0, 0x0000, 0xffff);
 }
 
 void Speaker_ReveiverMode_Open(void)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	/* enable classAB OC function, enable speaker L receiver mode[6] */
 	Ana_Set_Reg(SPK_CON2, 0x0614, 0xffff);
 
@@ -140,6 +146,6 @@ bool GetSpeakerOcFlag(void)
 	OCregister = Ana_Get_Reg(SPK_CON6);
 	DmodeFlag = OCregister & (bitmask << 14);	/* no.14 bit is SPK_D_OC_L_DEG */
 	ABmodeFlag = OCregister & (bitmask << 15);	/* no.15 bit is SPK_AB_OC_L_DEG */
-	PRINTK_AUDDRV("OCregister = %d\n", OCregister);
+	pr_debug("OCregister = %d\n", OCregister);
 	return (DmodeFlag | ABmodeFlag);
 }

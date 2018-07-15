@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef __SMI_COMMON_H__
 #define __SMI_COMMON_H__
 
@@ -34,19 +21,14 @@
 	do {\
 		if (onoff == 1)\
 			cmdq_core_save_first_dump(string, ##args);\
-		else\
-			SMIMSG(string, ##args);\
+		SMIMSG(string, ##args);\
 	} while (0)
 #else
 #define SMIMSG3(string, args...) SMIMSG(string, ##args)
 #endif
 #define SMITMP(string, args...) pr_debug("[pid=%d]"string, current->tgid, ##args)
 
-#define SMIERR(string, args...)\
-	do {\
-		pr_debug("error: " string, ##args); \
-		aee_kernel_warning(SMI_LOG_TAG, "error: "string, ##args);  \
-	} while (0)
+#define SMIERR(string, args...)	pr_debug("error: " string, ##args)
 #define smi_aee_print(string, args...)\
 	do {\
 		char smi_name[100];\
@@ -54,6 +36,11 @@
 	} while (0)
 
 /*
+#define SMIERR(string, args...)\
+	do {\
+		pr_debug("error: " string, ##args); \
+		aee_kernel_warning(SMI_LOG_TAG, "error: "string, ##args);  \
+	} while (0)
 #define smi_aee_print(string, args...)\
 	do {\
 		char smi_name[100];\
@@ -76,7 +63,8 @@ extern void smi_dumpCommon(void);
 /* void register_base_dump(void); */
 
 extern struct SMI_PROFILE_CONFIG smi_profile_config[SMI_PROFILE_CONFIG_NUM];
-extern int smi_bus_regs_setting(int larb_id, int profile, struct SMI_SETTING *settings);
-extern int smi_common_setting(int profile, struct SMI_SETTING *settings);
+extern void smi_set_nonconstant_variable(void);
+extern void save_default_common_val(int *is_default_value_saved, unsigned int *default_val_smi_array);
+extern int smi_bus_regs_setting(int profile, struct SMI_SETTING *settings);
 
 #endif

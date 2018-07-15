@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -30,8 +17,6 @@
 #include <linux/switch.h>
 #include "mach/mt_thermal.h"
 #include <linux/uidgid.h>
-#include "ged_dvfs.h"
-
 
 /* 1: turn on adaptive fps cooler; 0: turn off */
 #define ADAPTIVE_FPS_COOLER              (1)
@@ -101,12 +86,9 @@ static struct thermal_cooling_device *cl_adp_fps_dev;
 static unsigned int cl_adp_fps_state;
 static int cl_adp_fps_limit = MAX_FPS_LIMIT;
 
-#define GPU_LOADING_THRESHOLD	60
+#define GPU_LOADING_THRESHOLD	80
 /* in percentage */
-/* ====FPS_DEBUGFS=========
 static int gpu_loading_threshold = GPU_LOADING_THRESHOLD;
-====FPS_DEBUGFS=========== */
-
 /* in percentage */
 static int fps_error_threshold = 10;
 /* in round */
@@ -122,39 +104,13 @@ static int in_game_low_fps = 5;
 static int in_game_whitelist = 1;
 #endif
 
-#ifndef __GED_TYPE_H__
-typedef enum GED_INFO_TA {
-GED_EVENT_GAS_MODE,
-GED_UNDEFINED
-} GED_INFO;
-#endif
-
-unsigned long  __attribute__ ((weak))
-ged_query_info(GED_INFO eType)
-{
-	pr_err("E_WF: %s doesn't exist\n", __func__);
-	return 0;
-}
-
-static int game_whitelist_check(void)
-{
-	unsigned long result = ged_query_info(GED_EVENT_GAS_MODE);
-
-	if (1 == result)
-		in_game_whitelist = 1;
-	else if (0 == result)
-		in_game_whitelist = 0;
-
-	return 0;
-}
-
 static int fps_update(void)
 {
 	disp_session_info info;
 
 	memset(&info, 0, sizeof(info));
 	info.session_id = MAKE_DISP_SESSION(DISP_SESSION_PRIMARY, 0);
-	disp_mgr_get_session_info(&info);
+	/* disp_mgr_get_session_info(&info); */   /* fix it */
 	/* mtk_cooler_fps_dprintk("display update fps is: %d.%d\n", info.updateFPS/100, info.updateFPS%100); */
 	/* mtk_cooler_fps_dprintk("is display fps stable: %d\n", info.is_updateFPS_stable); */
 #if 0
@@ -163,7 +119,7 @@ static int fps_update(void)
 	else
 		     tm_input_fps = 0;
 #else
-	tm_input_fps = info.updateFPS/100;
+	tm_input_fps = info.updateFPS;
 #endif
 
 	return 0;
@@ -277,7 +233,6 @@ static int increase_fps_limit(void)
 	return fps_level[curr_fps_level];
 }
 
-#if 0
 /* decrease by one level */
 static int decrease_fps_limit(void)
 {
@@ -286,23 +241,6 @@ static int decrease_fps_limit(void)
 
 	return fps_level[curr_fps_level];
 }
-#endif
-
-/**
- * floor function applied to fps_level
- * @retval index of fps_level
- */
-static int find_fps_floor(int fps)
-{
-	int i;
-
-	for (i = 0; i < nr_fps_levels; i++) {
-		if (fps_level[i] <= fps)
-			return i;
-	}
-
-	return nr_fps_levels - 1;
-}
 
 static int unlimit_fps_limit(void)
 {
@@ -310,33 +248,16 @@ static int unlimit_fps_limit(void)
 	return fps_level[curr_fps_level];
 }
 
-/**
- * We consider to decrease fps limit to avoid unstable fps only if the
- * system already utilizes its full capacity.
- * e.g., gpu utilization already reaches a threshold, or maybe other index?
- */
-static bool is_system_too_busy(void)
-{
-	int gpu_loading;
-
-	/* GPU cases */
-	gpu_loading = get_sma_val(gpu_loading_history, gpu_loading_sma_len);
-	mtk_cooler_fps_dprintk("[%s] gpu_loading = %d\n", __func__, gpu_loading);
-	if (gpu_loading >= GPU_LOADING_THRESHOLD)
-		return true;
-
-	/* TBD: other cases? */
-
-	return false;
-}
-
 /* This function is actually an governor */
 static int adp_calc_fps_limit(void)
 {
 	static int last_change_tpcb;
 	static int period;
-	int sma_tpcb, tpcb_change, sma_fps;
+	int sma_tpcb, tpcb_change, sma_fps, gpu_loading;
 	int fps_limit = fps_level[curr_fps_level];
+
+	mtk_cooler_fps_dprintk("[%s] enter. period=%d, fps_stable_period=%d, fps_limit=%d\n",
+		__func__, period, fps_stable_period, fps_limit);
 
 	if (period < fps_stable_period) {
 		period++;
@@ -344,27 +265,22 @@ static int adp_calc_fps_limit(void)
 	}
 	period = 0;
 
+	gpu_loading = get_sma_val(gpu_loading_history, gpu_loading_sma_len);
 	sma_tpcb = get_sma_val(tpcb_history, tpcb_sma_len);
 	tpcb_change = sma_tpcb - last_change_tpcb;
 
-	sma_fps = get_sma_val(fps_history, fps_sma_len);
+	mtk_cooler_fps_dprintk("[%s] enter. gpu_loading=%d, sma_tpcb=%d, tpcb_change=%d\n",
+		__func__, gpu_loading, sma_tpcb, tpcb_change);
 
-	mtk_cooler_fps_dprintk("[%s] sma_tpcb = %d, tpcb_change = %d, sma_fps = %d\n",
-		__func__, sma_tpcb,  tpcb_change, sma_fps);
-
-	if (fps_limit_always_on ||
-		(sma_fps < 40 && sma_tpcb >= mtk_thermal_get_tpcb_target())) {
-		if (is_system_too_busy() &&
-				fps_limit - sma_fps >= fps_limit * fps_error_threshold / 100) {
-				mtk_cooler_fps_dprintk("[%s] fps_limit = %d, sma_fps = %d\n",
-					__func__, fps_limit, sma_fps);
+	if (fps_limit_always_on || sma_tpcb >= mtk_thermal_get_tpcb_target()) {
+		sma_fps = get_sma_val(fps_history, fps_sma_len);
+		/* If gpu already utilizes almost full capacity but cannot reach the limit,
+		 * then we consider to decrease fps limit to avoid unstable fps */
+		if (gpu_loading >= gpu_loading_threshold &&
+		    fps_limit - sma_fps >= fps_limit * fps_error_threshold / 100) {
 			/* we do not limit FPS if not in game */
-			if (in_game_whitelist) {
-				curr_fps_level = find_fps_floor(sma_fps);
-				fps_limit = fps_level[curr_fps_level];
-				mtk_cooler_fps_dprintk("[%s] curr_fps_level = %d, fps_limit = %d\n",
-					__func__, curr_fps_level, fps_limit);
-			}
+			if (in_game_whitelist)
+				fps_limit = decrease_fps_limit();
 #if 0
 			else {
 				/* FIXME: give hint to somebody, so that user
@@ -377,11 +293,16 @@ static int adp_calc_fps_limit(void)
 	}
 
 	/* tpcb is falling and gpu loading is low, too */
-	if (sma_tpcb < mtk_thermal_get_tpcb_target() && tpcb_change < 0)
+	if (sma_tpcb < mtk_thermal_get_tpcb_target() && tpcb_change < 0
+			&& gpu_loading < gpu_loading_threshold) {
 		fps_limit = increase_fps_limit();
+	}
 
 	if (tpcb_change)
 		last_change_tpcb = sma_tpcb;
+
+	/* mtk_cooler_fps_dprintk("[%s] enter. sma_fps=%d, fps_limit=%d\n",
+		__func__, sma_fps, fps_limit); */
 
 	return fps_limit;
 }
@@ -398,8 +319,6 @@ static bool in_consistent_scene(void)
 		duration++;
 	else /* TODO: TBD: should we reset duration or decrease */
 		duration = 0;
-
-	mtk_cooler_fps_dprintk("[%s] fps <= in_game_low_fps = %d\n", __func__, duration);
 
 	if (duration >= leave_fps_limit_duration) {
 		duration = 0;
@@ -424,9 +343,6 @@ static int adp_fps_set_cur_state(struct thermal_cooling_device *cdev,
 	/* check the fps update from display */
 	fps_update();
 
-	/* game? */
-	game_whitelist_check();
-
 	set_sma_val(fps_history, fps_sma_len, &fps_history_idx, tm_input_fps);
 	set_sma_val(tpcb_history, tpcb_sma_len, &tpcb_history_idx,
 			mtk_thermal_get_temp(MTK_THERMAL_SENSOR_AP));
@@ -441,10 +357,7 @@ static int adp_fps_set_cur_state(struct thermal_cooling_device *cdev,
 	if (!in_consistent_scene())
 		unlimit_fps_limit();
 
-	if (cl_adp_fps_state)
-		cl_adp_fps_limit = adp_calc_fps_limit();
-	else
-		cl_adp_fps_limit = unlimit_fps_limit();
+	cl_adp_fps_limit = adp_calc_fps_limit();
 
 	/* 2. set the the limit */
 	mtk_cl_fps_set_fps_limit();
@@ -485,17 +398,15 @@ static int clfps_level_read(struct seq_file *m, void *v)
 static ssize_t clfps_level_write(struct file *file, const char __user *buffer,
 		size_t count, loff_t *data)
 {
-	char *buf;
+	char *buf, *ori_buf;
+	unsigned int _tmp;
 	int i, ret = -EINVAL;
-
-	/* we do not allow change fps_level during fps throttling,
-	 * value of curr_fps_level would be changed. */
-	if (curr_fps_level != 0)
-		return -EAGAIN;
 
 	buf = kmalloc(count + 1, GFP_KERNEL);
 	if (buf == NULL)
 		return -EFAULT;
+	/* buf would be modified in strsep() later */
+	ori_buf = buf;
 
 	if (copy_from_user(buf, buffer, count)) {
 		ret = -EFAULT;
@@ -503,32 +414,25 @@ static ssize_t clfps_level_write(struct file *file, const char __user *buffer,
 	}
 	buf[count] = '\0';
 
-	mtk_cooler_fps_dprintk_always("[%s] buf: %s\n", __func__, buf);
+	if (kstrtoint(buf, 10, &_tmp) == 0 || _tmp > MAX_FPS_LEVELS) {
+		ret = -EINVAL;
+		goto exit;
+	}
+	nr_fps_levels = _tmp;
 
-	if (1 <= sscanf(buf, "%d %d %d %d %d %d %d",
-					&nr_fps_levels, &fps_level[0], &fps_level[1], &fps_level[2],
-					&fps_level[3], &fps_level[4], &fps_level[5])) {
-
-		if ((nr_fps_levels > MAX_FPS_LEVELS) || (nr_fps_levels < 0)) {
-			mtk_cooler_fps_dprintk_always("[%s] nr_fps_levels: %d\n", __func__, nr_fps_levels);
+	for (i = 0; i < nr_fps_levels; i++) {
+		strsep(&buf, " ");
+		if (buf == NULL || kstrtoint(buf, 10, &_tmp) == 0 ||
+		    _tmp > MAX_FPS_LIMIT || _tmp < MIN_FPS_LIMIT) {
 			ret = -EINVAL;
 			goto exit;
 		}
-
-		for (i = 0; i < nr_fps_levels; i++) {
-			if (fps_level[i] > MAX_FPS_LIMIT || fps_level[i] < MIN_FPS_LIMIT) {
-				mtk_cooler_fps_dprintk_always("[%s] fps_level: %d\n", __func__, fps_level[i]);
-				ret = -EINVAL;
-				goto exit;
-			}
-		}
-
-		kfree(buf);
-		return count;
+		fps_level[i] = _tmp;
 	}
+	ret = count;
 
 exit:
-	kfree(buf);
+	kfree(ori_buf);
 	if (ret < 0)
 		reset_fps_level();
 
@@ -801,7 +705,7 @@ static const struct file_operations tm_fps_fops = {
 	.release = single_release,
 };
 
-/* ====FPS_DEBUGFS=========
+/* ===== debug only===
 #define debugfs_entry(name) \
 do { \
 		dentry_f = debugfs_create_u32(#name, S_IWUSR | S_IRUGO, _d, &name); \
@@ -833,7 +737,7 @@ static void create_debugfs_entries(void)
 }
 
 #undef debugfs_entry
-====FPS_DEBUGFS=========== */
+=====  debug only === */
 
 static int __init mtk_cooler_fps_init(void)
 {
@@ -871,11 +775,8 @@ static int __init mtk_cooler_fps_init(void)
 		fps_tm_proc_dir = proc_mkdir("fps_tm", NULL);
 		if (!fps_tm_proc_dir)
 			mtk_cooler_fps_dprintk_always("[%s]: mkdir /proc/fps_tm failed\n", __func__);
-		else {
-			entry = proc_create("fps_count", S_IRUGO | S_IWUSR | S_IWGRP, fps_tm_proc_dir, &tm_fps_fops);
-			if (entry)
-				proc_set_user(entry, uid, gid);
-		}
+		else
+			entry = proc_create("fps_count", S_IRWXUGO, fps_tm_proc_dir, &tm_fps_fops);
 
 		dir_entry = mtk_thermal_get_proc_drv_therm_dir_entry();
 		if (!dir_entry)
@@ -898,10 +799,9 @@ static int __init mtk_cooler_fps_init(void)
 			if (entry)
 				proc_set_user(entry, uid, gid);
 		}
-/* ====FPS_DEBUGFS=========
+/* ===== debug only===
 		create_debugfs_entries();
-====FPS_DEBUGFS=========== */
-
+=====  debug only === */
 
 #endif
 

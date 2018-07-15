@@ -20,6 +20,7 @@
 #include <linux/byteorder/generic.h>
 #include <linux/interrupt.h>
 #include <linux/time.h>
+#include <linux/rtpm_prio.h>
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include "mt_boot_common.h"
@@ -28,14 +29,18 @@
 
 /* Pre-defined definition */
 
-#define TPD_KEY_COUNT   4
-#define key_1           {60, 850}
-#define key_2           {180, 850}
-#define key_3           {300, 850}
-#define key_4           {420, 850}
+#define TPD_KEY_COUNT   3
+#define key_1           245,2000                
+#define key_2           540,2000
+#define key_3           834,2000
 
-#define TPD_KEYS        {KEY_BACK, KEY_HOME, KEY_MENU, KEY_SEARCH}
-#define TPD_KEYS_DIM    { {key_1, 50, 30}, {key_2, 50, 30}, {key_3, 50, 30}, {key_4, 50, 30} }
+#ifdef LYCONFIG_COMB_CUST_PROJECT_NAME_F1_YP
+#define TPD_KEYS        {KEY_BACK, KEY_HOMEPAGE,KEY_MENU}
+#else
+#define TPD_KEYS        {KEY_MENU, KEY_HOMEPAGE,KEY_BACK}
+#endif
+#define TPD_KEYS_DIM    {{key_1,50,30},{key_2,50,30},{key_3,50,30}}
+#define TPD_GESTURE_TAB {KEY_RIGHT,KEY_DOWN,KEY_UP,KEY_LEFT,KEY_O,KEY_M,KEY_E,KEY_C,KEY_W,KEY_S,KEY_Z,KEY_V,KEY_P}
 
 #define TOUCH_FILTER 1
 #if TOUCH_FILTER
@@ -98,19 +103,24 @@ extern unsigned char gtp_default_FW_fl[];
 #define GTP_HAVE_TOUCH_KEY    0
 
 #define GTP_COMPATIBLE_MODE   1	/* compatible with GT9XXF*/
-#define GTP_ESD_PROTECT       0	/* esd protection with a cycle of 2 seconds*/
+#define GTP_ESD_PROTECT       1	/* esd protection with a cycle of 2 seconds*/
 /*#define GUP_USE_HEADER_FILE   0*/
 /*#define GTP_FW_DOWNLOAD       0  */     /*update FW to TP SRAM*/
 
 #define GTP_CONFIG_MIN_LENGTH       186
 #define GTP_CONFIG_MAX_LENGTH       240
 #define GTP_WITH_PEN          0
+#if defined(LYCONFIG_FEA_TP_WAKEUP_SUPPORT)
+#define GTP_SLIDE_WAKEUP      1
+#else
 #define GTP_SLIDE_WAKEUP      0
-#define GTP_DBL_CLK_WAKEUP    0	/* double-click wakup, function together with GTP_SLIDE_WAKEUP*/
+#endif
+//#define GTP_DBL_CLK_WAKEUP    1	/* double-click wakup, function together with GTP_SLIDE_WAKEUP*/
 /*#define CONFIG_HOTKNOT_BLOCK_RW      1*/
+#define TPD_HAVE_BUTTON         1       /* report key as coordinate,Vibration feedback*/
 
 #ifdef CONFIG_MD32_SUPPORT
-#define GTP_SCP_GESTURE_WAKEUP  1	/* Gesture wakeup by SCP */
+#define GTP_SCP_GESTURE_WAKEUP  0	/* Gesture wakeup by SCP */
 #else
 #define GTP_SCP_GESTURE_WAKEUP  0	/* Gesture wakeup by SCP */
 #endif
@@ -151,7 +161,6 @@ extern void force_reset_guitar(void);
 #if GTP_HAVE_TOUCH_KEY
 #define GTP_KEY_TAB	 {KEY_MENU, KEY_HOME, KEY_BACK, KEY_SEND}
 #endif
-
 /***************************PART3:OTHER define*********************************/
 #define GTP_DRIVER_VERSION          "V2.1<2014/01/10>"
 #define GTP_I2C_NAME                "Goodix-TS"

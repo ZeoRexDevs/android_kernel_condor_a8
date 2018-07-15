@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef BUILD_LK
 #include <linux/string.h>
 #include <linux/kernel.h>
@@ -245,11 +232,16 @@ struct LCM_setting_table {
 };
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
+#ifndef LCM_DSI_CMD_MODE
+	/* switch to CMD mode for fitting DSI state */
+	{0xB3, 1, {0x04} },
+	{REGFLAG_DELAY, 120, {} },
+#endif
 	{0x28, 0, {} },
 	{REGFLAG_DELAY, 20, {} },
 	{0x10, 0, {} },
-	{0xB0, 1, {0x00 } },
-	{0xB1, 1, {0x01 } },
+	{0xB0, 1, {0x00} },
+	{0xB1, 1, {0x01} },
 	{REGFLAG_DELAY, 80, {} },
 };
 
@@ -281,7 +273,6 @@ static struct LCM_setting_table lcm_initialization_setting[] = {
 	{0x35, 1, {0x00} },
 	/* set TE line */
 	{0x44, 2, {0x00, 0x20} },
-
 	/* Display ON */
 	{0x29, 0, {} },
 	/* Sleep Out */
@@ -316,9 +307,11 @@ static void push_table(struct LCM_setting_table *table, unsigned int count, unsi
 		case REGFLAG_RAR:
 			RAR(table[i].count);
 			break;
+
 		case REGFLAG_NULL:
 			dsi_set_null(cmd, table[i].count, table[i].para_list, force_update);
 			break;
+
 		default:
 			dsi_set_cmdq_V2(cmd, table[i].count, table[i].para_list, force_update);
 		}

@@ -20,7 +20,6 @@
 #define CMD_SPI_SEND		1
 #define CMD_SPI_CONFIG		2
 #define CMD_SPI_DEBUG		3
-#define CMD_SPI_TEST		4
 
 /*
  * Termination codes

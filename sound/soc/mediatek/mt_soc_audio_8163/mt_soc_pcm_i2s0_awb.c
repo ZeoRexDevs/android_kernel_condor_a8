@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -93,7 +91,7 @@ static struct snd_pcm_hardware mtk_I2S0_awb_hardware = {
 
 static void StopAudioI2S0AWBHardware(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("StopAudioI2S0AWBHardware\n");
+	pr_debug("StopAudioI2S0AWBHardware\n");
 
 	SetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_IN_2, false);
 	SetMemoryPathEnable(Soc_Aud_Digital_Block_MEM_AWB, false);
@@ -122,7 +120,8 @@ static void StartAudioI2S0AWBHardware(struct snd_pcm_substream *substream)
 
 	const bool bEnablePhaseShiftFix = true;
 
-	PRINTK_AUDDRV("StartAudioI2S0AWBHardware\n");
+	pr_debug("StartAudioI2S0AWBHardware\n");
+
 
 	MclkDiv0 = SetCLkMclk(Soc_Aud_I2S0, runtime->rate);	/* select I2S */
 	SetCLkBclk(MclkDiv0, runtime->rate, runtime->channels, Soc_Aud_I2S_WLEN_WLEN_32BITS);
@@ -157,7 +156,7 @@ static void StartAudioI2S0AWBHardware(struct snd_pcm_substream *substream)
 
 static int mtk_i2s0_awb_pcm_prepare(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("%s, substream->rate = %d, substream->channels = %d\n",
+	pr_debug("%s, substream->rate = %d, substream->channels = %d\n",
 		__func__, substream->runtime->rate, substream->runtime->channels);
 	return 0;
 }
@@ -165,7 +164,7 @@ static int mtk_i2s0_awb_pcm_prepare(struct snd_pcm_substream *substream)
 static int mtk_i2s0_awb_alsa_stop(struct snd_pcm_substream *substream)
 {
 	/* AFE_BLOCK_T *Awb_Block = &(I2S0_AWB_Control_context->rBlock); */
-	PRINTK_AUDDRV("mtk_i2s0_awb_alsa_stop\n");
+	pr_debug("mtk_i2s0_awb_alsa_stop\n");
 	StopAudioI2S0AWBHardware(substream);
 	RemoveMemifSubStream(Soc_Aud_Digital_Block_MEM_AWB, substream);
 	return 0;
@@ -192,6 +191,7 @@ static void SetAWBBuffer(struct snd_pcm_substream *substream, struct snd_pcm_hw_
 	AFE_BLOCK_T *pblock = &I2S0_AWB_Control_context->rBlock;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
+	pr_debug("SetAWBBuffer\n");
 	pblock->pucPhysBufAddr = runtime->dma_addr;
 	pblock->pucVirtBufAddr = runtime->dma_area;
 	pblock->u4BufferSize = runtime->dma_bytes;
@@ -202,7 +202,7 @@ static void SetAWBBuffer(struct snd_pcm_substream *substream, struct snd_pcm_hw_
 	pblock->u4fsyncflag = false;
 	pblock->uResetFlag = true;
 
-	PRINTK_AUDDRV("%s dma_bytes = %d dma_area = %p dma_addr = 0x%x\n", __func__,
+	pr_debug("dma_bytes = %d dma_area = %p dma_addr = 0x%x\n",
 		pblock->u4BufferSize, pblock->pucVirtBufAddr, pblock->pucPhysBufAddr);
 
 	/* set sram address top hardware */
@@ -218,27 +218,35 @@ static int mtk_i2s0_awb_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
 	int ret = 0;
 
+	pr_debug("mtk_i2s0_awb_pcm_hw_params\n");
+
 	dma_buf->dev.type = SNDRV_DMA_TYPE_DEV;
 	dma_buf->dev.dev = substream->pcm->card->dev;
 	dma_buf->private_data = NULL;
 
 	if (Awb_Capture_dma_buf->area) {
-		PRINTK_AUDDRV("%s Awb_Capture_dma_buf->area\n", __func__);
+		pr_debug("mtk_i2s0_awb_pcm_hw_params Awb_Capture_dma_buf->area\n");
 		runtime->dma_bytes = params_buffer_bytes(hw_params);
 		runtime->dma_area = Awb_Capture_dma_buf->area;
 		runtime->dma_addr = Awb_Capture_dma_buf->addr;
 	} else {
-		PRINTK_AUDDRV("%s snd_pcm_lib_malloc_pages\n", __func__);
+		pr_debug("mtk_i2s0_awb_pcm_hw_params snd_pcm_lib_malloc_pages\n");
 		ret = snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(hw_params));
 	}
 
+	pr_debug("%s, dma_bytes = %zu, dma_area = %p, dma_addr = 0x%lx\n",
+		__func__, runtime->dma_bytes, runtime->dma_area,
+		(long)runtime->dma_addr);
+
+	pr_debug("runtime->hw.buffer_bytes_max = %zu\n", runtime->hw.buffer_bytes_max);
 	SetAWBBuffer(substream, hw_params);
+
 	return ret;
 }
 
 static int mtk_i2s0_capture_pcm_hw_free(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("mtk_i2s0_capture_pcm_hw_free\n");
+	pr_debug("mtk_i2s0_capture_pcm_hw_free\n");
 
 	if (Awb_Capture_dma_buf->area)
 		return 0;
@@ -257,6 +265,7 @@ static int mtk_i2s0_awb_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
 
+	pr_debug("mtk_i2s0_awb_pcm_open\n");
 	I2S0_AWB_Control_context = Get_Mem_ControlT(Soc_Aud_Digital_Block_MEM_AWB);
 	runtime->hw = mtk_I2S0_awb_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_I2S0_awb_hardware,
@@ -273,7 +282,7 @@ static int mtk_i2s0_awb_pcm_open(struct snd_pcm_substream *substream)
 	AudDrv_Clk_On();
 
 	/* print for hw pcm information */
-	PRINTK_AUDDRV("%s, runtime->rate = %d, channels = %d\n", __func__,
+	pr_debug("mtk_i2s0_awb_pcm_open, runtime->rate = %d, channels = %d\n",
 		runtime->rate, runtime->channels);
 
 	runtime->hw.info |= SNDRV_PCM_INFO_INTERLEAVED;
@@ -281,30 +290,28 @@ static int mtk_i2s0_awb_pcm_open(struct snd_pcm_substream *substream)
 	runtime->hw.info |= SNDRV_PCM_INFO_MMAP_VALID;
 
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-		PRINTK_AUDDRV("SNDRV_PCM_STREAM_CAPTURE\n");
+		pr_debug("SNDRV_PCM_STREAM_CAPTURE\n");
 	else
 		return -1;
 
 	if (ret < 0) {
-		pr_warn("%s ret < 0, close\n", __func__);
+		pr_warn("mtk_i2s0_awb_pcm_close\n");
 		mtk_i2s0_awb_pcm_close(substream);
 		return ret;
 	}
-	AudDrv_Emi_Clk_On();
+
+	pr_debug("mtk_i2s0_awb_pcm_open return\n");
 	return 0;
 }
 
 static int mtk_i2s0_awb_pcm_close(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
-	AudDrv_Emi_Clk_Off();
-	AudDrv_Clk_Off();
 	return 0;
 }
 
 static int mtk_i2s0_awb_alsa_start(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("mtk_i2s0_awb_alsa_start\n");
 	SetMemifSubStream(Soc_Aud_Digital_Block_MEM_AWB, substream);
 	StartAudioI2S0AWBHardware(substream);
 	return 0;
@@ -312,7 +319,7 @@ static int mtk_i2s0_awb_alsa_start(struct snd_pcm_substream *substream)
 
 static int mtk_i2s0_awb_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	PRINTK_AUDDRV("mtk_i2s0_awb_pcm_trigger cmd = %d\n", cmd);
+	pr_debug("mtk_i2s0_awb_pcm_trigger cmd = %d\n", cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -327,9 +334,10 @@ static int mtk_i2s0_awb_pcm_trigger(struct snd_pcm_substream *substream, int cmd
 
 static bool CheckNullPointer(void *pointer)
 {
-	if (pointer == NULL)
+	if (pointer == NULL) {
+		pr_debug("CheckNullPointer pointer = NULL");
 		return true;
-
+	}
 	return false;
 }
 
@@ -346,32 +354,31 @@ static int mtk_i2s0_awb_pcm_copy(struct snd_pcm_substream *substream,
 	/* get total bytes to copy */
 	count = Align64ByteSize(audio_frame_to_bytes(substream, count));
 
-	PRINTK_AUD_AWB("%s, pos = %lu, count = %lu\n", __func__, pos, count);
+	pr_debug("%s, pos = %lu, count = %lu\n", __func__, pos, count);
 
 	/* check which memif nned to be write */
 	pAWB_MEM_ConTrol = I2S0_AWB_Control_context;
 	Awb_Block = &(pAWB_MEM_ConTrol->rBlock);
 
 	if (pAWB_MEM_ConTrol == NULL) {
-		pr_err("%s cannot find MEM control !!!!!!!\n", __func__);
+		pr_err("cannot find MEM control !!!!!!!\n");
 		msleep(50);
 		return 0;
 	}
 
 	if (Awb_Block->u4BufferSize <= 0) {
-		pr_err("%s Awb_Block->u4BufferSize <= 0 !!!!!!!\n", __func__);
 		msleep(50);
 		return 0;
 	}
 
 	if (CheckNullPointer((void *)Awb_Block->pucVirtBufAddr)) {
-		pr_err("%s CheckNullPointer pucVirtBufAddr = %p\n", __func__, Awb_Block->pucVirtBufAddr);
+		pr_err("CheckNullPointer pucVirtBufAddr = %p\n", Awb_Block->pucVirtBufAddr);
 		return 0;
 	}
 
 	spin_lock_irqsave(&auddrv_Dl1AWBInCtl_lock, flags);
 	if (Awb_Block->u4DataRemained > Awb_Block->u4BufferSize) {
-		PRINTK_AUD_AWB("%s u4DataRemained=%x > u4BufferSize=%x\n", __func__,
+		pr_debug("AudDrv_MEMIF_Read u4DataRemained=%x > u4BufferSize=%x\n",
 		       Awb_Block->u4DataRemained, Awb_Block->u4BufferSize);
 		Awb_Block->u4DataRemained = 0;
 		Awb_Block->u4DMAReadIdx = Awb_Block->u4WriteIdx;
@@ -387,7 +394,7 @@ static int mtk_i2s0_awb_pcm_copy(struct snd_pcm_substream *substream,
 
 	PRINTK_AUD_AWB
 	("%s finish0, read_count:%x, read_size:%x, u4DataRemained:%x, u4DMAReadIdx:%x, u4WriteIdx:%x\n",
-	__func__, (uint32)read_count, (uint32)read_size, Awb_Block->u4DataRemained, Awb_Block->u4DMAReadIdx,
+	__func__, read_count, read_size, Awb_Block->u4DataRemained, Awb_Block->u4DMAReadIdx,
 	Awb_Block->u4WriteIdx);
 
 	if (DMA_Read_Ptr + read_size < Awb_Block->u4BufferSize) {
@@ -420,7 +427,7 @@ static int mtk_i2s0_awb_pcm_copy(struct snd_pcm_substream *substream,
 
 		PRINTK_AUD_AWB
 			("%s finish1, copy size:%x, u4DMAReadIdx:%x, u4WriteIdx:%x, u4DataRemained:%x\n",
-			__func__, (uint32)read_size, Awb_Block->u4DMAReadIdx, Awb_Block->u4WriteIdx,
+			__func__, read_size, Awb_Block->u4DMAReadIdx, Awb_Block->u4WriteIdx,
 			Awb_Block->u4DataRemained);
 
 	} else {
@@ -492,7 +499,7 @@ static int mtk_i2s0_awb_pcm_copy(struct snd_pcm_substream *substream,
 static int mtk_capture_pcm_silence(struct snd_pcm_substream *substream,
 				   int channel, snd_pcm_uframes_t pos, snd_pcm_uframes_t count)
 {
-	PRINTK_AUDDRV("dummy_pcm_silence\n");
+	pr_debug("dummy_pcm_silence\n");
 	return 0;		/* do nothing */
 }
 

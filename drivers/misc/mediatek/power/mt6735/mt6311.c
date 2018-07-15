@@ -27,7 +27,7 @@
 /*#include <mach/eint.h> TBD*/
 
 #include <mt-plat/upmu_common.h>
-#include "mt6311.h"
+#include <mt6311.h>
 
 #include <mach/mt_pmic.h>
 
@@ -7393,13 +7393,11 @@ static int __init mt6311_init(void)
 #endif
 */
 #endif
-
 exit:
 #if defined(CONFIG_ARCH_MT6753)
 	PMIC_INIT_SETTING_V1();
 #else
 #endif
-
 	return ret;
 }
 

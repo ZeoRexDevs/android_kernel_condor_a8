@@ -105,9 +105,5 @@ union CM36652_CUST_DATA {
 /*----------------------------------------------------------------------------*/
 
 extern struct platform_device *get_alsps_platformdev(void);
-#ifdef CONFIG_CUSTOM_KERNEL_ALSPS_MODULE
-extern bool alsps_success_Flag;
-#endif
-
 #endif
 

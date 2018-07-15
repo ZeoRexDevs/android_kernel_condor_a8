@@ -86,7 +86,7 @@ void dual_role_instance_changed(struct dual_role_phy_instance *dual_role)
 	pm_wakeup_event(&dual_role->dev, DUAL_ROLE_NOTIFICATION_TIMEOUT);
 	schedule_work(&dual_role->changed_work);
 }
-EXPORT_SYMBOL_GPL(dual_role_instance_changed);
+EXPORT_SYMBOL_GPL(dual_role_instance_changed)
 
 int dual_role_get_property(struct dual_role_phy_instance *dual_role,
 			   enum dual_role_property prop,
@@ -116,24 +116,6 @@ int dual_role_property_is_writeable(struct dual_role_phy_instance *dual_role,
 	return dual_role->desc->property_is_writeable(dual_role, prop);
 }
 EXPORT_SYMBOL_GPL(dual_role_property_is_writeable);
-
-static int dual_role_match_device_byname(struct device *dev, const void *data)
-{
-	const char *name = data;
-	struct dual_role_phy_instance *dual_role = dev_get_drvdata(dev);
-
-	return strcmp(dual_role->desc->name, name) == 0;
-}
-
-struct dual_role_phy_instance
-	*dual_role_phy_instance_get_byname(const char *name)
-{
-	struct device *dev = class_find_device(dual_role_class, NULL, name,
-			dual_role_match_device_byname);
-
-	return dev ? dev_get_drvdata(dev) : NULL;
-}
-EXPORT_SYMBOL_GPL(dual_role_phy_instance_get_byname);
 
 static void dual_role_dev_release(struct device *dev)
 {

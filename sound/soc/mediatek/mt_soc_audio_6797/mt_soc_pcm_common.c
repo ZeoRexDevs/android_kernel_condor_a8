@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /******************************************************************************
 *
  *
@@ -51,10 +38,6 @@ unsigned long audio_frame_to_bytes(struct snd_pcm_substream *substream, unsigned
 
 	if (runtime->channels == 2)
 		bytes = bytes << 1;
-	else if (runtime->channels == 4)
-		bytes = bytes << 2;
-	else if (runtime->channels != 1)
-		bytes = bytes << 3;
 	/* printk("%s bytes = %d count = %d\n",__func__,bytes,count); */
 	return bytes;
 }
@@ -73,10 +56,6 @@ unsigned long audio_bytes_to_frame(struct snd_pcm_substream *substream, unsigned
 
 	if (runtime->channels == 2)
 		count = count >> 1;
-	else if (runtime->channels == 4)
-		count = count >> 2;
-	else if (runtime->channels != 1)
-		count = count >> 3;
 	/* printk("%s bytes = %d count = %d\n",__func__,bytes,count); */
 	return count;
 }

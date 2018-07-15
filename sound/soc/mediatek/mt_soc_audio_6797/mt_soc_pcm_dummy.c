@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -68,35 +66,50 @@ static int mtk_afe_dummy_probe(struct snd_soc_platform *platform);
 
 static struct snd_soc_pcm_runtime *pruntimepcm;
 
-static struct snd_pcm_hardware mtk_dummy_hardware = {
-	.info = (SNDRV_PCM_INFO_MMAP |
-	SNDRV_PCM_INFO_INTERLEAVED |
-	SNDRV_PCM_INFO_RESUME |
-	SNDRV_PCM_INFO_MMAP_VALID),
-	.formats =   SND_SOC_ADV_MT_FMTS,
-	.rates =        SOC_HIGH_USE_RATE,
-	.rate_min =     SOC_HIGH_USE_RATE_MIN,
-	.rate_max =     SOC_HIGH_USE_RATE_MAX,
-	.channels_min =     SOC_NORMAL_USE_CHANNELS_MIN,
-	.channels_max =     SOC_NORMAL_USE_CHANNELS_MAX,
-	.buffer_bytes_max = SOC_NORMAL_USE_BUFFERSIZE_MAX,
-	.period_bytes_max = SOC_NORMAL_USE_BUFFERSIZE_MAX,
-	.periods_min =      SOC_NORMAL_USE_PERIODS_MIN,
-	.periods_max =     SOC_NORMAL_USE_PERIODS_MAX,
-	.fifo_size =        0,
-};
-/*
 static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.count = ARRAY_SIZE(soc_high_supported_sample_rates),
 	.list = soc_high_supported_sample_rates,
 	.mask = 0,
 };
-*/
+
 static int mtk_pcm_open(struct snd_pcm_substream *substream)
 {
+
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	runtime->hw = mtk_dummy_hardware;
+	int err = 0;
+	int ret = 0;
+
+	pr_warn("mtk_pcm_open\n");
+
+	ret = snd_pcm_hw_constraint_list(runtime, 0, SNDRV_PCM_HW_PARAM_RATE,
+					 &constraints_sample_rates);
+	ret = snd_pcm_hw_constraint_integer(runtime, SNDRV_PCM_HW_PARAM_PERIODS);
+
+
+	if (ret < 0)
+		pr_warn("snd_pcm_hw_constraint_integer failed\n");
+
+	/* print for hw pcm information */
+	pr_warn("mtk_pcm_open runtime rate = %d channels = %d\n", runtime->rate,
+	       runtime->channels);
+	if (substream->pcm->device & 1) {
+		runtime->hw.info &= ~SNDRV_PCM_INFO_INTERLEAVED;
+		runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
+	}
+	if (substream->pcm->device & 2)
+		runtime->hw.info &= ~(SNDRV_PCM_INFO_MMAP |
+				      SNDRV_PCM_INFO_MMAP_VALID);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		pr_warn("SNDRV_PCM_STREAM_PLAYBACK mtkalsa_playback_constraints\n");
+
+	if (err < 0) {
+		pr_err("mtk_dummypcm_close\n");
+		mtk_dummypcm_close(substream);
+		return err;
+	}
+	pr_warn("mtk_pcm_open return\n");
 	return 0;
 }
 
@@ -107,7 +120,7 @@ static int mtk_dummypcm_close(struct snd_pcm_substream *substream)
 
 static int mtk_dummypcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	/*pr_warn("dummy_pcm_trigger cmd = %d\n", cmd);*/
+	pr_warn("dummy_pcm_trigger cmd = %d\n", cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -123,7 +136,7 @@ static int mtk_pcm_copy(struct snd_pcm_substream *substream,
 			int channel, snd_pcm_uframes_t pos,
 			void __user *dst, snd_pcm_uframes_t count)
 {
-	/*pr_warn("dummy_pcm_copy pos = %lu count = %lu\n ", pos, count);*/
+	pr_warn("dummy_pcm_copy pos = %lu count = %lu\n ", pos, count);
 	return 0;
 }
 
@@ -131,7 +144,7 @@ static int mtk_pcm_silence(struct snd_pcm_substream *substream,
 			   int channel, snd_pcm_uframes_t pos,
 			   snd_pcm_uframes_t count)
 {
-	/*pr_warn("dummy_pcm_silence\n");*/
+	pr_warn("dummy_pcm_silence\n");
 	return 0; /* do nothing */
 }
 
@@ -141,13 +154,13 @@ static void *dummy_page[2];
 static struct page *mtk_pcm_page(struct snd_pcm_substream *substream,
 				 unsigned long offset)
 {
-	/*pr_warn("dummy_pcm_page\n");*/
+	pr_warn("dummy_pcm_page\n");
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
 static int mtk_pcm_prepare(struct snd_pcm_substream *substream)
 {
-	/*pr_warn("mtk_alsa_prepare\n");*/
+	pr_warn("mtk_alsa_prepare\n");
 	return 0;
 }
 
@@ -156,13 +169,13 @@ static int mtk_pcm_hw_params(struct snd_pcm_substream *substream,
 {
 	int ret = 0;
 
-	/*PRINTK_AUDDRV("mtk_pcm_hw_params\n");*/
+	PRINTK_AUDDRV("mtk_pcm_hw_params\n");
 	return ret;
 }
 
 static int mtk_dummy_pcm_hw_free(struct snd_pcm_substream *substream)
 {
-	/*PRINTK_AUDDRV("mtk_dummy_pcm_hw_free\n");*/
+	PRINTK_AUDDRV("mtk_dummy_pcm_hw_free\n");
 	return snd_pcm_lib_free_pages(substream);
 }
 

@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /******************************************************************************
 *
  *
@@ -41,7 +28,7 @@
 
 #include "AudDrv_Type_Def.h"
 
-#ifndef CONFIG_FPGA_EARLY_PORTING
+#ifndef CONFIG_MTK_FPGA
 #define PM_MANAGER_API
 #endif
 #define AUDIO_MEMORY_SRAM
@@ -59,7 +46,6 @@
 /* #define DEBUG_AUD_UL1 */
 /* #define DEBUG_AUD_DL1 */
 /* #define DEBUG_AUD_DAI */
-#define AUDIO_DL2_ISR_COPY_SUPPORT
 
 #ifdef DEBUG_AUDDRV
 #define PRINTK_AUDDRV(format, args...) pr_debug(format, ##args)

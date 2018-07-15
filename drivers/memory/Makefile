@@ -2,8 +2,6 @@
 # Makefile for memory devices
 #
 
-subdir-ccflags-y += -Werror
-
 ifeq ($(CONFIG_DDR),y)
 obj-$(CONFIG_OF)		+= of_memory.o
 endif

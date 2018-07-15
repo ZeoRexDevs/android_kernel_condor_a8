@@ -93,7 +93,7 @@ struct rawbulk_function *prealloced_functions[_MAX_TID] = { NULL };
 
 struct rawbulk_function *rawbulk_lookup_function(int transfer_id)
 {
-	C2K_DBG("%s\n", __func__);
+	C2K_NOTE("%s\n", __func__);
 	if (transfer_id >= 0 && transfer_id < _MAX_TID)
 		return prealloced_functions[transfer_id];
 	return NULL;
@@ -106,17 +106,17 @@ static inline int check_enable_state(struct rawbulk_function *fn)
 	int enab;
 	unsigned long flags;
 
-	C2K_DBG("%s\n", __func__);
+	C2K_NOTE("%s\n", __func__);
 	spin_lock_irqsave(&fn->lock, flags);
 	enab = fn->enable ? 1 : 0;
-	C2K_DBG("enab(%d)\n", enab);
+	C2K_NOTE("enab(%d)\n", enab);
 	spin_unlock_irqrestore(&fn->lock, flags);
 	return enab;
 }
 
 int rawbulk_check_enable(struct rawbulk_function *fn)
 {
-	C2K_DBG("%s\n", __func__);
+	C2K_NOTE("%s\n", __func__);
 	return check_enable_state(fn);
 }
 EXPORT_SYMBOL_GPL(rawbulk_check_enable);
@@ -185,7 +185,6 @@ static inline void add_device_attr(struct rawbulk_function *fn, int n, const cha
 				   *name, int mode)
 {
 	if (n < MAX_ATTRIBUTES) {
-		sysfs_attr_init(&fn->attr[n].attr);
 		fn->attr[n].attr.name = name;
 		fn->attr[n].attr.mode = mode;
 		fn->attr[n].show = rawbulk_attr_show;
@@ -211,7 +210,7 @@ static ssize_t rawbulk_attr_show(struct device *dev, struct device_attribute *at
 	int idx;
 	int enab;
 	struct rawbulk_function *fn;
-	ssize_t count = 0;
+	ssize_t count;
 
 	for (n = 0; n < _MAX_TID; n++) {
 		fn = rawbulk_lookup_function(n);
@@ -265,7 +264,7 @@ static ssize_t rawbulk_attr_show(struct device *dev, struct device_attribute *at
 	default:
 		break;
 	}
-	return count;
+	return 0;
 }
 
 #ifdef C2K_USB_UT
@@ -340,13 +339,11 @@ static ssize_t rawbulk_attr_store(struct device *dev, struct device_attribute *a
 	if (idx == ATTR_ENABLE) {
 #endif
 		int enable;
-		long tmp;
 
 		if (idx == ATTR_ENABLE) {
 			int ret;
 
-			ret = kstrtol(buf, 0, &tmp);
-			enable = (int)tmp;
+			ret = kstrtol(buf, 0, (long *)&enable);
 			C2K_NOTE("enable:%d\n", enable);
 
 #ifdef C2K_USB_UT
@@ -456,26 +453,20 @@ static ssize_t rawbulk_attr_store(struct device *dev, struct device_attribute *a
 		if (fn->transfer_id == RAWBULK_TID_MODEM) {
 			if (check_enable_state(fn)) {
 				int val, ret;
-				long tmp;
 
-				ret = kstrtol(buf, 0, &tmp);
-				val = (int)tmp;
+				ret = kstrtol(buf, 0, (long *)&val);
 				modem_dtr_set(val, 1);
 			}
 		}
 	} else if (idx == ATTR_AUTORECONN) {
 		int val, ret;
-		long tmp;
 
-		ret = kstrtol(buf, 0, &tmp);
-		val = (int)tmp;
+		ret = kstrtol(buf, 0, (long *)&val);
 		fn->autoreconn = !!val;
 	} else {
 		int val, ret;
-		long tmp;
 
-		ret = kstrtol(buf, 0, &tmp);
-		val = (int)tmp;
+		ret = kstrtol(buf, 0, (long *)&val);
 		switch (idx) {
 		case ATTR_NUPS:
 			nups = val;
@@ -685,7 +676,7 @@ static __init struct rawbulk_function *rawbulk_alloc_function(int transfer_id)
 
 static void rawbulk_destroy_function(struct rawbulk_function *fn)
 {
-	C2K_DBG("%s\n", __func__);
+	C2K_NOTE("%s\n", __func__);
 
 	if (!fn)
 		return;

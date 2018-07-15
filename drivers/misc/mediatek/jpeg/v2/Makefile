@@ -1,17 +1,6 @@
-#
-# Copyright (C) 2015 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-
 # drivers/image/jpeg/Makefile
+
+#include $(srctree)/drivers/misc/mediatek/Makefile.custom
 
 ccflags-y = -DSDEBUG_T
 
@@ -20,10 +9,16 @@ ifneq ($(CONFIG_ARCH_MT6735M),y)
 endif
 
 #ccflags-y += -I$(MTK_PATH_SOURCE)/drivers/jpeg/
+ifeq ($(CONFIG_ARCH_MT8173),y)
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/hv1/
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/hv1/mt8173/
+endif
 
+ifneq ($(CONFIG_ARCH_MT8173),y)
 ccflags-y += \
   -I$(srctree)/drivers/misc/mediatek/cmdq/v2/ \
   -I$(srctree)/drivers/misc/mediatek/cmdq/v2/$(MTK_PLATFORM)/
+endif
 
 ifeq ($(CONFIG_ARCH_MT8173),y)
 #ccflags-y += -DJPEG_DEV

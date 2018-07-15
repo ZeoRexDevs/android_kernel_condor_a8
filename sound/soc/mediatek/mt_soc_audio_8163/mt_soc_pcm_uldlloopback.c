@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -92,7 +90,7 @@ static int ap_loopback_set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 	long set_value = ucontrol->value.integer.value[0];
 
 	if (priv->ap_loopback_type == set_value) {
-		PRINTK_AUDDRV("%s dummy operation for %u", __func__, priv->ap_loopback_type);
+		pr_debug("%s dummy operation for %u", __func__, priv->ap_loopback_type);
 		return 0;
 	}
 
@@ -226,17 +224,18 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	int err = 0;
 	int ret = 0;
 
+	pr_debug("%s\n", __func__);
+	AudDrv_ANA_Clk_On();
+	AudDrv_Clk_On();
+	AudDrv_ADC_Clk_On();
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		pr_err("%s with SNDRV_PCM_STREAM_CAPTURE\n", __func__);
 		runtime->rate = 48000;
 		return 0;
 	}
-
-	AudDrv_ANA_Clk_On();
-	AudDrv_Clk_On();
-	AudDrv_ADC_Clk_On();
 
 	runtime->hw = mtk_uldlloopback_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_uldlloopback_hardware,
@@ -250,27 +249,27 @@ static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
 		pr_err("snd_pcm_hw_constraint_integer failed\n");
 
 	/* print for hw pcm information */
-	PRINTK_AUDDRV("%s runtime->rate = %d channels = %d\n", __func__,
+	pr_debug("mtk_uldlloopback_open runtime->rate = %d channels = %d\n",
 		runtime->rate, runtime->channels);
 
 	runtime->hw.info |= SNDRV_PCM_INFO_INTERLEAVED;
 	runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		PRINTK_AUDDRV("%s SNDRV_PCM_STREAM_PLAYBACK\n", __func__);
+		pr_debug("SNDRV_PCM_STREAM_PLAYBACK mtkalsa_voice_constraints\n");
 
-	if (ret < 0) {
-		pr_err("%s ret < 0, close\n", __func__);
+	if (err < 0) {
+		pr_err("mtk_uldlloopbackpcm_close\n");
 		mtk_uldlloopbackpcm_close(substream);
-		return ret;
+		return err;
 	}
-	PRINTK_AUDDRV("mtk_uldlloopback_open return\n");
+	pr_debug("mtk_uldlloopback_open return\n");
 	return 0;
 }
 
 static int mtk_uldlloopbackpcm_close(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		pr_err("%s with SNDRV_PCM_STREAM_CAPTURE\n", __func__);
 		return 0;
@@ -313,7 +312,7 @@ static int mtk_uldlloopbackpcm_close(struct snd_pcm_substream *substream)
 
 static int mtk_uldlloopbackpcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	PRINTK_AUDDRV("%s cmd = %d\n", __func__, cmd);
+	pr_debug("%s cmd = %d\n", __func__, cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -376,7 +375,7 @@ static int mtk_uldlloopback_pcm_prepare(struct snd_pcm_substream *substream)
 		return 0;
 	}
 
-	PRINTK_AUDDRV("%s rate = %d\n", __func__, runtime->rate);
+	pr_debug("%s rate = %d\n", __func__, runtime->rate);
 
 	Afe_Set_Reg(AFE_TOP_CON0, 0x00000000, 0xffffffff);
 	if (runtime->format == SNDRV_PCM_FORMAT_S32_LE
@@ -415,7 +414,7 @@ static int mtk_uldlloopback_pcm_prepare(struct snd_pcm_substream *substream)
 	u32AudioI2S |= Soc_Aud_I2S_FORMAT_I2S << 3;	/* us3 I2s format */
 	u32AudioI2S |= Soc_Aud_I2S_WLEN_WLEN_32BITS << 1;	/* 32 BITS */
 
-	PRINTK_AUDDRV("%s u32AudioI2S= 0x%x\n", __func__, u32AudioI2S);
+	pr_debug("u32AudioI2S= 0x%x\n", u32AudioI2S);
 	Afe_Set_Reg(AFE_I2S_CON3, u32AudioI2S | 1, AFE_MASK_ALL);
 
 	/* start I2S DAC out */

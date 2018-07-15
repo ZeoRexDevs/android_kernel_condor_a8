@@ -1,21 +1,11 @@
-/*
-* Copyright (C) 2013 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
 
+#include <linux/proc_fs.h>   //proc file use
+#include <linux/seq_file.h>
 #include "inc/accel.h"
 #include "inc/accel_factory.h"
 
 struct acc_context *acc_context_obj = NULL;
-
+static char mtk_acc_name[128] = {0};
 
 static struct acc_init_info *gsensor_init_list[MAX_CHOOSE_G_NUM] = { 0 };
 
@@ -293,7 +283,6 @@ static ssize_t acc_show_enable_nodata(struct device *dev, struct device_attribut
 static ssize_t acc_store_enable_nodata(struct device *dev, struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
-#ifndef CONFIG_MTK_SCP_SENSORHUB_V1
 	struct acc_context *cxt = NULL;
 
 	ACC_LOG("acc_store_enable nodata buf=%s\n", buf);
@@ -314,7 +303,6 @@ static ssize_t acc_store_enable_nodata(struct device *dev, struct device_attribu
 		ACC_ERR(" acc_store enable nodata cmd error !!\n");
 	}
 	mutex_unlock(&acc_context_obj->acc_op_mutex);
-#endif
 	return count;
 }
 
@@ -408,15 +396,9 @@ static ssize_t acc_show_sensordevnum(struct device *dev,
 	struct acc_context *cxt = NULL;
 	const char *devname = NULL;
 	int ret = 0;
-	struct input_handle *handle;
 
 	cxt = acc_context_obj;
-	list_for_each_entry(handle, &cxt->idev->h_list, d_node)
-		if (strncmp(handle->name, "event", 5) == 0) {
-			devname = handle->name;
-			break;
-		}
-    
+	devname = dev_name(&cxt->idev->dev);
 	ret = sscanf(devname+5, "%d", &devnum);
 	return snprintf(buf, PAGE_SIZE, "%d\n", devnum);
 }
@@ -426,11 +408,10 @@ static ssize_t acc_store_batch(struct device *dev, struct device_attribute *attr
 {
 	struct acc_context *cxt = NULL;
 
-	/* ACC_LOG("acc_store_batch buf=%s\n", buf); */
+	ACC_LOG("acc_store_batch buf=%s\n", buf);
 	mutex_lock(&acc_context_obj->acc_op_mutex);
 	cxt = acc_context_obj;
 	if (cxt->acc_ctl.is_support_batch) {
-		ACC_LOG("acc_store_batch buf=%s\n", buf);
 		if (!strncmp(buf, "1", 1)) {
 			cxt->is_batch_enable = true;
 			if (true == cxt->is_polling_run) {
@@ -457,7 +438,7 @@ static ssize_t acc_store_batch(struct device *dev, struct device_attribute *attr
 		ACC_LOG(" acc_store_batch mot supported\n");
 
 	mutex_unlock(&acc_context_obj->acc_op_mutex);
-	/* ACC_LOG(" acc_store_batch done: %d\n", cxt->is_batch_enable); */
+	ACC_LOG(" acc_store_batch done: %d\n", cxt->is_batch_enable);
 	return count;
 
 }
@@ -512,6 +493,7 @@ static int acc_real_driver_init(void)
 	int err = 0;
 
 	ACC_LOG(" acc_real_driver_init +\n");
+	memset(mtk_acc_name, 0, 128);
 	for (i = 0; i < MAX_CHOOSE_G_NUM; i++) {
 		ACC_LOG(" i=%d\n", i);
 		if (0 != gsensor_init_list[i]) {
@@ -520,6 +502,7 @@ static int acc_real_driver_init(void)
 			if (0 == err) {
 				ACC_LOG(" acc real driver %s probe ok\n",
 					gsensor_init_list[i]->name);
+				strcpy((char *)mtk_acc_name, gsensor_init_list[i]->name);
 				break;
 			}
 		}
@@ -527,6 +510,7 @@ static int acc_real_driver_init(void)
 
 	if (i == MAX_CHOOSE_G_NUM) {
 		ACC_LOG(" acc_real_driver_init fail\n");
+		strcpy((char *)mtk_acc_name, "UNKNOWN");
 		err = -1;
 	}
 	return err;
@@ -702,6 +686,29 @@ int acc_data_report(int x, int y, int z, int status, int64_t nt)
 	return err;
 }
 
+/* Acc information */
+#ifndef LYCONFIG_DETECT_HW_INFO_SUPPORT
+#define LYCONFIG_DETECT_HW_INFO_SUPPORT
+#endif
+#ifdef LYCONFIG_DETECT_HW_INFO_SUPPORT	
+static int subsys_acc_info_read(struct seq_file *m, void *v)
+{
+   seq_printf(m, "%s\n",mtk_acc_name);
+   return 0;
+};
+
+static int proc_acc_info_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, subsys_acc_info_read, NULL);
+};
+
+static  struct file_operations acc_proc_fops = {
+    .owner = THIS_MODULE,
+    .open  = proc_acc_info_open,
+    .read  = seq_read,
+};
+#endif
+
 static int acc_probe(void)
 {
 
@@ -732,6 +739,11 @@ static int acc_probe(void)
 		goto exit_alloc_input_dev_failed;
 	}
 
+	/*Acc information*/
+#ifdef LYCONFIG_DETECT_HW_INFO_SUPPORT	
+	proc_create("hw_info/acc_info", 0, NULL, &acc_proc_fops);
+#endif
+ 
 	ACC_LOG("----accel_probe OK !!\n");
 	return 0;
 

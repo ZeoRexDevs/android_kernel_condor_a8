@@ -45,19 +45,10 @@ the GNU General Public License for more details at http://www.gnu.org/licenses/g
 
 #include <linux/kthread.h>
 #include <mach/irqs.h>
-
-#ifdef CONFIG_MTK_LEGACY
-#include "mach/eint.h"
-#include <mach/mt_gpio.h>
-#include <cust_gpio_usage.h>
-#include <cust_eint.h>
-#endif
-
+/*#include "mach/eint.h"*/
+/*#include <mach/mt_gpio.h>*/
 #include "hdmi_drv.h"
-
-#ifdef CONFIG_MTK_SMARTBOOK_SUPPORT
 #include "smartbook.h"
-#endif
 
 #define MHL_DRIVER_MINOR_MAX 1
 wait_queue_head_t mhl_irq_wq;
@@ -1715,13 +1706,12 @@ irq_done:
 }
 
 /* APIs provided by the MHL layer to the lower level driver */
-
+/*extern void register_mhl_eint();*/
 int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 {
 	///struct mhl_dev_context *dev_context;
-	int ret =0,dummy =0;
+	int ret,dummy;
 
-	pr_err("mhl_tx_init start %d\n", ret);
 
 	if (drv_info == NULL || client == NULL) {
 		pr_err("Null parameter passed to %s\n",__FUNCTION__);
@@ -1740,7 +1730,7 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 
 	si_dev_context = kzalloc(sizeof(*si_dev_context) + drv_info->drv_context_size, GFP_KERNEL);
 	if (!si_dev_context) {
-		dev_err(&client->dev, "mhl failed to allocate driver data\n");
+		dev_err(&client->dev, "failed to allocate driver data\n");
 		return -ENOMEM;
 	}
 
@@ -1753,7 +1743,6 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 	si_dev_context->timer_work_queue = create_workqueue(MHL_DRIVER_NAME);
 	if (si_dev_context->timer_work_queue == NULL) {
 		ret = -ENOMEM;
-		pr_err("mhl create_workqueue failed %d\n", ret);
 		goto free_mem;
 	}
     
@@ -1761,7 +1750,7 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 		mhl_class = class_create(THIS_MODULE, "mhl");
 		if(IS_ERR(mhl_class)) {
 			ret = PTR_ERR(mhl_class);
-			pr_err("mhl class_create failed %d\n", ret);
+			pr_info("class_create failed %d\n", ret);
 			goto err_exit;
 		}
 
@@ -1772,7 +1761,7 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 				MHL_DRIVER_NAME);
 
 		if (ret) {
-			pr_err("mhl register_chrdev %s failed, error code: %d\n", MHL_DRIVER_NAME, ret);
+			pr_info("register_chrdev %s failed, error code: %d\n", MHL_DRIVER_NAME, ret);
 			goto free_class;
 		}
 
@@ -1780,7 +1769,7 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 		si_dev_context->mhl_cdev.owner = THIS_MODULE;
 		ret = cdev_add(&si_dev_context->mhl_cdev, MINOR(dev_num), MHL_DRIVER_MINOR_MAX);
 		if (ret) {
-			pr_err("cdev_add %s failed %d\n", MHL_DRIVER_NAME, ret);
+			pr_info("cdev_add %s failed %d\n", MHL_DRIVER_NAME, ret);
 			goto free_chrdev;
 		}
 	}
@@ -1790,7 +1779,7 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct i2c_client *client)
 			"%s", MHL_DEVICE_NAME);
 	if (IS_ERR(si_dev_context->mhl_dev)) {
 		ret = PTR_ERR(si_dev_context->mhl_dev);
-		pr_err("mhl device_create failed %s %d\n", MHL_DEVICE_NAME, ret);
+		pr_info("device_create failed %s %d\n", MHL_DEVICE_NAME, ret);
 		goto free_cdev;
 	}
 

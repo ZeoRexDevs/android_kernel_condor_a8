@@ -180,7 +180,7 @@ retry:
 			 * enabled. A corresponding message will be printed
 			 * later, when it is has been scrubbed.
 			 */
-			dbg_io("fixable bit-flip detected at PEB %d", pnum);
+			ubi_msg("fixable bit-flip detected at PEB %d", pnum);
 			ubi_assert(len == read);
 			return UBI_IO_BITFLIPS;
 		}
@@ -188,7 +188,7 @@ retry:
 		if (retries++ < UBI_IO_RETRIES) {
 			ubi_warn("error %d%s while reading %d bytes from PEB %d:%d, read only %zd bytes, retry",
 				 err, errstr, len, pnum, offset, read);
-			yield();
+			/* yield(); */
 			goto retry;
 		}
 
@@ -366,7 +366,7 @@ retry:
 		if (retries++ < UBI_IO_RETRIES) {
 			ubi_warn("error %d while erasing PEB %d, retry",
 				 err, pnum);
-			yield();
+			/* yield(); */
 			goto retry;
 		}
 		ubi_err("cannot erase PEB %d, error %d", pnum, err);
@@ -384,7 +384,7 @@ retry:
 	if (ei.state == MTD_ERASE_FAILED) {
 		if (retries++ < UBI_IO_RETRIES) {
 			ubi_warn("error while erasing PEB %d, retry", pnum);
-			yield();
+			/* yield(); */
 			goto retry;
 		}
 		ubi_err("cannot erase PEB %d", pnum);
@@ -420,7 +420,7 @@ static int torture_peb(struct ubi_device *ubi, int pnum)
 {
 	int err, i, patt_count;
 
-	dbg_io("run torture test for PEB %d", pnum);
+	ubi_msg("run torture test for PEB %d", pnum);
 	patt_count = ARRAY_SIZE(patterns);
 	ubi_assert(patt_count > 0);
 
@@ -469,7 +469,7 @@ static int torture_peb(struct ubi_device *ubi, int pnum)
 	}
 
 	err = patt_count;
-	dbg_io("PEB %d passed torture test, do not mark it as bad", pnum);
+	ubi_msg("PEB %d passed torture test, do not mark it as bad", pnum);
 
 out:
 #ifdef CONFIG_UBI_SHARE_BUFFER
@@ -927,9 +927,11 @@ static int validate_vid_hdr(const struct ubi_device *ubi,
 	if (vol_id >= UBI_INTERNAL_VOL_START && compat != UBI_COMPAT_DELETE &&
 	    compat != UBI_COMPAT_RO && compat != UBI_COMPAT_PRESERVE &&
 	    compat != UBI_COMPAT_REJECT) {
-#ifndef CONFIG_MTD_UBI_LOWPAGE_BACKUP
-		ubi_err("bad compat");
-		goto bad;
+#if defined(CONFIG_MTK_SLC_BUFFER_SUPPORT) || defined(CONFIG_MTK_MLC_NAND_SUPPORT)
+		if (vol_id == UBI_LAYOUT_VOLUME_ID) {
+			ubi_err("bad compat");
+			goto bad;
+		}
 #else
 		if (vol_id != UBI_BACKUP_VOLUME_ID) {
 			ubi_err("bad compat");
@@ -1432,13 +1434,13 @@ static int self_check_write(struct ubi_device *ubi, const void *buf, int pnum,
 
 		ubi_err("self-check failed for PEB %d:%d, len %d",
 			pnum, offset, len);
-		dbg_io("data differ at position %d", i);
+		ubi_msg("data differ at position %d", i);
 		dump_len = max_t(int, 128, len - i);
-		dbg_io("hex dump of the original buffer from %d to %d",
+		ubi_msg("hex dump of the original buffer from %d to %d",
 			i, i + dump_len);
 		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 32, 1,
 			       buf + i, dump_len, 1);
-		dbg_io("hex dump of the read buffer from %d to %d",
+		ubi_msg("hex dump of the read buffer from %d to %d",
 			i, i + dump_len);
 		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 32, 1,
 			       buf1 + i, dump_len, 1);
@@ -1501,7 +1503,7 @@ int ubi_self_check_all_ff(struct ubi_device *ubi, int pnum, int offset, int len)
 
 fail:
 	ubi_err("self-check failed for PEB %d", pnum);
-	dbg_io("hex dump of the %d-%d region", offset, offset + len);
+	ubi_msg("hex dump of the %d-%d region", offset, offset + len);
 	print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 32, 1, buf, len, 1);
 	err = -EINVAL;
 error:
@@ -1544,7 +1546,7 @@ int ubi_io_read_oob(const struct ubi_device *ubi, void *databuf, void *oobbuf,
 			 * enabled. A corresponding message will be printed
 			 * later, when it is has been scrubbed.
 			 */
-			dbg_io("fixable bit-flip detected at addr %lld", addr);
+			ubi_msg("fixable bit-flip detected at addr %lld", addr);
 			if (oobbuf)
 				ubi_assert(ops.oobretlen == ops.ooblen);
 			return UBI_IO_BITFLIPS;
@@ -1554,7 +1556,7 @@ int ubi_io_read_oob(const struct ubi_device *ubi, void *databuf, void *oobbuf,
 			dump_stack();
 			err = -EIO;
 		}
-		dbg_io("mtd_read_oob err %d\n", err);
+		ubi_msg("mtd_read_oob err %d\n", err);
 	}
 
 	return err;

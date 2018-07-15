@@ -33,12 +33,6 @@ LIST_HEAD(devices);
 struct mutex device_mutex;
 atomic_t device_usage = ATOMIC_INIT(0);
 
-/* global API lock used to prevent concurent access during not atomic
- * communication read/write */
-struct mutex global_mutex;
-
-
-
 static struct mcore_device_t *resolve_device_id(uint32_t device_id)
 {
 	struct mcore_device_t *tmp;
@@ -93,7 +87,6 @@ enum mc_result mc_open_device(uint32_t device_id)
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		struct mcore_device_t *device = resolve_device_id(device_id);
 		if (device != NULL) {
@@ -194,7 +187,6 @@ enum mc_result mc_open_device(uint32_t device_id)
 		atomic_inc(&device_usage);
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	if (mc_result != MC_DRV_OK)
 		connection_cleanup(dev_con);
@@ -209,7 +201,6 @@ enum mc_result mc_close_device(uint32_t device_id)
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		struct mcore_device_t *device = resolve_device_id(device_id);
 		if (device == NULL) {
@@ -275,7 +266,6 @@ enum mc_result mc_close_device(uint32_t device_id)
 		remove_device(device_id);
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -289,7 +279,6 @@ enum mc_result mc_open_session(struct mc_session_handle *session,
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		if (session == NULL) {
 			MCDRV_DBG_ERROR(mc_kapi, "Session is null");
@@ -484,7 +473,6 @@ enum mc_result mc_open_session(struct mc_session_handle *session,
 		}
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -496,7 +484,6 @@ enum mc_result mc_close_session(struct mc_session_handle *session)
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		if (session == NULL) {
 			MCDRV_DBG_ERROR(mc_kapi, "Session is null");
@@ -562,7 +549,6 @@ enum mc_result mc_close_session(struct mc_session_handle *session)
 		mc_result = MC_DRV_OK;
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -574,7 +560,6 @@ enum mc_result mc_notify(struct mc_session_handle *session)
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		if (session == NULL) {
 			MCDRV_DBG_ERROR(mc_kapi, "Session is null");
@@ -615,7 +600,6 @@ enum mc_result mc_notify(struct mc_session_handle *session)
 		/* Daemon will not return a response */
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -732,7 +716,6 @@ enum mc_result mc_malloc_wsm(uint32_t device_id, uint32_t align, uint32_t len,
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		struct mcore_device_t *device = resolve_device_id(device_id);
 		if (device == NULL) {
@@ -757,7 +740,6 @@ enum mc_result mc_malloc_wsm(uint32_t device_id, uint32_t align, uint32_t len,
 		mc_result = MC_DRV_OK;
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -768,9 +750,9 @@ enum mc_result mc_free_wsm(uint32_t device_id, uint8_t *wsm)
 	enum mc_result mc_result = MC_DRV_ERR_UNKNOWN;
 	struct mcore_device_t *device;
 
+
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		/* Get the device associated wit the given session */
 		device = resolve_device_id(device_id);
@@ -799,7 +781,6 @@ enum mc_result mc_free_wsm(uint32_t device_id, uint8_t *wsm)
 		mc_result = MC_DRV_OK;
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -812,7 +793,6 @@ enum mc_result mc_map(struct mc_session_handle *session_handle, void *buf,
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		if (session_handle == NULL) {
 			MCDRV_DBG_ERROR(mc_kapi, "session_handle is null");
@@ -932,7 +912,6 @@ enum mc_result mc_map(struct mc_session_handle *session_handle, void *buf,
 		mc_result = MC_DRV_OK;
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -945,7 +924,6 @@ enum mc_result mc_unmap(struct mc_session_handle *session_handle, void *buf,
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		if (session_handle == NULL) {
 			MCDRV_DBG_ERROR(mc_kapi, "session_handle is null");
@@ -1053,7 +1031,6 @@ enum mc_result mc_unmap(struct mc_session_handle *session_handle, void *buf,
 		mc_result = MC_DRV_OK;
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }
@@ -1066,7 +1043,6 @@ enum mc_result mc_get_session_error_code(struct mc_session_handle *session,
 
 	MCDRV_DBG_VERBOSE(mc_kapi, "===%s()===", __func__);
 
-	mutex_lock(&global_mutex);
 	do {
 		if (session == NULL || last_error == NULL) {
 			mc_result = MC_DRV_ERR_INVALID_PARAMETER;
@@ -1096,7 +1072,6 @@ enum mc_result mc_get_session_error_code(struct mc_session_handle *session,
 		*last_error = session_get_last_err(nqsession);
 
 	} while (false);
-	mutex_unlock(&global_mutex);
 
 	return mc_result;
 }

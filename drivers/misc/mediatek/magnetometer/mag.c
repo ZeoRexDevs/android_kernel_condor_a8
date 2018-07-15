@@ -12,7 +12,7 @@ static void initTimer(struct hrtimer *timer, enum hrtimer_restart (*callback)(st
 
 static void startTimer(struct hrtimer *timer, int delay_ms, bool first)
 {
-	struct mag_context *obj = (struct mag_context *)container_of(timer, struct mag_context, hrTimer);
+	struct acc_context *obj = (struct acc_context *)container_of(timer, struct acc_context, hrTimer);
 
 	if (obj == NULL) {
 		MAG_ERR("NULL pointer\n");
@@ -54,8 +54,10 @@ static void mag_work_func(struct work_struct *work)
 	cur_ns = time.tv_sec*1000000000LL+time.tv_nsec;
 
 	for (i = 0; i < MAX_M_V_SENSOR; i++) {
-		if (!(cxt->active_data_sensor&(0x01<<i)))
+		if (!(cxt->active_data_sensor&(0x01<<i))) {
+			MAG_LOG("mag_type(%d)  enabled(%d)\n", i, cxt->active_data_sensor);
 			continue;
+		}
 
 		if (ID_M_V_MAGNETIC == i) {
 			err = cxt->mag_dev_data.get_data_m(&x, &y, &z, &status);
@@ -484,14 +486,9 @@ static ssize_t mag_show_sensordevnum(struct device *dev,
 	int ret;
 	struct mag_context *cxt = NULL;
 	const char *devname = NULL;
-	struct input_handle *handle;
 
 	cxt = mag_context_obj;
-	list_for_each_entry(handle, &cxt->idev->h_list, d_node)
-		if (strncmp(handle->name, "event", 5) == 0) {
-			devname = handle->name;
-			break;
-		}
+	devname = dev_name(&cxt->idev->dev);
 	ret = sscanf(devname+5, "%d", &devnum);
 	return snprintf(buf, PAGE_SIZE, "%d\n", devnum);
 }
@@ -699,7 +696,6 @@ static int mag_misc_init(struct mag_context *cxt)
 	return err;
 }
 
-/*
 static void mag_input_destroy(struct mag_context *cxt)
 {
 	struct input_dev *dev = cxt->idev;
@@ -707,7 +703,6 @@ static void mag_input_destroy(struct mag_context *cxt)
 	input_unregister_device(dev);
 	input_free_device(dev);
 }
-*/
 
 static int mag_input_init(struct mag_context *cxt)
 {
@@ -868,9 +863,8 @@ static int check_repeat_data(int x, int y, int z)
 static int check_abnormal_data(int x, int y, int z, int status)
 {
 	long total;
-	struct mag_context *cxt = mag_context_obj;
 
-	total = (x*x + y*y + z*z)/(cxt->mag_dev_data.div_m * cxt->mag_dev_data.div_m);
+	total = (x*x + y*y + z*z)/16;
 	if ((total < 100) || (total > 10000)) {
 		if (count % 10 == 0)
 			MAG_ERR("mag sensor abnormal data: x=%d,y=%d,z=%d, status=%d\n", x, y, z, status);
@@ -915,23 +909,16 @@ int mag_data_report(enum MAG_TYPE type, int x, int y, int z, int status, int64_t
 
 	return 0;
 }
-int magnetic_data_report(int x, int y, int z, int status, int64_t nt)
-{
-	return mag_data_report(MAGNETIC, x, y, z, status, nt);
-}
-int orientation_data_report(int x, int y, int z, int status, int64_t nt)
-{
-	return mag_data_report(ORIENTATION, x, y, z, status, nt);
-}
+
 static int mag_probe(void)
 {
 	int err;
 
-	MAG_LOG("+++++++++++++mag_probe!!\n");
+	printk("+++++++++++++mag_probe!!\n");
 	mag_context_obj = mag_context_alloc_object();
 	if (!mag_context_obj) {
 		err = -ENOMEM;
-		MAG_ERR("unable to allocate devobj!\n");
+		printk("unable to allocate devobj!\n");
 		goto exit_alloc_data_failed;
 	}
 
@@ -939,29 +926,28 @@ static int mag_probe(void)
 	err = mag_real_driver_init();
 	if (err) {
 		MAG_ERR("mag_real_driver_init fail\n");
-		goto real_driver_init_fail;
+		goto exit_alloc_data_failed;
 	}
 
 	err = mag_factory_device_init();
 	if (err)
-		MAG_ERR("mag_factory_device_init fail\n");
+		printk("mag_factory_device_init fail\n");
 	/* init input dev */
 	err = mag_input_init(mag_context_obj);
 	if (err) {
-		MAG_ERR("unable to register mag input device!\n");
+		printk("unable to register mag input device!\n");
 		goto exit_alloc_input_dev_failed;
 	}
 
 
-	MAG_LOG("----magel_probe OK !!\n");
+	printk("----magel_probe OK !!\n");
 	return 0;
 
-real_driver_init_fail:
 exit_alloc_input_dev_failed:
-	kfree(mag_context_obj);
+	mag_input_destroy(mag_context_obj);
 
 exit_alloc_data_failed:
-
+	kfree(mag_context_obj);
 	MAG_ERR("----magel_probe fail !!!\n");
 	return err;
 }
@@ -969,7 +955,7 @@ exit_alloc_data_failed:
 static int mag_remove(void)
 {
 	int err = 0;
-
+	printk("----mag_remove!!!\n");
 	MAG_FUN(f);
 	input_unregister_device(mag_context_obj->idev);
 	sysfs_remove_group(&mag_context_obj->idev->dev.kobj,
@@ -977,7 +963,7 @@ static int mag_remove(void)
 
 	err = misc_deregister(&mag_context_obj->mdev);
 	if (err)
-		MAG_ERR("misc_deregister fail: %d\n", err);
+		printk("misc_deregister fail: %d\n", err);
 
 	kfree(mag_context_obj);
 
@@ -1006,4 +992,3 @@ late_initcall(mag_init);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MAGELEROMETER device driver");
 MODULE_AUTHOR("Mediatek");
-

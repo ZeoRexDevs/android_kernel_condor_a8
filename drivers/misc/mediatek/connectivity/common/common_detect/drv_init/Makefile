@@ -17,6 +17,8 @@ endif
 	obj-y += gps_drv_init.o
 	obj-y += fm_drv_init.o
 	obj-y += wlan_drv_init.o
-	obj-($(CONFIG_MTK_COMBO_ANT)) += ant_drv_init.o
+ifneq ($(filter "MT6630",$(CONFIG_MTK_COMBO_CHIP)),)
+	obj-y += ant_drv_init.o
+endif
 
 endif

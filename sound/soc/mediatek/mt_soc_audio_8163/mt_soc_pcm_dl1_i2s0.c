@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -90,7 +88,7 @@ static const struct soc_enum Audio_i2s0_Enum[] = {
 static int Audio_i2s0_SideGen_Get(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("Audio_i2s0_SideGen_Get = %d\n", mi2s0_sidegen_control);
+	pr_debug("Audio_i2s0_SideGen_Get = %d\n", mi2s0_sidegen_control);
 	ucontrol->value.integer.value[0] = mi2s0_sidegen_control;
 	return 0;
 }
@@ -105,7 +103,7 @@ static int Audio_i2s0_SideGen_Set(struct snd_kcontrol *kcontrol,
 	AudDrv_ANA_Clk_On();
 	AudDrv_Clk_On();
 
-	PRINTK_AUDDRV
+	pr_debug
 		("%s() samplerate = %d, mi2s0_hdoutput_control = %d, mi2s0_extcodec_echoref_control = %d\n",
 		__func__, samplerate, mi2s0_hdoutput_control, mi2s0_extcodec_echoref_control);
 
@@ -206,7 +204,7 @@ static int Audio_i2s0_SideGen_Set(struct snd_kcontrol *kcontrol,
 			Afe_Set_Reg(AUDIO_TOP_CON1, 0x0, 0x2);	/* I2S_SOFT_Reset */
 			EnableAfe(true);
 		} else {
-			PRINTK_AUDDRV
+			pr_debug
 				("%s(), mi2s0_sidegen_control=%d, write AFE_I2S_CON (0x%x), AFE_I2S_CON3(0x%x)\n",
 				__func__, mi2s0_sidegen_control, Audio_I2S_Dac, u32AudioI2S);
 
@@ -268,7 +266,7 @@ static int Audio_i2s0_SideGen_Set(struct snd_kcontrol *kcontrol,
 static int Audio_i2s0_hdoutput_Get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("Audio_i2s0_hdoutput_Get = %d\n", mi2s0_hdoutput_control);
+	pr_debug("Audio_i2s0_hdoutput_Get = %d\n", mi2s0_hdoutput_control);
 	ucontrol->value.integer.value[0] = mi2s0_hdoutput_control;
 	return 0;
 }
@@ -276,7 +274,7 @@ static int Audio_i2s0_hdoutput_Get(struct snd_kcontrol *kcontrol,
 static int Audio_i2s0_hdoutput_Set(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("+%s()\n", __func__);
+	pr_debug("+%s()\n", __func__);
 
 	if (ucontrol->value.enumerated.item[0] > ARRAY_SIZE(i2s0_HD_output)) {
 		pr_err("return -EINVAL\n");
@@ -309,7 +307,7 @@ static int Audio_i2s0_hdoutput_Set(struct snd_kcontrol *kcontrol,
 static int Audio_i2s0_ExtCodec_EchoRef_Get(struct snd_kcontrol *kcontrol,
 					   struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("Audio_i2s0_ExtCodec_EchoRef_Get = %d\n", mi2s0_extcodec_echoref_control);
+	pr_debug("Audio_i2s0_ExtCodec_EchoRef_Get = %d\n", mi2s0_extcodec_echoref_control);
 	ucontrol->value.integer.value[0] = mi2s0_extcodec_echoref_control;
 	return 0;
 }
@@ -317,7 +315,7 @@ static int Audio_i2s0_ExtCodec_EchoRef_Get(struct snd_kcontrol *kcontrol,
 static int Audio_i2s0_ExtCodec_EchoRef_Set(struct snd_kcontrol *kcontrol,
 					   struct snd_ctl_elem_value *ucontrol)
 {
-	PRINTK_AUDDRV("%s()\n", __func__);
+	pr_debug("%s()\n", __func__);
 
 	if (ucontrol->value.enumerated.item[0] > ARRAY_SIZE(i2s0_ExtCodec_EchoRef)) {
 		pr_err("return -EINVAL\n");
@@ -358,7 +356,7 @@ static int mtk_pcm_i2s0_stop(struct snd_pcm_substream *substream)
 {
 	AFE_BLOCK_T *Afe_Block = &(pI2s0MemControl->rBlock);
 
-	PRINTK_AUDDRV("mtk_pcm_i2s0_stop\n");
+	pr_debug("mtk_pcm_i2s0_stop\n");
 	SetIrqEnable(Soc_Aud_IRQ_MCU_MODE_IRQ1_MCU_MODE, false);
 
 	/* here start digital part */
@@ -496,7 +494,7 @@ static int mtk_pcm_i2s0_open(struct snd_pcm_substream *substream)
 	AfeControlSramUnLock();
 	runtime->hw = mtk_i2s0_hardware;
 
-	PRINTK_AUDDRV("mtk_pcm_i2s0_open\n");
+	pr_debug("mtk_pcm_i2s0_open\n");
 
 	AudDrv_ANA_Clk_On();
 	AudDrv_Clk_On();
@@ -513,18 +511,18 @@ static int mtk_pcm_i2s0_open(struct snd_pcm_substream *substream)
 		pr_warn("snd_pcm_hw_constraint_integer failed\n");
 
 	/* print for hw pcm information */
-	PRINTK_AUDDRV("%s, runtime->rate = %d, channels = %d, substream->pcm->device = %d\n",
+	pr_debug("%s, runtime->rate = %d, channels = %d, substream->pcm->device = %d\n",
 		__func__, runtime->rate, runtime->channels, substream->pcm->device);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		PRINTK_AUDDRV("SNDRV_PCM_STREAM_PLAYBACK mtkalsa_i2s0_playback_constraints\n");
+		pr_debug("SNDRV_PCM_STREAM_PLAYBACK mtkalsa_i2s0_playback_constraints\n");
 
 	if (ret < 0) {
-		pr_warn("%s ret < 0, close\n", __func__);
+		pr_warn("mtk_pcm_i2s0_close\n");
 		mtk_pcm_i2s0_close(substream);
 		return ret;
 	}
-	PRINTK_AUDDRV("mtk_pcm_i2s0_open return\n");
+	pr_debug("mtk_pcm_i2s0_open return\n");
 	AudDrv_Clk_Off();
 	AudDrv_ANA_Clk_Off();
 	return 0;
@@ -532,7 +530,7 @@ static int mtk_pcm_i2s0_open(struct snd_pcm_substream *substream)
 
 static int mtk_pcm_i2s0_close(struct snd_pcm_substream *substream)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	AfeControlSramLock();
 	ClearSramState(mPlaybackSramState);
 	mPlaybackSramState = GetSramState();
@@ -550,7 +548,6 @@ static int mtk_pcm_i2s0_start(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	uint32 u32AudioI2S = 0;
 
-	PRINTK_AUDDRV("%s\n", __func__);
 	AudDrv_ANA_Clk_On();
 	AudDrv_Clk_On();
 	SetMemifSubStream(Soc_Aud_Digital_Block_MEM_DL1, substream);
@@ -582,7 +579,7 @@ static int mtk_pcm_i2s0_start(struct snd_pcm_substream *substream)
 	if (mi2s0_hdoutput_control == true)
 		u32AudioI2S |= Soc_Aud_LOW_JITTER_CLOCK << 12;	/* Low jitter mode */
 
-	PRINTK_AUDDRV("%s u32AudioI2S = 0x%x\n", __func__, u32AudioI2S);
+	pr_debug("u32AudioI2S = 0x%x\n", u32AudioI2S);
 	Afe_Set_Reg(AFE_I2S_CON3, u32AudioI2S | 1, AFE_MASK_ALL);
 
 	SetSampleRate(Soc_Aud_Digital_Block_MEM_DL1, runtime->rate);
@@ -601,7 +598,7 @@ static int mtk_pcm_i2s0_start(struct snd_pcm_substream *substream)
 
 static int mtk_pcm_i2s0_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	PRINTK_AUDDRV("mtk_pcm_i2s0_trigger cmd = %d\n", cmd);
+	pr_debug("mtk_pcm_i2s0_trigger cmd = %d\n", cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -632,7 +629,7 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 	Afe_Block = &pI2s0MemControl->rBlock;
 
 	/* handle for buffer management */
-	PRINTK_AUD_DL1("%s, WriteIdx=0x%x, ReadIdx=0x%x, DataRemained=0x%x\n", __func__,
+	PRINTK_AUD_DL1("WriteIdx=0x%x, ReadIdx=0x%x, DataRemained=0x%x\n",
 		Afe_Block->u4WriteIdx, Afe_Block->u4DMAReadIdx, Afe_Block->u4DataRemained);
 
 	if (Afe_Block->u4BufferSize == 0) {
@@ -652,8 +649,8 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 	}
 
 	copy_size = Align64ByteSize(copy_size);
-	PRINTK_AUD_DL1("%s, copy_size = 0x%x, count = 0x%x\n", __func__,
-		(unsigned int)copy_size, (unsigned int)count);
+	PRINTK_AUD_DL1("copy_size = 0x%x, count = 0x%x\n", (unsigned int)copy_size,
+		       (unsigned int)count);
 
 	if (copy_size != 0) {
 		spin_lock_irqsave(&auddrv_I2S0_lock, flags);
@@ -662,17 +659,18 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 
 		if (Afe_WriteIdx_tmp + copy_size < Afe_Block->u4BufferSize) {	/* copy once */
 			if (!access_ok(VERIFY_READ, data_w_ptr, copy_size)) {
-				pr_warn("%s 0 ptr invalid data_w_ptr=%p size=%d u4BufferSize=%d u4DataRemained=%d\n",
-					__func__, data_w_ptr, copy_size, Afe_Block->u4BufferSize,
-					Afe_Block->u4DataRemained);
+				PRINTK_AUDDRV("0 ptr invalid data_w_ptr=%p, size=%d\n", data_w_ptr,
+					      copy_size);
+				PRINTK_AUDDRV("u4BufferSize=%d, u4DataRemained=%d\n",
+					      Afe_Block->u4BufferSize, Afe_Block->u4DataRemained);
 			} else {
 				PRINTK_AUD_DL1
-				("%s memcpy Afe_Block->pucVirtBufAddr+Afe_WriteIdx=%p data_w_ptr=%p copy_size=0x%x\n",
-				__func__, Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp, data_w_ptr, copy_size);
+				("memcpy Afe_Block->pucVirtBufAddr+Afe_WriteIdx=%p, data_w_ptr=%p, copy_size=0x%x\n",
+				Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp, data_w_ptr, copy_size);
 
 				if (copy_from_user((Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp),
 					data_w_ptr, copy_size)) {
-					pr_err("%s Fail copy from user\n", __func__);
+					PRINTK_AUDDRV("Fail copy from user\n");
 					return -1;
 				}
 			}
@@ -686,8 +684,8 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 			count -= copy_size;
 
 			PRINTK_AUD_DL1
-				("%s finish 1, copy_size:%x, WriteIdx:%x, ReadIdx=%x, DataRemained:%x, count=%x\n",
-				__func__, copy_size, Afe_Block->u4WriteIdx, Afe_Block->u4DMAReadIdx,
+				("finish 1, copy_size:%x, WriteIdx:%x, ReadIdx=%x, DataRemained:%x, count=%x\n",
+				copy_size, Afe_Block->u4WriteIdx, Afe_Block->u4DMAReadIdx,
 				Afe_Block->u4DataRemained, (unsigned int)count);
 
 		} else {	/* copy twice */
@@ -695,19 +693,20 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 
 			size_1 = Align64ByteSize((Afe_Block->u4BufferSize - Afe_WriteIdx_tmp));
 			size_2 = Align64ByteSize((copy_size - size_1));
-			PRINTK_AUD_DL1("%s size_1 = 0x%x, size_2 = 0x%x\n", __func__, size_1, size_2);
+			PRINTK_AUD_DL1("size_1 = 0x%x, size_2 = 0x%x\n", size_1, size_2);
 			if (!access_ok(VERIFY_READ, data_w_ptr, size_1)) {
-				pr_warn
-				("%s 1 ptr invalid data_w_ptr=%p size_1=%d u4BufferSize=%d u4DataRemained=%d\n",
-				__func__, data_w_ptr, size_1, Afe_Block->u4BufferSize, Afe_Block->u4DataRemained);
+				pr_debug("1 ptr invalid, data_w_ptr = %p, size_1 = %d ",
+					data_w_ptr, size_1);
+				pr_debug("u4BufferSize = %d, u4DataRemained = %d\n",
+				       Afe_Block->u4BufferSize, Afe_Block->u4DataRemained);
 			} else {
 				PRINTK_AUD_DL1
-				("%s copy, Afe_Block->pucVirtBufAddr+Afe_WriteIdx=%p, data_w_ptr=%p, size_1=%x\n",
-				__func__, Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp, data_w_ptr, size_1);
+				("mcmcpy, Afe_Block->pucVirtBufAddr+Afe_WriteIdx=%p, data_w_ptr=%p, size_1=%x\n",
+				Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp, data_w_ptr, size_1);
 
 				if ((copy_from_user((Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp),
 					data_w_ptr, size_1))) {
-					pr_err("%s Fail 1 copy from user\n", __func__);
+					PRINTK_AUDDRV("Fail 1 copy from user\n");
 					return -1;
 				}
 			}
@@ -719,18 +718,18 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 			spin_unlock_irqrestore(&auddrv_I2S0_lock, flags);
 
 			if (!access_ok(VERIFY_READ, data_w_ptr + size_1, size_2)) {
-				pr_warn("%s 2 ptr invalid, data_w_ptr = %p, size_1 = %d, size_2 = %d",
-					      __func__, data_w_ptr, size_1, size_2);
-				pr_warn(", u4BufferSize = %d, u4DataRemained = %d\n",
+				PRINTK_AUDDRV("2 ptr invalid, data_w_ptr = %p, size_1 = %d, size_2 = %d",
+					      data_w_ptr, size_1, size_2);
+				PRINTK_AUDDRV("u4BufferSize = %d, u4DataRemained = %d\n",
 					      Afe_Block->u4BufferSize, Afe_Block->u4DataRemained);
 			} else {
 				PRINTK_AUD_DL1
-				("%s copy Afe_Block->pucVirtBufAddr+Afe_WriteIdx=%p data_w_ptr+size_1=%p size_2=%x\n",
-				__func__, Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp, data_w_ptr + size_1, size_2);
+				("mcmcpy, Afe_Block->pucVirtBufAddr+Afe_WriteIdx=%p, data_w_ptr+size_1=%p, size_2=%x\n",
+				Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp, data_w_ptr + size_1, size_2);
 
 				if ((copy_from_user((Afe_Block->pucVirtBufAddr + Afe_WriteIdx_tmp),
 					(data_w_ptr + size_1), size_2))) {
-					pr_err("%s AudDrv_write Fail 2 copy from user\n", __func__);
+					PRINTK_AUDDRV("AudDrv_write Fail 2 copy from user\n");
 					return -1;
 				}
 			}
@@ -744,8 +743,8 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 			data_w_ptr += copy_size;
 
 			PRINTK_AUD_DL1
-				("%s finish 2, copy size:%x, WriteIdx:%x, ReadIdx:%x, DataRemained:%x\n",
-				__func__, copy_size, Afe_Block->u4WriteIdx, Afe_Block->u4DMAReadIdx,
+				("finish 2, copy size:%x, WriteIdx:%x, ReadIdx:%x, DataRemained:%x\n",
+				copy_size, Afe_Block->u4WriteIdx, Afe_Block->u4DMAReadIdx,
 				Afe_Block->u4DataRemained);
 		}
 	}
@@ -756,7 +755,7 @@ static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream,
 static int mtk_pcm_i2s0_silence(struct snd_pcm_substream *substream,
 				int channel, snd_pcm_uframes_t pos, snd_pcm_uframes_t count)
 {
-	PRINTK_AUDDRV("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	/* do nothing */
 	return 0;
 }

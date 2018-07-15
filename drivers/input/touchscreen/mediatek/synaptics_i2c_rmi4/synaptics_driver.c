@@ -1,23 +1,3 @@
-/*
- * Synaptics DSX touchscreen driver
- *
- * Copyright (C) 2012 Synaptics Incorporated
- *
- * Copyright (C) 2012 Alexandra Chin <alexandra.chin@tw.synaptics.com>
- * Copyright (C) 2012 Scott Lin <scott.lin@tw.synaptics.com>
- * Copyright (C) 2010 Js HA <js.ha@stericsson.com>
- * Copyright (C) 2010 Naveen Kumar G <naveen.gaddipati@stericsson.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- */
 
 #include <linux/interrupt.h>
 
@@ -72,7 +52,7 @@ static int tpd_def_calmat_local[8] = TPD_CALIBRATION_MATRIX;
 #endif
 
 
-unsigned int touch_irq = 0;
+unsigned int synaptics_touch_irq = 0;
 
 
 struct point {
@@ -141,7 +121,7 @@ static int tpd_clear_interrupt(struct i2c_client *client);
 static const struct i2c_device_id tpd_id[] = { {TPD_DEVICE, 0}, {} };
 
 /* DTS2012040603460 gkf61766 20120406 begin */
-static unsigned short force[] = { 0, 0x40, I2C_CLIENT_END, I2C_CLIENT_END };
+static unsigned short force[] = { 0, 0x2c, I2C_CLIENT_END, I2C_CLIENT_END };
 
 /* DTS2012040603460 gkf61766 20120406 end */
 static const unsigned short *const forces[] = { force, NULL };
@@ -180,8 +160,8 @@ static ssize_t synaptics_rmi4_full_pm_cycle_store(struct device *dev,
 #endif
 #endif
 
-unsigned int tpd_rst_gpio_number = 0;
-unsigned int tpd_int_gpio_number = 0;
+//unsigned int tpd_rst_gpio_number = 0;
+//unsigned int tpd_int_gpio_number = 0;
 
 #ifdef CONFIG_OF
 static int of_get_synaptic_platform_data(struct device *dev)
@@ -197,11 +177,11 @@ static int of_get_synaptic_platform_data(struct device *dev)
 			return -ENODEV;
 		}
 	}
-	tpd_rst_gpio_number = of_get_named_gpio(dev->of_node, "rst-gpio", 0);
-	tpd_int_gpio_number = of_get_named_gpio(dev->of_node, "int-gpio", 0);
+	//tpd_rst_gpio_number = of_get_named_gpio(dev->of_node, "rst-gpio", 0);
+	//tpd_int_gpio_number = of_get_named_gpio(dev->of_node, "int-gpio", 0);
 
-	TPD_DEBUG("g_vproc_en_gpio_number %d\n", tpd_rst_gpio_number);
-	TPD_DEBUG("g_vproc_vsel_gpio_number %d\n", tpd_int_gpio_number);
+	//TPD_DEBUG("g_vproc_en_gpio_number %d\n", tpd_rst_gpio_number);
+	//TPD_DEBUG("g_vproc_vsel_gpio_number %d\n", tpd_int_gpio_number);
 	return 0;
 }
 #else
@@ -363,14 +343,14 @@ static int tpd_irq_registration(void)
 
 	TPD_DEBUG("Device Tree Tpd_irq_registration!");
 
-	node = of_find_compatible_node(NULL, NULL, "mediatek,cap_touch");
+	node = of_find_matching_node(node, touch_of_match);
 
 	if (node) {
-		/*touch_irq = gpio_to_irq(tpd_int_gpio_number);*/
-		touch_irq = irq_of_parse_and_map(node, 0);
-		TPD_DEBUG("touch_irq number %d\n", touch_irq);
+		/*synaptics_touch_irq = gpio_to_irq(tpd_int_gpio_number);*/
+		synaptics_touch_irq = irq_of_parse_and_map(node, 0);
+		TPD_DEBUG("touch_irq number %d\n", synaptics_touch_irq);
 
-		ret = request_irq(touch_irq, tpd_eint_handler, IRQF_TRIGGER_FALLING,
+		ret = request_irq(synaptics_touch_irq, tpd_eint_handler, IRQF_TRIGGER_FALLING,
 					TPD_DEVICE, NULL);
 			if (ret > 0)
 				TPD_DMESG("tpd request_irq IRQ LINE NOT AVAILABLE!.");
@@ -598,13 +578,16 @@ static int tpd_set_page(struct i2c_client *client, unsigned int address)
 
 	page = ((address >> 8) & MASK_8BIT);
 	if (page != ts->current_page) {
+		//dev_err(&client->dev, "%s: zhangchongyong1\n", __func__);
 		buf[0] = MASK_8BIT;
 		buf[1] = page;
 		for (retry = 0; retry < SYN_I2C_RETRY_TIMES; retry++) {
+			client->addr = 0x2c;
 			retval = i2c_master_send(client, buf, PAGE_SELECT_LEN);
 
 			if (retval != PAGE_SELECT_LEN) {
 				dev_err(&client->dev, "%s: I2C retry %d\n", __func__, retry + 1);
+				return -1;
 				msleep(20);
 			} else {
 				ts->current_page = page;
@@ -614,14 +597,14 @@ static int tpd_set_page(struct i2c_client *client, unsigned int address)
 	} else {
 		retval = PAGE_SELECT_LEN;
 	}
-
+	//dev_err(&client->dev, "%s: zhangchongyong2\n", __func__);
 	return retval;
 }
 
 int tpd_i2c_read_data(struct i2c_client *client,
 		      unsigned short addr, unsigned char *data, unsigned short length)
 {
-	u8 retval = 0;
+	s8 retval = 0;
 	u8 retry = 0;
 	u8 *pData = data;
 	int tmp_addr = addr;
@@ -632,7 +615,7 @@ int tpd_i2c_read_data(struct i2c_client *client,
 	retval = tpd_set_page(client, addr);
 	if (retval != PAGE_SELECT_LEN)
 		goto exit;
-
+	//dev_err(&client->dev, "%s: zhangchongyong1\n", __func__);
 	/* old_flag = client->ext_flag; */
 	/* client->addr = client->addr & I2C_MASK_FLAG ; */
 	/* client->ext_flag =client->ext_flag | I2C_WR_FLAG | I2C_RS_FLAG | I2C_ENEXT_FLAG; */
@@ -661,11 +644,16 @@ int tpd_i2c_read_data(struct i2c_client *client,
 		pData[0] = tmp_addr;
 
 		for (retry = 0; retry < SYN_I2C_RETRY_TIMES; retry++) {
+			client->addr = 0x2c;
 			retval = i2c_master_send(client, pData, 1);
 
 			if (retval <= 0) {
 				dev_err(&client->dev, "%s: I2C retry %d\n", __func__, retry + 1);
 				msleep(20);
+				if(retry == 3)
+				{
+					goto exit;
+				}
 				continue;
 			}
 
@@ -691,7 +679,7 @@ int tpd_i2c_read_data(struct i2c_client *client,
 
  exit:
 	mutex_unlock(&(ts->io_ctrl_mutex));
-
+	//dev_err(&client->dev, "%s: zhangchongyong %d\n", __func__, retval);
 	return retval;
 }
 EXPORT_SYMBOL(tpd_i2c_read_data);
@@ -699,7 +687,7 @@ EXPORT_SYMBOL(tpd_i2c_read_data);
 int tpd_i2c_write_data(struct i2c_client *client,
 		       unsigned short addr, unsigned char *data, unsigned short length)
 {
-	u8 retval = 0;
+	s8 retval = 0;
 	u8 retry = 0;
 	u8 *pData = data;
 	u8 buf[5] = { 0 };
@@ -720,9 +708,11 @@ int tpd_i2c_write_data(struct i2c_client *client,
 		for (retry = 0; retry < SYN_I2C_RETRY_TIMES; retry++) {
 			if (left_len > 4) {
 				memcpy(buf + 1, pData, 4);
+				client->addr = 0x2c;
 				retval = i2c_master_send(client, buf, 5);
 			} else {
 				memcpy(buf + 1, pData, left_len);
+				client->addr = 0x2c;
 				retval = i2c_master_send(client, buf, left_len + 1);
 			}
 
@@ -730,6 +720,10 @@ int tpd_i2c_write_data(struct i2c_client *client,
 				break;
 			TPD_DMESG("%s: I2C retry %d\n", __func__, retry + 1);
 			msleep(20);
+			if(retry == 3)
+			{
+				goto exit;
+			}
 		}
 
 		left_len -= 4;
@@ -739,7 +733,7 @@ int tpd_i2c_write_data(struct i2c_client *client,
 
  exit:
 	mutex_unlock(&(ts->io_ctrl_mutex));
-
+	//dev_err(&client->dev, "%s: zhangchongyong %d\n", __func__, retval);
 	return retval;
 }
 EXPORT_SYMBOL(tpd_i2c_write_data);
@@ -1393,7 +1387,7 @@ static int touch_update_handler(void *unused)
 		return 0;
 	}
 
-	disable_irq(touch_irq);
+	disable_irq(synaptics_touch_irq);
 
 
 	synaptics_rmi4_detection_work(NULL);
@@ -1405,7 +1399,7 @@ static int touch_update_handler(void *unused)
 
 	tpd_clear_interrupt(ts->client);
 
-	enable_irq(touch_irq);
+	enable_irq(synaptics_touch_irq);
 
 	mutex_unlock(&i2c_access);
 	return 0;
@@ -1533,9 +1527,9 @@ static int touch_event_handler(void *unused)
 		retval = tpd_i2c_read_data(ts->client, ts->f01.data_base + 1, &status, 1);
 
 		if (retval < 0) {
-			/* disable_irq_nosync(touch_irq);*/
+			/* disable_irq_nosync(synaptics_touch_irq);*/
 			mutex_unlock(&i2c_access);
-			/* enable_irq(touch_irq);*/
+			/* enable_irq(synaptics_touch_irq);*/
 			continue;
 		}
 
@@ -1595,8 +1589,8 @@ static int touch_event_handler(void *unused)
 			tpd_up(0, 0);
 		input_sync(tpd->dev);
 		/* ts->pre_points = ts->cur_points; */
-/*        disable_irq_nosync(touch_irq);*/
-/*		enable_irq(touch_irq);*/
+/*        disable_irq_nosync(synaptics_touch_irq);*/
+/*		enable_irq(synaptics_touch_irq);*/
 
 	} while (!kthread_should_stop());
 
@@ -1724,6 +1718,7 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	of_get_synaptic_platform_data(&client->dev);
 	/* configure the gpio pins */
+/*	
 	retval = gpio_request_one(tpd_rst_gpio_number, GPIOF_OUT_INIT_LOW,
 				 "touchp_reset");
 	if (retval < 0) {
@@ -1736,8 +1731,10 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		TPD_DMESG("Unable to request gpio int_pin\n");
 		gpio_free(tpd_rst_gpio_number);
 		return -1;
-	}
 
+
+	}*/
+/*
 	retval = regulator_enable(tpd->reg);
 	if (retval != 0) {
 		dev_err(&client->dev, "Failed to enable reg-vgp6: %d\n", retval);
@@ -1748,12 +1745,15 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		dev_err(&client->dev, "Failed to enable reg-vgp4: %d\n", retval);
 		goto err_query_device;
 	}
+*/	
 	msleep(20);
 	/*tpd_gpio_output(GTP_RST_PORT, 0);*/
-	gpio_direction_output(tpd_rst_gpio_number, 0);
+	tpd_gpio_output(GTP_RST_PORT, 0);
+	//gpio_direction_output(tpd_rst_gpio_number, 0);
 	msleep(50);
 	/*tpd_gpio_output(GTP_RST_PORT, 1);*/
-	gpio_direction_output(tpd_rst_gpio_number, 1);
+	tpd_gpio_output(GTP_RST_PORT, 1);
+	//gpio_direction_output(tpd_rst_gpio_number, 1);
 	msleep(50);
 
 
@@ -1763,7 +1763,7 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		dev_err(&client->dev, "Can't connect touch panel.\n");
 		return -1;
 	}
-
+	//dev_err(&client->dev, "%s: zhangchongyong %d\n", __func__, reset_count);
 	retval = tpd_rmi4_read_pdt(ts);
 	if (retval < 0) {
 		dev_err(&client->dev, "Failed to query device\n");
@@ -1849,8 +1849,8 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	tpd_irq_registration();
 
-/*   disable_irq_nosync(touch_irq);*/
-/*	enable_irq(touch_irq);*/
+/*   disable_irq_nosync(synaptics_touch_irq);*/
+/*	enable_irq(synaptics_touch_irq);*/
 
 	tpd_load_status = 1;
 	TPD_DMESG("%s: TouchPanel Device Probe %s\n", __func__, (retval < 0) ? "FAIL" : "PASS");
@@ -1871,10 +1871,10 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 static int tpd_local_init(void)
 {
-	int retval;
+	//int retval;
 
 	TPD_DEBUG("Synaptics I2C Touchscreen Driver load\n");
-
+/*
 	tpd->reg = regulator_get(tpd->tpd_dev, "vtouch");
 	tpd->io_reg = regulator_get(tpd->tpd_dev, "vtouchio");
 	retval = regulator_set_voltage(tpd->reg, 3300000, 3300000);
@@ -1887,7 +1887,7 @@ static int tpd_local_init(void)
 		TPD_DMESG("Failed to set reg-vgp4 voltage: %d\n", retval);
 		return -1;
 	}
-
+*/
 	if (i2c_add_driver(&tpd_i2c_driver) != 0) {
 		TPD_DMESG("Error unable to add i2c driver.\n");
 		return -1;
@@ -1930,7 +1930,7 @@ static void tpd_resume(struct device *h)
 	u8 data;
 	int reset_count = 5;
 
-	int retval;
+	//int retval;
 
 
 
@@ -1938,6 +1938,7 @@ static void tpd_resume(struct device *h)
 	tpd_sw_power(ts->client, 1);
 #else
  TPD_RESET_RESUME:
+ /*
 	retval = regulator_enable(tpd->reg);
 	if (retval != 0)
 		TPD_DMESG("Failed to enable reg-vgp6: %d\n", retval);
@@ -1945,18 +1946,21 @@ static void tpd_resume(struct device *h)
 	retval = regulator_enable(tpd->io_reg);
 	if (retval != 0)
 		TPD_DMESG("Failed to enable reg-vgp4: %d\n", retval);
+*/		
 	/* hwPowerOn(MT6323_POWER_LDO_VGP2,  VOL_1800, "TP"); */
 	msleep(20);
 #endif
 	/*tpd_gpio_output(GTP_RST_PORT, 0);*/
-	gpio_direction_output(tpd_rst_gpio_number, 0);
+	//gpio_direction_output(tpd_rst_gpio_number, 0);
+	tpd_gpio_output(GTP_RST_PORT, 0);
 	msleep(50);
 	/*tpd_gpio_output(GTP_RST_PORT, 1);*/
-	gpio_direction_output(tpd_rst_gpio_number, 1);
+	tpd_gpio_output(GTP_RST_PORT, 1);
+	//gpio_direction_output(tpd_rst_gpio_number, 1);
 	msleep(50);
 	/* Recovery EINT Mode */
-	/*tpd_gpio_as_int(GTP_INT_PORT);*/
-	gpio_direction_input(tpd_int_gpio_number);
+	tpd_gpio_as_int(GTP_INT_PORT);
+	//gpio_direction_input(tpd_int_gpio_number);
 
 	if ((tpd_i2c_read_data(ts->client, 0xEE, &data, 1)) < 0) {
 		if (reset_count-- > 0)
@@ -1977,18 +1981,18 @@ static void tpd_resume(struct device *h)
 	mutex_lock(&i2c_access);
 	tpd_halt = 0;
 
-	enable_irq(touch_irq);
+	enable_irq(synaptics_touch_irq);
 
 	mutex_unlock(&i2c_access);
 }
 
 static void tpd_suspend(struct device *h)
 {
-	int retval;
+	//int retval;
 
 	mutex_lock(&i2c_access);
 
-	disable_irq(touch_irq);
+	disable_irq(synaptics_touch_irq);
 
 	tpd_halt = 1;
 	mutex_unlock(&i2c_access);
@@ -1997,11 +2001,13 @@ static void tpd_suspend(struct device *h)
 #else
 	/* Set EINT PIN to low */
 	/*tpd_gpio_output(GTP_INT_PORT, 0);*/
-	gpio_direction_output(tpd_int_gpio_number, 0);
+	tpd_gpio_output(GTP_INT_PORT, 0);
+	//gpio_direction_output(tpd_int_gpio_number, 0);
 	/* Set RST PIN to low */
 	/*tpd_gpio_output(GTP_RST_PORT, 0);*/
-	gpio_direction_output(tpd_rst_gpio_number, 0);
-
+	tpd_gpio_output(GTP_RST_PORT, 0);
+	//gpio_direction_output(tpd_rst_gpio_number, 0);
+/*
 	retval = regulator_disable(tpd->io_reg);
 	if (retval != 0)
 		TPD_DMESG("Failed to disable reg-vgp4: %d\n", retval);
@@ -2009,6 +2015,7 @@ static void tpd_suspend(struct device *h)
 	retval = regulator_disable(tpd->reg);
 	if (retval != 0)
 		TPD_DMESG("Failed to disable reg-vgp6: %d\n", retval);
+*/		
 #endif
 
 	TPD_DEBUG("TPD enter sleep\n");

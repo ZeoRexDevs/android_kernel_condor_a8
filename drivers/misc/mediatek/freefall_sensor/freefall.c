@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include "freefall.h"
 
 static struct freefall_context *freefall_context_obj;
@@ -258,14 +245,9 @@ static ssize_t freefall_show_flush(struct device *dev, struct device_attribute *
 static ssize_t freefall_show_devnum(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	char *devname = NULL;
-	struct input_handle *handle;
 
-	list_for_each_entry(handle, &freefall_context_obj->idev->h_list, d_node)
-		if (strncmp(handle->name, "event", 5) == 0) {
-			devname = handle->name;
-			break;
-		}
-	return snprintf(buf, PAGE_SIZE, "%s\n", devname + 5);
+	devname = dev_name(&freefall_context_obj->idev->dev);
+	return snprintf(buf, PAGE_SIZE, "%s\n", devname + 5);	/* TODO: why +5? */
 }
 
 static int freefall_remove(struct platform_device *pdev)

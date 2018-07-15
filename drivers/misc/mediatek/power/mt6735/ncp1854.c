@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/types.h>
 #include <linux/init.h>		/* For init/exit macros */
 #include <linux/module.h>	/* For MODULE_ marcros  */
@@ -597,9 +584,7 @@ static void ncp1854_parse_customer_setting(void)
 
 	pinctrl_select_state(pinctrl, pinctrl_drvvbus_init);
 	pinctrl_select_state(pinctrl, pinctrl_drvvbus_low);
-
 	devm_pinctrl_put(pinctrl);
-
 	battery_log(BAT_LOG_FULL, "[%s]pinctrl_select_state success\n", __func__);
 #endif
 }

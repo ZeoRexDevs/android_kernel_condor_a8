@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kobject.h>
 #include <linux/string.h>
 #include <linux/sysfs.h>
@@ -49,14 +36,11 @@ enum boot_reason_t {
 	BR_TOOL_BY_PASS_PWK,
 	BR_2SEC_REBOOT,
 	BR_UNKNOWN,
-	BR_KERNEL_PANIC,
-	BR_WDT_SW,
-	BR_WDT_HW
+	BR_KE_REBOOT
 };
 
-#define REBOOT_REASON_LEN	16
-char boot_reason[][REBOOT_REASON_LEN] = { "keypad", "usb_chg", "rtc", "wdt", "reboot",
-	"tool reboot", "smpl", "others", "kpanic", "wdt_sw", "wdt_hw" };
+char boot_reason[][16] = { "XXXXXX", "XXXXXXX", "XXX", "XXX",
+	"XXXXXX", "XXXXXXXXXXX", "XXXX", "XXXXXX", "XXXXXX" };
 
 int __weak aee_rr_reboot_reason_show(struct seq_file *m, void *v)
 {
@@ -105,9 +89,9 @@ static ssize_t powerup_reason_show(struct kobject *kobj, struct kobj_attribute *
 		LOGE("g_boot_reason=%d\n", g_boot_reason);
 #ifdef CONFIG_MTK_RAM_CONSOLE
 		if (aee_rr_last_fiq_step() != 0)
-			g_boot_reason = BR_KERNEL_PANIC;
+			g_boot_reason = BR_KE_REBOOT;
 #endif
-		return snprintf(buf, REBOOT_REASON_LEN - 1, "%s\n", boot_reason[g_boot_reason]);
+		return sprintf(buf, "%s\n", boot_reason[g_boot_reason]);
 	} else
 		return 0;
 
@@ -149,7 +133,7 @@ void ksysfs_bootinfo_exit(void)
 
 /* end sysfs bootinfo */
 
-static inline unsigned long get_linear_memory_size(void)
+static inline unsigned int get_linear_memory_size(void)
 {
 	return (unsigned long)high_memory - PAGE_OFFSET;
 }

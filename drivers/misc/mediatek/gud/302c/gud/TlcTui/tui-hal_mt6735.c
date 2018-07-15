@@ -14,21 +14,17 @@
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/fb.h>
-#include <linux/delay.h>
 
 #include <t-base-tui.h>
-#include <mach/mt_clkmgr.h>
 
 #include "tui_ioctl.h"
 #include "dciTui.h"
 #include "tlcTui.h"
 #include "tui-hal.h"
-/*
-#include "secmem.h"
-#include "disp_tui.h"
-*/
+#include <linux/delay.h>
 
-#include "tui-hal_mt6735.h"
+#include <mach/mt_clkmgr.h>
+
 
 #define TUI_MEMPOOL_SIZE 0
 
@@ -41,8 +37,27 @@ struct tui_mempool {
 	size_t size;
 };
 
+/* for TUI EINT mepping to Security World */
+extern void gt1x_power_reset(void);
+extern int mt_eint_set_deint(int eint_num, int irq_num);
+extern int mt_eint_clr_deint(int eint_num);
+extern int tpd_reregister_from_tui(void);
+extern int tpd_enter_tui(void);
+extern int tpd_exit_tui(void);
+extern int i2c_tui_enable_clock(void);
+extern int i2c_tui_disable_clock(void);
+#ifndef CONFIG_CMA
+extern int secmem_api_alloc_pa(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle,
+	const uint8_t *owner, uint32_t id);
+#endif
+extern int secmem_api_unref_pa(u32 sec_handle, const uint8_t *owner, uint32_t id);
+extern int tui_region_offline(phys_addr_t *pa, unsigned long *size);
+extern int tui_region_online(void);
 static struct tui_mempool g_tui_mem_pool;
 static u32 g_tui_secmem_handle;
+extern int display_enter_tui(void);
+extern int display_exit_tui(void);
+
 
 /* basic implementation of a memory pool for TUI framebuffer.  This
  * implementation is using kmalloc, for the purpose of demonstration only.
@@ -175,7 +190,7 @@ uint32_t hal_tui_alloc(
 
 #ifndef CONFIG_CMA
 	ret = secmem_api_alloc_pa(4096, allocsize*number+TUI_EXTRA_MEM_SIZE, &refcount,
-		&sec_pa, (uint8_t *)__func__, __LINE__);
+		&sec_pa, __func__, __LINE__);
 	pr_err("%s: sec_pa=%x ret=%d", __func__, sec_pa, (int)ret);
 	if (ret) {
 		pr_err("%s(%d): secmem_api_alloc failed! ret=%d\n",
@@ -248,7 +263,7 @@ void hal_tui_free(void)
 	pr_info("[TUI-HAL] hal_tui_free()\n");
 	if (g_tui_secmem_handle) {
 #ifndef CONFIG_CMA
-		secmem_api_unref_pa(g_tui_secmem_handle, (uint8_t *)__func__, __LINE__);
+		secmem_api_unref_pa(g_tui_secmem_handle, __func__, __LINE__);
 #else
 		tui_region_online();
 #endif
@@ -281,7 +296,7 @@ uint32_t hal_tui_deactivate(void)
 	 * on the appropriate framebuffer device
 	 */
 
-	 tpd_enter_tui();
+	tpd_enter_tui();
 #if 0
     enable_clock(MT_CG_PERI_I2C0, "i2c");
     enable_clock(MT_CG_PERI_I2C1, "i2c");
@@ -299,12 +314,12 @@ uint32_t hal_tui_deactivate(void)
 		ret = TUI_DCI_ERR_OUT_OF_DISPLAY;
 	}
 
-
+	
 	trustedui_set_mask(TRUSTEDUI_MODE_VIDEO_SECURED|
 			   TRUSTEDUI_MODE_INPUT_SECURED);
 
 	pr_info("TDDP/[TUI-HAL] %s()\n", __func__);
-
+	
 	return ret;
 }
 
@@ -324,7 +339,7 @@ uint32_t hal_tui_activate(void)
 	/* Protect NWd */
 	trustedui_clear_mask(TRUSTEDUI_MODE_VIDEO_SECURED|
 			     TRUSTEDUI_MODE_INPUT_SECURED);
-
+	
 	pr_info("TDDP %s()\n", __func__);
 
 	/*
@@ -334,13 +349,13 @@ uint32_t hal_tui_activate(void)
 	 * on the appropriate framebuffer device
 	 */
 	/* Clear linux TUI flag */
-
+	
 	tpd_exit_tui();
 #if 0
     disable_clock(MT_CG_PERI_I2C0, "i2c");
     disable_clock(MT_CG_PERI_I2C1, "i2c");
     disable_clock(MT_CG_PERI_I2C2, "i2c");
-    disable_clock(MT_CG_PERI_I2C3, "i2c");
+    disable_clock(MT_CG_PERI_I2C3, "i2c");	
 	disable_clock(MT_CG_PERI_APDMA, "i2c");
 #endif
 	i2c_tui_disable_clock();
@@ -349,7 +364,7 @@ uint32_t hal_tui_activate(void)
 
 
 	trustedui_set_mode(TRUSTEDUI_MODE_OFF);
-
+	
 	return TUI_DCI_OK;
 }
 

@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /******************************************************************************
  *  INCLUDE LIBRARY
  ******************************************************************************/
@@ -137,8 +124,8 @@ long sec_core_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 
 		/* TODO : double check if META register is correct ? */
-		masp_hal_sp_hacc_enc((unsigned char *)&(meta_ctx.data), NVRAM_CIPHER_LEN, true,
-				     HACC_USER2, false);
+		masp_hal_sp_hacc_enc((unsigned char *)&(meta_ctx.data), NVRAM_CIPHER_LEN, TRUE,
+				     HACC_USER2, FALSE);
 		meta_ctx.ret = SEC_OK;
 
 		ret = osal_copy_to_user((void __user *)arg, (void *)&meta_ctx, sizeof(meta_ctx));
@@ -152,8 +139,8 @@ long sec_core_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (osal_copy_from_user((void *)&meta_ctx, (void __user *)arg, sizeof(meta_ctx)))
 			return -EFAULT;
 
-		masp_hal_sp_hacc_dec((unsigned char *)&(meta_ctx.data), NVRAM_CIPHER_LEN, true,
-				     HACC_USER2, false);
+		masp_hal_sp_hacc_dec((unsigned char *)&(meta_ctx.data), NVRAM_CIPHER_LEN, TRUE,
+				     HACC_USER2, FALSE);
 		meta_ctx.ret = SEC_OK;
 		ret = osal_copy_to_user((void __user *)arg, (void *)&meta_ctx, sizeof(meta_ctx));
 		break;
@@ -175,8 +162,8 @@ long sec_core_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				break;
 			}
 		}
-		masp_hal_sp_hacc_enc((unsigned char *)(&hevc_blk.buf), cipher_len, true, HACC_USER4,
-				     false);
+		masp_hal_sp_hacc_enc((unsigned char *)(&hevc_blk.buf), cipher_len, TRUE, HACC_USER4,
+				     FALSE);
 
 		ret = osal_copy_to_user((void __user *)arg, (void *)(&hevc_blk), sizeof(HEVC_BLK));
 		break;
@@ -199,8 +186,8 @@ long sec_core_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 		}
 
-		masp_hal_sp_hacc_dec((unsigned char *)(&hevc_blk.buf), cipher_len, true, HACC_USER4,
-				     false);
+		masp_hal_sp_hacc_dec((unsigned char *)(&hevc_blk.buf), cipher_len, TRUE, HACC_USER4,
+				     FALSE);
 
 		ret = osal_copy_to_user((void __user *)arg, (void *)(&hevc_blk), sizeof(HEVC_BLK));
 		break;

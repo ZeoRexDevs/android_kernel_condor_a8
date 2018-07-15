@@ -1,17 +1,40 @@
-/*
- * Copyright (C) 2011 MediaTek Inc.
+/* Copyright Statement:
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * MediaTek Inc. (C) 2011. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
  */
 
 #include "sec_osal.h"
+/*#include <mach/mt_typedefs.h>*/
 #include "sec_hal.h"
 #include "sec_osal_light.h"
 #include "sec_boot_lib.h"
@@ -29,8 +52,8 @@
 /******************************************************************************
  * GLOBAL VARIABLES
  ******************************************************************************/
-bool bHACC_HWWrapKeyInit = false;
-bool bHACC_SWKeyInit = false;
+bool bHACC_HWWrapKeyInit = FALSE;
+bool bHACC_SWKeyInit = FALSE;
 
 /******************************************************************************
  *  INTERNAL VARIABLES
@@ -62,7 +85,7 @@ static unsigned char *sp_hacc_internal(unsigned char *buf, unsigned int size, bo
 	/* ---------------------------- */
 	/* get hacc lock                 */
 	/* ---------------------------- */
-	if (true == bDoLock) {
+	if (TRUE == bDoLock) {
 		/* If the semaphore is successfully acquired, this function returns 0. */
 		err = osal_hacc_lock();
 
@@ -102,7 +125,7 @@ static unsigned char *sp_hacc_internal(unsigned char *buf, unsigned int size, bo
 	case HACC_USER3:
 		/* use smart phone hacc function 3 */
 		/* ---------------------------- */
-		if (false == bHACC_HWWrapKeyInit) {
+		if (FALSE == bHACC_HWWrapKeyInit) {
 			err = ERR_HACC_HW_WRAP_KEY_NOT_INIT;
 			goto _err;
 		}
@@ -138,13 +161,13 @@ static unsigned char *sp_hacc_internal(unsigned char *buf, unsigned int size, bo
 	/* ---------------------------- */
 	/* release hacc lock             */
 	/* ---------------------------- */
-	if (true == bDoLock)
+	if (TRUE == bDoLock)
 		osal_hacc_unlock();
 
 	return buf;
 
 _err:
-	if (true == bDoLock)
+	if (TRUE == bDoLock)
 		osal_hacc_unlock();
 
 	pr_debug("[%s] HACC Fail (0x%x)\n", MOD, err);
@@ -160,7 +183,7 @@ _err:
 unsigned char *masp_hal_sp_hacc_enc(unsigned char *buf, unsigned int size, unsigned char bAC,
 				    HACC_USER user, unsigned char bDoLock)
 {
-	return sp_hacc_internal(buf, size, true, user, bDoLock, AES_ENC, true);
+	return sp_hacc_internal(buf, size, TRUE, user, bDoLock, AES_ENC, TRUE);
 }
 
 
@@ -170,7 +193,7 @@ unsigned char *masp_hal_sp_hacc_enc(unsigned char *buf, unsigned int size, unsig
 unsigned char *masp_hal_sp_hacc_dec(unsigned char *buf, unsigned int size, unsigned char bAC,
 				    HACC_USER user, unsigned char bDoLock)
 {
-	return sp_hacc_internal(buf, size, true, user, bDoLock, AES_DEC, false);
+	return sp_hacc_internal(buf, size, TRUE, user, bDoLock, AES_DEC, FALSE);
 }
 
 /******************************************************************************

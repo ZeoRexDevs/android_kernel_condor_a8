@@ -98,7 +98,7 @@ int drm_fb_helper_single_add_all_connectors(struct drm_fb_helper *fb_helper)
 	struct drm_connector *connector;
 	int i;
 
-	drm_for_each_connector(connector, dev) {
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
 		struct drm_fb_helper_connector *fb_helper_connector;
 
 		fb_helper_connector = kzalloc(sizeof(struct drm_fb_helper_connector), GFP_KERNEL);
@@ -208,7 +208,7 @@ static void drm_fb_helper_restore_lut_atomic(struct drm_crtc *crtc)
 int drm_fb_helper_debug_enter(struct fb_info *info)
 {
 	struct drm_fb_helper *helper = info->par;
-	const struct drm_crtc_helper_funcs *funcs;
+	struct drm_crtc_helper_funcs *funcs;
 	int i;
 
 	list_for_each_entry(helper, &kernel_fb_helper_list, kernel_fb_list) {
@@ -239,7 +239,7 @@ static struct drm_framebuffer *drm_mode_config_fb(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_crtc *c;
 
-	drm_for_each_crtc(c, dev) {
+	list_for_each_entry(c, &dev->mode_config.crtc_list, head) {
 		if (crtc->base.id == c->base.id)
 			return c->primary->fb;
 	}
@@ -255,7 +255,7 @@ int drm_fb_helper_debug_leave(struct fb_info *info)
 {
 	struct drm_fb_helper *helper = info->par;
 	struct drm_crtc *crtc;
-	const struct drm_crtc_helper_funcs *funcs;
+	struct drm_crtc_helper_funcs *funcs;
 	struct drm_framebuffer *fb;
 	int i;
 
@@ -291,7 +291,7 @@ static bool restore_fbdev_mode(struct drm_fb_helper *fb_helper)
 
 	drm_warn_on_modeset_not_all_locked(dev);
 
-	drm_for_each_plane(plane, dev) {
+	list_for_each_entry(plane, &dev->mode_config.plane_list, head) {
 		if (plane->type != DRM_PLANE_TYPE_PRIMARY)
 			drm_plane_force_disable(plane);
 
@@ -419,7 +419,7 @@ static bool drm_fb_helper_is_bound(struct drm_fb_helper *fb_helper)
 	if (dev->primary->master)
 		return false;
 
-	drm_for_each_crtc(crtc, dev) {
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
 		if (crtc->primary->fb)
 			crtcs_bound++;
 		if (crtc->primary->fb == fb_helper->fb)
@@ -616,7 +616,7 @@ int drm_fb_helper_init(struct drm_device *dev,
 	}
 
 	i = 0;
-	drm_for_each_crtc(crtc, dev) {
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
 		fb_helper->crtc_info[i].mode_set.crtc = crtc;
 		i++;
 	}
@@ -726,7 +726,7 @@ int drm_fb_helper_setcmap(struct fb_cmap *cmap, struct fb_info *info)
 {
 	struct drm_fb_helper *fb_helper = info->par;
 	struct drm_device *dev = fb_helper->dev;
-	const struct drm_crtc_helper_funcs *crtc_funcs;
+	struct drm_crtc_helper_funcs *crtc_funcs;
 	u16 *red, *green, *blue, *transp;
 	struct drm_crtc *crtc;
 	int i, j, rc = 0;
@@ -1419,7 +1419,7 @@ static int drm_pick_crtcs(struct drm_fb_helper *fb_helper,
 {
 	int c, o;
 	struct drm_connector *connector;
-	const struct drm_connector_helper_funcs *connector_funcs;
+	struct drm_connector_helper_funcs *connector_funcs;
 	struct drm_encoder *encoder;
 	int my_score, best_score, score;
 	struct drm_fb_helper_crtc **crtcs, *crtc;

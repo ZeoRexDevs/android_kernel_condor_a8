@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/version.h>
 #include <linux/thermal.h>
 #include <linux/proc_fs.h>
@@ -1163,6 +1150,9 @@ ssize_t wmt_wifi_algo_write(struct file *filp, const char __user *buf, size_t le
 
 	len = (len < (sizeof(desc) - 1)) ? len : (sizeof(desc) - 1);
 
+	if (len >= MAX_LEN-1)
+		len = MAX_LEN-1;
+
 	/* write data to the buffer */
 	if (copy_from_user(desc, buf, len))
 		return -EFAULT;
@@ -1231,12 +1221,14 @@ static int wmt_wifi_algo_open(struct inode *inode, struct file *file)
 
 /*New Wifi throttling Algo-*/
 
-ssize_t wmt_tm_wfd_write(struct file *filp, const char __user *buf, size_t len, loff_t *data)
+ssize_t wmt_tm_wfd_write(struct file *filp, const char __user *buf, size_t count, loff_t *data)
 {
 	int ret = 0;
 	char tmp[MAX_LEN] = { 0 };
+	int len = 0;
 
-	len = (len < (MAX_LEN - 1)) ? len : (MAX_LEN - 1);
+	len = (count < (MAX_LEN - 1)) ? count : (MAX_LEN - 1);
+
 	/* write data to the buffer */
 	if (copy_from_user(tmp, buf, len))
 		return -EFAULT;
@@ -1270,13 +1262,14 @@ static int wmt_tm_wfd_open(struct inode *inode, struct file *file)
 }
 
 
-ssize_t wmt_wifi_in_soc_write(struct file *filp, const char __user *buf, size_t len,
+ssize_t wmt_wifi_in_soc_write(struct file *filp, const char __user *buf, size_t count,
 			      loff_t *data)
 {
 	int ret = 0;
 	char tmp[MAX_LEN] = { 0 };
+	int len = 0;
+	len = (count < (MAX_LEN - 1)) ? count : (MAX_LEN - 1);
 
-	len = (len < (MAX_LEN - 1)) ? len : (MAX_LEN - 1);
 	/* write data to the buffer */
 	if (copy_from_user(tmp, buf, len))
 		return -EFAULT;
@@ -1338,12 +1331,15 @@ static int wmt_wifi_in_soc_open(struct inode *inode, struct file *file)
 }
 
 
-ssize_t wmt_tm_pid_write(struct file *filp, const char __user *buf, size_t len, loff_t *data)
+ssize_t wmt_tm_pid_write(struct file *filp, const char __user *buf, size_t count, loff_t *data)
 {
 	int ret = 0;
 	char tmp[MAX_LEN] = { 0 };
+	int len = 0;
 
-	len = (len < (MAX_LEN - 1)) ? len : (MAX_LEN - 1);
+	len = (count < (MAX_LEN - 1)) ? count : (MAX_LEN - 1);
+
+
 	/* write data to the buffer */
 	if (copy_from_user(tmp, buf, len))
 		return -EFAULT;
@@ -1463,7 +1459,7 @@ static ssize_t wmt_tm_write(struct file *filp, const char __user *buf, size_t co
 
 	if (sscanf
 	    (ptr_tm_data->desc,
-	     "%d %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d",
+	     "%d %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d",
 	     &g_num_trip, &ptr_tm_data->trip_temp[0], &ptr_tm_data->thermal_trip[0], ptr_tm_data->bind0,
 	     &ptr_tm_data->trip_temp[1], &ptr_tm_data->thermal_trip[1], ptr_tm_data->bind1,
 	     &ptr_tm_data->trip_temp[2], &ptr_tm_data->thermal_trip[2], ptr_tm_data->bind2,

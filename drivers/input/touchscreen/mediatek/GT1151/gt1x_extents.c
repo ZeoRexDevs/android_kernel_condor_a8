@@ -554,10 +554,6 @@ static s32 io_iic_write(u8 *data)
 	s32 data_length = 0;
 	u16 addr = 0;
 
-	if (data == NULL) {
-		GTP_ERROR("data is null\n");
-		return -1;
-	}
 	addr = data[0] << 8 | data[1];
 	data_length = data[2] << 8 | data[3];
 
@@ -578,17 +574,12 @@ static long gt1x_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	u32 value = 0;
 	s32 ret = 0;		/*the initial value must be 0*/
 	u8 *data = NULL;
-	int cnt = 30;
 	static struct ratelimit_state ratelimit = {
 		.lock = __RAW_SPIN_LOCK_UNLOCKED(ratelimit.lock),
 		.interval = HZ/2,
 		.burst = 1,
 		.begin = 1,
 	};
-
-    /* Blocking when firmwaer updating */
-	while (cnt-- && update_info.status)
-		ssleep(1);
 
 	GTP_DEBUG("IOCTL CMD:%x", cmd);
 	/*GTP_DEBUG("command:%d, length:%d, rw:%s", _IOC_NR(cmd), _IOC_SIZE(cmd),
@@ -628,10 +619,7 @@ static long gt1x_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				GTP_ERROR("touch is suspended.");
 			break;
 		}
-		if (data != NULL)
-			ret = io_iic_read(data, (void __user *)arg);
-		else
-			GTP_ERROR("Touch read data is NULL.");
+		ret = io_iic_read(data, (void __user *)arg);
 		break;
 
 	case IO_IIC_WRITE:
@@ -640,10 +628,7 @@ static long gt1x_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				GTP_ERROR("touch is suspended.");
 			break;
 		}
-		if (data != NULL)
-			ret = io_iic_write(data);
-		else
-			GTP_ERROR("Touch write data is NULL.");
+		ret = io_iic_write(data);
 		break;
 
 	case IO_RESET_GUITAR:
@@ -983,4 +968,3 @@ void gt1x_deinit_node(void)
 	misc_deregister(&hotknot_misc_device);
 #endif
 }
-MODULE_LICENSE("GPL");

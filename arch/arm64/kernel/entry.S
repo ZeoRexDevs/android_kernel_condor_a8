@@ -28,6 +28,7 @@
 #include <asm/errno.h>
 #include <asm/esr.h>
 #include <asm/thread_info.h>
+#include <asm/asm-uaccess.h>
 #include <asm/unistd.h>
 
 /*
@@ -394,25 +395,6 @@ ENDPROC(el1_error_invalid)
 	.align	6
 el1_sync:
 	kernel_entry 1
-	mov	x0, sp
-	and	x20, x0, #~(THREAD_SIZE - 1)	// top of stack
-	ldr	w4, [x20, #TI_CPU_EXCP]
-	add	w4, w4, #0x1
-	str	w4, [x20, #TI_CPU_EXCP]
-	cmp	w4, #0x1
-	b.ne	el1_sync_nest
-	str	x0, [x20, #TI_REGS_ON_EXCP]
-el1_sync_nest:
-	cmp	w4, #0x2
-	b.lt	el1_sync_nest_skip
-	b.gt	el1_sync_nest_stop
-	mrs	x1, esr_el1			// read the syndrome register
-	lsr	x24, x1, #ESR_EL1_EC_SHIFT	// exception class
-	cmp	x24, #ESR_EL1_EC_DABT_EL1	// data abort in EL1
-	b.eq	el1_sync_nest_skip
-el1_sync_nest_stop:
-	bl	aee_stop_nested_panic
-el1_sync_nest_skip:
 	mrs	x1, esr_el1			// read the syndrome register
 	lsr	x24, x1, #ESR_EL1_EC_SHIFT	// exception class
 	cmp	x24, #ESR_EL1_EC_DABT_EL1	// data abort in EL1
@@ -432,19 +414,15 @@ el1_da:
 	/*
 	 * Data abort handling
 	 */
-	mrs	x0, far_el1
+	mrs	x3, far_el1
 	enable_dbg
 	// re-enable interrupts if they were enabled in the aborted context
 	tbnz	x23, #7, 1f			// PSR_I_BIT
 	enable_irq
 1:
+	clear_address_tag x0, x3
 	mov	x2, sp				// struct pt_regs
 	bl	do_mem_abort
-	mov	x5, sp
-	and	x20, x5, #~(THREAD_SIZE - 1)	// top of stack
-	ldr	w4, [x20, #TI_CPU_EXCP]
-	sub	w4, w4, #0x1
-	str	w4, [x20, #TI_CPU_EXCP]
 
 	// disable interrupts before pulling preserved data off the stack
 	disable_irq
@@ -463,8 +441,7 @@ el1_undef:
 	 */
 	enable_dbg
 	mov	x0, sp
-	bl	do_undefinstr
-	kernel_exit 1
+	b	do_undefinstr
 el1_dbg:
 	/*
 	 * Debug exception handling
@@ -475,12 +452,6 @@ el1_dbg:
 	mrs	x0, far_el1
 	mov	x2, sp				// struct pt_regs
 	bl	do_debug_exception
-	mov	x5, sp
-	and	x20, x5, #~(THREAD_SIZE - 1)	// top of stack
-	ldr	w4, [x20, #TI_CPU_EXCP]
-	sub	w4, w4, #0x1
-	str	w4, [x20, #TI_CPU_EXCP]
-
 	kernel_exit 1
 el1_inv:
 	// TODO: add support for undefined instructions in kernel mode
@@ -622,7 +593,7 @@ el0_da:
 	// enable interrupts before calling the main handler
 	enable_dbg_and_irq
 	ct_user_exit
-	bic	x0, x26, #(0xff << 56)
+	clear_address_tag x0, x26
 	mov	x1, x25
 	mov	x2, sp
 	bl	do_mem_abort
@@ -701,7 +672,7 @@ el0_inv:
 	mov	x0, sp
 	mov	x1, #BAD_SYNC
 	mrs	x2, esr_el1
-	bl	bad_mode
+	bl	bad_el0_sync
 	b	ret_to_user
 ENDPROC(el0_sync)
 

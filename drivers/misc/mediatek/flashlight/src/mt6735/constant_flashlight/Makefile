@@ -1,24 +1,22 @@
 #
-# Copyright (C) 2015 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-
-#
 # Makefile for misc devices that really don't fit anywhere else.
 #
 
-ifeq ($(findstring lego,$(ARCH_MTK_PROJECT)), )
-obj-y				+= leds_strobe.o
+LYCONFIG_GPIO_FLASHLIGHT_SUPPORT :=true
+
+ifeq ($(strip $(LYCONFIG_GPIO_FLASHLIGHT_SUPPORT)),true)
+    obj-y				+= leds_gpio_strobe.o
 else
-CFILES := leds_strobe.o
-obj-m				+= flashlight_device.o
-flashlight_device-objs := $(CFILES)
+	ifeq ($(strip $(LYCONFIG_COMB_CHARGER_IC)),MTK_SM5701_SUPPORT)
+		#obj-y				+= leds_strobe_sm5701.o
+		obj-y				+= leds_strobe.o	
+	else
+		ifeq ($(LYCONFIG_MTK_LM3643_SUPPORT),true)
+			#obj-y				+= leds_lm3643_strobe.o
+ 			obj-y				+= leds_strobe.o
+		else
+		        obj-y				+= leds_strobe.o
+		    
+		endif
+	endif
 endif

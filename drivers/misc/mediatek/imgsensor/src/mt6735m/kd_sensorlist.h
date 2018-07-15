@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 //s_add new sensor driver here
 //export funtions
 /*IMX*/
@@ -444,9 +431,6 @@ ACDK_KD_SENSOR_INIT_FUNCTION_STRUCT kdSensorList[MAX_NUM_OF_SUPPORT_SENSOR+1] =
 /*LCA Test*/
 #if defined(IMX135_MIPI_RAW_5MP)
     {IMX135_SENSOR_ID, SENSOR_DRVNAME_IMX135_MIPI_RAW_5MP, IMX135_MIPI_RAW_SensorInit},
-#endif
-#if defined(IMX135_MIPI_RAW_8MP)
-    {IMX135_SENSOR_ID, SENSOR_DRVNAME_IMX135_MIPI_RAW_8MP, IMX135_MIPI_RAW_SensorInit},
 #endif
 
 /*  ADD sensor driver before this line */

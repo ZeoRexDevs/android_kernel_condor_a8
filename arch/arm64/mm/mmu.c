@@ -246,14 +246,6 @@ static inline bool use_1G_block(unsigned long addr, unsigned long next,
 
 	if (((addr | next | phys) & ~PUD_MASK) != 0)
 		return false;
-#ifdef CONFIG_MTK_SVP
-	/*
-	 * SSVP will unmapping memory region which shared with kernel
-	 * and SVP to prevent illegal fetch of EMI MPU Violation.
-	 * Return false to make all memory become pmd mapping.
-	 */
-	return false;
-#endif
 
 	return true;
 }
@@ -400,7 +392,6 @@ static void __init __map_memblock(phys_addr_t start, phys_addr_t end)
 				end - kernel_x_end,
 				PAGE_KERNEL);
 	}
-
 }
 #else
 static void __init __map_memblock(phys_addr_t start, phys_addr_t end)
@@ -435,8 +426,6 @@ static void __init map_mem(void)
 	for_each_memblock(memory, reg) {
 		phys_addr_t start = reg->base;
 		phys_addr_t end = start + reg->size;
-		mtk_memcfg_write_memory_layout_info(MTK_MEMCFG_MEMBLOCK_PHY,
-				"kernel", start, reg->size);
 		MTK_MEMCFG_LOG_AND_PRINTK(
 			"[PHY layout]kernel   :   0x%08llx - 0x%08llx (0x%llx)\n",
 			(unsigned long long)start,
@@ -495,9 +484,8 @@ void __init fixup_executable(void)
 void mark_rodata_ro(void)
 {
 	create_mapping_late(__pa(_stext), (unsigned long)_stext,
-				(unsigned long)_etext - (unsigned long)_stext,
+				(unsigned long)__init_begin - (unsigned long)_stext,
 				PAGE_KERNEL_EXEC | PTE_RDONLY);
-
 }
 #endif
 

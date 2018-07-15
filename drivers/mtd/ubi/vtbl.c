@@ -68,6 +68,7 @@ static void self_vtbl_check(const struct ubi_device *ubi);
 
 /* Empty volume table record */
 static struct ubi_vtbl_record empty_vtbl_record;
+
 /**
  * ubi_change_vtbl_record - change volume table record.
  * @ubi: UBI device description object
@@ -464,7 +465,7 @@ static struct ubi_vtbl_record *process_lvol(struct ubi_device *ubi,
 			err = create_vtbl(ubi, ai, 1, leb[0]);
 			if (err)
 				goto out_free;
-			dbg_gen("volume table was restored");
+			ubi_msg("volume table was restored");
 		}
 
 		/* Both LEB 1 and LEB 2 are OK and consistent */
@@ -488,7 +489,7 @@ static struct ubi_vtbl_record *process_lvol(struct ubi_device *ubi,
 	err = create_vtbl(ubi, ai, 0, leb[1]);
 	if (err)
 		goto out_free;
-	dbg_gen("volume table was restored");
+	ubi_msg("volume table was restored");
 
 	vfree(leb[0]);
 	return leb[1];
@@ -820,7 +821,7 @@ static int check_attaching_info(const struct ubi_device *ubi,
 			 * reboot while the volume was being removed. Discard
 			 * these eraseblocks.
 			 */
-			dbg_gen("finish volume %d removal", av->vol_id);
+			ubi_msg("finish volume %d removal", av->vol_id);
 			ubi_remove_av(ai, av);
 		} else if (av) {
 			err = check_av(vol, av);
@@ -1050,7 +1051,7 @@ int ubi_read_mtbl_record(struct ubi_device *ubi, struct ubi_attach_info *ai, int
 	}
 
 	memcpy(ubi->mtbl, mtbl_rec, tbsz);
-#if  1
+#ifdef MTK_TMP_DEBUG_LOG
 	pr_err("maintain table info:\n");
 	pr_err("magic: %x\n", ubi->mtbl->magic);
 	pr_err("crc: %x\n", ubi->mtbl->crc);

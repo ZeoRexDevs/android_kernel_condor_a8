@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #ifndef __TILT_H__
 #define __TILT_H__
 
@@ -23,19 +10,10 @@
 #include <linux/workqueue.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/hwmsensor.h>
+#include <linux/earlysuspend.h>
+#include <linux/hwmsen_dev.h>
 
-#include <linux/i2c.h>
-#include <linux/irq.h>
-#include <linux/uaccess.h>
-#include <linux/delay.h>
-#include <linux/kobject.h>
-#include <linux/atomic.h>
-#include <linux/ioctl.h>
-#include <batch.h>
-#include <sensors_io.h>
-#include <hwmsen_helper.h>
-#include <hwmsensor.h>
-#include <hwmsen_dev.h>
 
 #define TILT_TAG		"<TILT_DETECTOR> "
 #define TILT_FUN(f)		pr_debug(TILT_TAG"%s\n", __func__)
@@ -68,13 +46,12 @@ typedef enum {
 struct tilt_control_path {
 /* int (*enable_nodata)(int en);//only enable not report event to HAL */
 	int (*open_report_data)(int open);	/* open data rerport to HAL */
-	int (*set_delay)(uint64_t delay);	/* open data rerport to HAL */
-	bool is_report_input_direct;
-	bool is_support_batch;/* version2.used for batch mode support flag */
+/* int (*enable)(int en); */
+	/* bool is_support_batch;//version2.used for batch mode support flag */
 };
 
 struct tilt_data_path {
-	int (*get_data)(int *value, int *status);
+	int (*get_data)(u16 *value, int *status);
 };
 
 struct tilt_init_info {
@@ -85,7 +62,7 @@ struct tilt_init_info {
 };
 
 struct tilt_data {
-	struct hwm_sensor_data tilt_data;
+	hwm_sensor_data tilt_data;
 	int data_updata;
 	/* struct mutex lock; */
 };
@@ -105,6 +82,7 @@ struct tilt_context {
 	atomic_t wake;		/*user-space request to wake-up, used with stop */
 	atomic_t trace;
 
+	struct early_suspend early_drv;
 	atomic_t early_suspend;
 	atomic_t suspend;
 

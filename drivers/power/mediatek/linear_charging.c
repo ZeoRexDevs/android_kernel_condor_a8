@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 /*****************************************************************************
  *
  * Filename:
@@ -98,7 +85,7 @@
 #define CV_CHECK_DELAT_FOR_BANDGAP	80	/* 80mV */
 #if defined(CONFIG_MTK_PUMP_EXPRESS_SUPPORT)
 #define BJT_LIMIT			1200000	/* 1.2W */
-#ifndef TA_START_VCHR_TUNUNG_VOLTAGE
+#ifndef TA_START_VCHR_TUNUNG_VOLTAG
 #define TA_START_VCHR_TUNUNG_VOLTAGE	3700	/* for isink blink issue */
 #define TA_CHARGING_CURRENT		CHARGE_CURRENT_1500_00_MA
 #endif				/* TA_START_VCHR_TUNUNG_VOLTAG */
@@ -750,9 +737,10 @@ PMU_STATUS do_jeita_state_machine(void)
 	cv_voltage = select_jeita_cv();
 	battery_charging_control(CHARGING_CMD_SET_CV_VOLTAGE, &cv_voltage);
 
-#if defined(CONFIG_MTK_HAFG_20)
+	#if defined(CONFIG_MTK_HAFG_20)
 	g_cv_voltage = cv_voltage;
-#endif
+	#endif
+
 
 	return PMU_STATUS_OK;
 }
@@ -847,9 +835,6 @@ unsigned int set_bat_charging_current_limit(int current_limit)
 		"[BATTERY] set_bat_charging_current_limit over usb spec(%d,%d)\r\n",
 				current_limit * 100, g_temp_CC_value);
 			}
-
-
-
 	} else {
 		/* change to default current setting */
 		g_bcct_flag = 0;
@@ -934,28 +919,6 @@ void select_charging_curret(void)
 #else
 			{
 				g_temp_CC_value = batt_cust_data.usb_charger_current;
-
-#if defined(CONFIG_ARM64)
-				if (strncmp(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES,
-				    "k35v1_64_om_lwctg", 17) == 0)
-					g_temp_CC_value = batt_cust_data.ac_charger_current;
-
-				if (strncmp(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES,
-				    "k35v1_64_op01_lwctg", 19) == 0)
-					g_temp_CC_value = batt_cust_data.ac_charger_current;
-
-				if (strncmp(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES,
-				    "k35v1_64_om_lwctg_cnop", 22) == 0)
-					g_temp_CC_value = batt_cust_data.ac_charger_current;
-#elif defined(CONFIG_ARM)
-				if (strncmp(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE_NAMES,
-				    "k35v1_gmo_op02_qhd_512m", 23) == 0)
-					g_temp_CC_value = batt_cust_data.ac_charger_current;
-
-				if (strncmp(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE_NAMES,
-				    "k35v1_gmo_cnop_lwctg_512_35m", 28) == 0)
-					g_temp_CC_value = batt_cust_data.ac_charger_current;
-#endif
 			}
 #endif
 		} else if (BMT_status.charger_type == NONSTANDARD_CHARGER) {
@@ -1118,7 +1081,7 @@ static void pchr_turn_on_charging(void)
 		battery_pump_express_algorithm_start();
 #endif
 
-		/* Set Charging Current */
+		/* Set Charging Current*/
 		if (get_usb_current_unlimited()) {
 			g_temp_CC_value = batt_cust_data.ac_charger_current;
 			battery_log(BAT_LOG_FULL,
@@ -1134,7 +1097,7 @@ static void pchr_turn_on_charging(void)
 			}
 		}
 
-		/* Set Charging Current
+		/* Set Charging Current 
 		if (g_bcct_flag == 1) {
 			battery_log(BAT_LOG_FULL,
 					"[BATTERY] select_charging_curret_bcct !\n");
@@ -1427,5 +1390,4 @@ void mt_battery_charging_algorithm(void)
 		break;
 	}
 
-	battery_charging_control(CHARGING_CMD_DUMP_REGISTER, NULL);
 }

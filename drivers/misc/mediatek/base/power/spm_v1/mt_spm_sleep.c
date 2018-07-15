@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2016 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
- */
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -42,7 +29,7 @@
 /* #include <mt_i2c.h> */
 
 #include "mt_spm_internal.h"
-#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6580)
 #include "pwrap_hal.h"
 #include "mt_vcore_dvfs.h"
 /* #include <mach/mt_dramc.h> */
@@ -55,16 +42,8 @@
 #include <linux/of_address.h>
 #endif
 
-#ifdef CONFIG_MTK_USB2JTAG_SUPPORT
-#include <mt-plat/mt_usb2jtag.h>
-#endif
-
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 #define DISABLE_DLPT_FEATURE
-#endif
-
-#if defined(CONFIG_ARCH_MT6570)
-#define SPM_MAX_PRIO 0
 #endif
 /**************************************
  * only for internal debug
@@ -280,16 +259,16 @@ static const u32 suspend_binary[] = {
 };
 static struct pcm_desc suspend_pcm = {
 	.version	= "pcm_suspend_v34.5.11.3.3.8_20160128-dummy_read",
-	.base		= suspend_binary,
-	.size		= 1023,
-	.sess		= 2,
-	.replace	= 0,
-	.vec0		= EVENT_VEC(23, 1, 0, 0),	/* FUNC_MD_VRF18_WAKEUP */
-	.vec1		= EVENT_VEC(28, 1, 0, 36),	/* FUNC_MD_VRF18_SLEEP */
-	.vec2		= EVENT_VEC(11, 1, 0, 72),	/* FUNC_26M_WAKEUP */
-	.vec3		= EVENT_VEC(12, 1, 0, 106),	/* FUNC_26M_SLEEP */
-	.vec4		= EVENT_VEC(30, 1, 0, 161),	/* FUNC_APSRC_WAKEUP */
-	.vec5		= EVENT_VEC(31, 1, 0, 246),	/* FUNC_APSRC_SLEEP */
+	.base = suspend_binary,
+	.size = 1023,
+	.sess = 2,
+	.replace = 0,
+	.vec0 = EVENT_VEC(23, 1, 0, 0),	/* FUNC_MD_VRF18_WAKEUP */
+	.vec1 = EVENT_VEC(28, 1, 0, 36),	/* FUNC_MD_VRF18_SLEEP */
+	.vec2 = EVENT_VEC(11, 1, 0, 72),	/* FUNC_26M_WAKEUP */
+	.vec3 = EVENT_VEC(12, 1, 0, 106),	/* FUNC_26M_SLEEP */
+	.vec4 = EVENT_VEC(30, 1, 0, 161),	/* FUNC_APSRC_WAKEUP */
+	.vec5 = EVENT_VEC(31, 1, 0, 246),	/* FUNC_APSRC_SLEEP */
 	.vec6		= EVENT_VEC(11, 1, 0, 441),	/* FUNC_VCORE_HIGH */
 	.vec7		= EVENT_VEC(12, 1, 0, 468),	/* FUNC_VCORE_LOW */
 };
@@ -472,16 +451,16 @@ static const u32 suspend_binary[] = {
 };
 static struct pcm_desc suspend_pcm = {
 	.version	= "pcm_suspend_v0.5.4.5_20160311-dummy_read",
-	.base		= suspend_binary,
-	.size		= 1023,
-	.sess		= 2,
-	.replace	= 0,
-	.vec0		= EVENT_VEC(23, 1, 0, 0),	/* FUNC_MD_VRF18_WAKEUP */
-	.vec1		= EVENT_VEC(28, 1, 0, 36),	/* FUNC_MD_VRF18_SLEEP */
-	.vec2		= EVENT_VEC(11, 1, 0, 72),	/* FUNC_26M_WAKEUP */
-	.vec3		= EVENT_VEC(12, 1, 0, 106),	/* FUNC_26M_SLEEP */
-	.vec4		= EVENT_VEC(30, 1, 0, 161),	/* FUNC_APSRC_WAKEUP */
-	.vec5		= EVENT_VEC(31, 1, 0, 244),	/* FUNC_APSRC_SLEEP */
+	.base = suspend_binary,
+	.size = 1023,
+	.sess = 2,
+	.replace = 0,
+	.vec0 = EVENT_VEC(23, 1, 0, 0),	/* FUNC_MD_VRF18_WAKEUP */
+	.vec1 = EVENT_VEC(28, 1, 0, 36),	/* FUNC_MD_VRF18_SLEEP */
+	.vec2 = EVENT_VEC(11, 1, 0, 72),	/* FUNC_26M_WAKEUP */
+	.vec3 = EVENT_VEC(12, 1, 0, 106),	/* FUNC_26M_SLEEP */
+	.vec4 = EVENT_VEC(30, 1, 0, 161),	/* FUNC_APSRC_WAKEUP */
+	.vec5 = EVENT_VEC(31, 1, 0, 244),	/* FUNC_APSRC_SLEEP */
 	.vec6		= EVENT_VEC(11, 1, 0, 439),	/* FUNC_VCORE_HIGH */
 	.vec7		= EVENT_VEC(12, 1, 0, 466),	/* FUNC_VCORE_LOW */
 };
@@ -664,20 +643,20 @@ static const u32 suspend_binary[] = {
 };
 static struct pcm_desc suspend_pcm = {
 	.version	= "pcm_suspend_v0.2.4.1.6.4.1_20151216",
-	.base		= suspend_binary,
-	.size		= 1021,
-	.sess		= 2,
-	.replace	= 0,
-	.vec0		= EVENT_VEC(23, 1, 0, 0),	/* FUNC_MD_VRF18_WAKEUP */
-	.vec1		= EVENT_VEC(28, 1, 0, 33),	/* FUNC_MD_VRF18_SLEEP */
-	.vec2		= EVENT_VEC(11, 1, 0, 66),	/* FUNC_26M_WAKEUP */
-	.vec3		= EVENT_VEC(12, 1, 0, 100),	/* FUNC_26M_SLEEP */
-	.vec4		= EVENT_VEC(30, 1, 0, 155),	/* FUNC_APSRC_WAKEUP */
-	.vec5		= EVENT_VEC(31, 1, 0, 238),	/* FUNC_APSRC_SLEEP */
+	.base = suspend_binary,
+	.size = 1021,
+	.sess = 2,
+	.replace = 0,
+	.vec0 = EVENT_VEC(23, 1, 0, 0),	/* FUNC_MD_VRF18_WAKEUP */
+	.vec1 = EVENT_VEC(28, 1, 0, 33),	/* FUNC_MD_VRF18_SLEEP */
+	.vec2 = EVENT_VEC(11, 1, 0, 66),	/* FUNC_26M_WAKEUP */
+	.vec3 = EVENT_VEC(12, 1, 0, 100),	/* FUNC_26M_SLEEP */
+	.vec4 = EVENT_VEC(30, 1, 0, 155),	/* FUNC_APSRC_WAKEUP */
+	.vec5 = EVENT_VEC(31, 1, 0, 238),	/* FUNC_APSRC_SLEEP */
 	.vec6		= EVENT_VEC(11, 1, 0, 432),	/* FUNC_VCORE_HIGH */
 	.vec7		= EVENT_VEC(12, 1, 0, 464),	/* FUNC_VCORE_LOW */
 };
-#elif defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#elif defined(CONFIG_ARCH_MT6580)
 
 static const u32 suspend_binary[] = {
 	0xa1d58407, 0x81f68407, 0x803a0400, 0x1b80001f, 0x20000000, 0x80300400,
@@ -826,7 +805,7 @@ static struct pcm_desc suspend_pcm = {
 
 #define SPM_WAKE_PERIOD         600	/* sec */
 
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 
 #define WAKE_SRC_FOR_SUSPEND \
 	(WAKE_SRC_KP | WAKE_SRC_EINT |  WAKE_SRC_CONN_WDT  |  WAKE_SRC_CCIF0_MD | WAKE_SRC_CONN2AP | \
@@ -976,7 +955,7 @@ extern void mtk_uart_restore(void);
 extern void dump_uart_reg(void);
 */
 
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 
 static struct pwr_ctrl suspend_ctrl = {
 	.wake_src = WAKE_SRC_FOR_SUSPEND,
@@ -1019,13 +998,8 @@ static struct pwr_ctrl suspend_ctrl = {
 
 	.ca7_wfi0_en = 1,
 	.ca7_wfi1_en = 1,
-#if defined(CONFIG_ARCH_MT6570)
-	.ca7_wfi2_en = 0,
-	.ca7_wfi3_en = 0,
-#else /* CONFIG_ARCH_MT6580 */
 	.ca7_wfi2_en = 1,
 	.ca7_wfi3_en = 1,
-#endif
 	.ca15_wfi0_en = 0,
 	.ca15_wfi1_en = 0,
 	.ca15_wfi2_en = 0,
@@ -1082,14 +1056,6 @@ static struct pwr_ctrl suspend_ctrl = {
 #endif
 };
 
-#endif
-
-#if defined(CONFIG_ARCH_MT6570)
-/* TODO: fix build error */
-int __attribute__ ((weak)) mt_cpu_dormant(unsigned long flags)
-{
-	return 0;
-}
 #endif
 
 struct spm_lp_scen __spm_suspend = {
@@ -1410,7 +1376,7 @@ static wake_reason_t spm_output_wake_reason(struct wake_status *wakesta, struct 
 	}
 #endif
 
-#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6580)
 #ifdef CONFIG_MTK_CCCI_DEVICES
 	if (wakesta->r13 & 0x18) {
 		spm_warn("dump ID_DUMP_MD_SLEEP_MODE");
@@ -1602,9 +1568,8 @@ wake_reason_t spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 	if (!wd_ret)
 		wd_api->wd_suspend_notify();
 
-#if !defined(CONFIG_ARCH_MT6570)
-	mt_power_gs_dump_suspend(); /* TODO */
-#endif
+	mt_power_gs_dump_suspend();
+
 	/* spm_suspend_pre_process(pwrctrl); */
 	lockdep_off();
 	spin_lock_irqsave(&__spm_lock, flags);
@@ -1645,7 +1610,7 @@ wake_reason_t spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 
 	__spm_set_wakeup_event(pwrctrl);
 
-#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6580)
 	mt_cpufreq_set_pmic_phase(PMIC_WRAP_PHASE_SUSPEND);
 #endif
 #if 0
@@ -1680,22 +1645,15 @@ wake_reason_t spm_go_to_sleep(u32 spm_flags, u32 spm_data)
 	aee_rr_rec_spm_suspend_val(aee_rr_curr_spm_suspend_val() | (1 << SPM_SUSPEND_ENTER_WFI));
 #endif
 
-#if defined(CONFIG_ARCH_MT6750)
-	/* TODO: check sleep abort */
-	save_prio = mt_get_irq_priority(SPM_IRQ0_ID);
-	mt_set_irq_priority(SPM_IRQ0_ID, SPM_MAX_PRIO);
-#endif
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 	gic_set_primask();
 #endif
 	spm_trigger_wfi_for_sleep(pwrctrl);
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 	gic_clear_primask();
 #endif
-#if defined(CONFIG_ARCH_MT6750)
-	mt_set_irq_priority(SPM_IRQ0_ID, save_prio);
-#endif
-#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
+
+#if !defined(CONFIG_ARCH_MT6580)
 	mt_cpufreq_set_pmic_phase(PMIC_WRAP_PHASE_NORMAL);
 #endif
 
@@ -1739,11 +1697,6 @@ RESTORE_IRQ:
 
 	if (!wd_ret)
 		wd_api->wd_resume_notify();
-
-#ifdef CONFIG_MTK_USB2JTAG_SUPPORT
-	if (usb2jtag_mode())
-		mt_usb2jtag_resume();
-#endif
 #if SPM_AEE_RR_REC
 	aee_rr_rec_spm_suspend_val(aee_rr_curr_spm_suspend_val() | (1 << SPM_SUSPEND_LEAVE));
 #endif
@@ -1913,7 +1866,7 @@ u32 spm_get_last_wakeup_misc(void)
 	return spm_wakesta.wake_misc;
 }
 
-#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6580)
 uint32_t get_suspend_debug_flag(void)
 {
 	uint32_t value = 0;

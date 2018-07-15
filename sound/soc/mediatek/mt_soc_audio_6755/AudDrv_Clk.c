@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -256,7 +254,7 @@ void AudDrv_Clk_Power_On(void)
 	/* volatile uint32 *AFE_Register = (volatile uint32 *)Get_Afe_Powertop_Pointer(); */
 	uint32 val_tmp;
 
-	/* pr_debug("%s", __func__); */
+	pr_debug("%s", __func__);
 	val_tmp = 0xd;
 	/* mt_reg_sync_writel(val_tmp, AFE_Register); */
 }
@@ -347,7 +345,7 @@ void AudDrv_Clk_On(void)
 	spin_lock_irqsave(&auddrv_Clk_lock, flags);
 	Aud_AFE_Clk_cntr++;
 	if (Aud_AFE_Clk_cntr == 1) {
-		PRINTK_AUD_CLK("-----------  AudDrv_Clk_On, Aud_AFE_Clk_cntr:%d\n", Aud_AFE_Clk_cntr);
+		pr_err("-----------  AudDrv_Clk_On, Aud_AFE_Clk_cntr:%d\n", Aud_AFE_Clk_cntr);
 #ifdef PM_MANAGER_API
 #ifdef CONFIG_MTK_CLKMGR
 		if (enable_clock(MT_CG_INFRA_AUDIO, "AUDIO"))
@@ -366,21 +364,6 @@ void AudDrv_Clk_On(void)
 		/* pr_err("-----------[CCF]AudDrv_Clk_On, aud_infra_clk:%d\n",
 			aud_clks[CLOCK_INFRA_SYS_AUDIO].clk_prepare); */
 
-		if (aud_clks[CLOCK_PERI_AUDIO26M].clk_prepare) {
-			ret = clk_enable(aud_clks[CLOCK_PERI_AUDIO26M].clock);
-			if (ret) {
-				pr_err("%s [CCF]Aud enable_clock %s fail\n", __func__,
-				       aud_clks[CLOCK_PERI_AUDIO26M].name);
-				BUG();
-				goto UNLOCK;
-			}
-		} else {
-			pr_err("%s [CCF]clk_prepare error Aud enable_clock MT_CG_PERI_AUDIO26M fail\n",
-			       __func__);
-			BUG();
-			goto UNLOCK;
-		}
-
 		if (aud_clks[CLOCK_INFRA_SYS_AUDIO].clk_prepare) {
 			ret = clk_enable(aud_clks[CLOCK_INFRA_SYS_AUDIO].clock);
 			if (ret) {
@@ -391,6 +374,21 @@ void AudDrv_Clk_On(void)
 			}
 		} else {
 			pr_err("%s [CCF]clk_prepare error Aud enable_clock MT_CG_INFRA_AUDIO fail\n",
+			       __func__);
+			BUG();
+			goto UNLOCK;
+		}
+
+		if (aud_clks[CLOCK_PERI_AUDIO26M].clk_prepare) {
+			ret = clk_enable(aud_clks[CLOCK_PERI_AUDIO26M].clock);
+			if (ret) {
+				pr_err("%s [CCF]Aud enable_clock %s fail\n", __func__,
+				       aud_clks[CLOCK_PERI_AUDIO26M].name);
+				BUG();
+				goto UNLOCK;
+			}
+		} else {
+			pr_err("%s [CCF]clk_prepare error Aud enable_clock MT_CG_PERI_AUDIO26M fail\n",
 			       __func__);
 			BUG();
 			goto UNLOCK;
@@ -480,7 +478,7 @@ void AudDrv_Clk_Off(void)
 
 	Aud_AFE_Clk_cntr--;
 	if (Aud_AFE_Clk_cntr == 0) {
-		PRINTK_AUD_CLK("------------AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d\n", Aud_AFE_Clk_cntr);
+		pr_err("------------AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d\n", Aud_AFE_Clk_cntr);
 #ifdef PM_MANAGER_API
 #ifdef CONFIG_MTK_CLKMGR
 		if (disable_clock(MT_CG_AUDIO_AFE, "AUDIO"))
@@ -503,30 +501,28 @@ void AudDrv_Clk_Off(void)
 		/* Make sure all IRQ status is cleared */
 		Afe_Set_Reg(AFE_IRQ_MCU_CLR, 0xffff, 0xffff);
 
+		if (aud_clks[CLOCK_AFE].clk_prepare)
+			clk_disable(aud_clks[CLOCK_AFE].clock);
+
+		if (aud_clks[CLOCK_DAC].clk_prepare)
+			clk_disable(aud_clks[CLOCK_DAC].clock);
+
+		if (aud_clks[CLOCK_DAC_PREDIS].clk_prepare)
+			clk_disable(aud_clks[CLOCK_DAC_PREDIS].clock);
+
+		if (aud_clks[CLOCK_INFRA_SYS_AUDIO].clk_prepare)
+			clk_disable(aud_clks[CLOCK_INFRA_SYS_AUDIO].clock);
+
 		spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
 
 		/* CLOCK_SCP_SYS_AUD is MTCMOS */
 		if (aud_clks[CLOCK_SCP_SYS_AUD].clk_status)
 			clk_disable_unprepare(aud_clks[CLOCK_SCP_SYS_AUD].clock);
 
-		spin_lock_irqsave(&auddrv_Clk_lock, flags);
-
-		if (aud_clks[CLOCK_DAC_PREDIS].clk_prepare)
-			clk_disable(aud_clks[CLOCK_DAC_PREDIS].clock);
-
-		if (aud_clks[CLOCK_DAC].clk_prepare)
-			clk_disable(aud_clks[CLOCK_DAC].clock);
-
-		if (aud_clks[CLOCK_AFE].clk_prepare)
-			clk_disable(aud_clks[CLOCK_AFE].clock);
-
-		if (aud_clks[CLOCK_INFRA_SYS_AUDIO].clk_prepare)
-			clk_disable(aud_clks[CLOCK_INFRA_SYS_AUDIO].clock);
-
 		if (aud_clks[CLOCK_PERI_AUDIO26M].clk_prepare)
 			clk_disable(aud_clks[CLOCK_PERI_AUDIO26M].clock);
 
-		/*return;*/
+		return;
 #endif
 
 #else

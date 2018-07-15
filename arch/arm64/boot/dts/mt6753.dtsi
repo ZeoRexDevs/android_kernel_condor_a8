@@ -11,7 +11,6 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include "mt6735-pinfunc.h"
 #include <dt-bindings/mmc/mt67xx-msdc.h>
-#include <generated/autoconf.h>
 
 / {
 	model = "MT6753";
@@ -76,12 +75,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 	};
 	};
 
-	/* ATF logger SW IRQ number 281 = 32 + 249 */
-	atf_logger {
-		compatible = "mediatek,atf_logger";
-		interrupts = <GIC_SPI 249 IRQ_TYPE_EDGE_RISING>;
-	};
-
 	psci {
 		compatible  = "arm,psci";
 		method      = "smc";
@@ -97,15 +90,15 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 	};
 
 	utos {
-		compatible = "microtrust,utos";
-		interrupts = <GIC_SPI 244 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 245 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 246 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 250 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 251 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 252 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 253 IRQ_TYPE_EDGE_RISING>,
-			<GIC_SPI 255 IRQ_TYPE_EDGE_RISING>;
+	compatible = "microtrust,utos";
+	interrupts = <GIC_SPI 244 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 245 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 246 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 250 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 251 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 252 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 253 IRQ_TYPE_EDGE_RISING>,
+		<GIC_SPI 255 IRQ_TYPE_EDGE_RISING>;
 	};
 
 	cpus {	#address-cells = <1>;
@@ -274,7 +267,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 		consys-reserve-memory {
 			compatible = "mediatek,consys-reserve-memory";
 			no-map;
-			size = <0 0x200000>;
+			size = <0 0x100000>;
 			alignment = <0 0x200000>;
 		};
 
@@ -430,27 +423,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-frequency = <13000000>;
 		};
 
-		pmu {
-			compatible = "arm,armv8-pmuv3";
-			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 9 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 10 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 11 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 12 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 13 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 14 IRQ_TYPE_LEVEL_LOW>,
-				<GIC_SPI 15 IRQ_TYPE_LEVEL_LOW>;
-
-			interrupt-affinity = <&cpu0>,
-				<&cpu1>,
-				<&cpu2>,
-				<&cpu3>,
-				<&cpu4>,
-				<&cpu5>,
-				<&cpu6>,
-				<&cpu7>;
-		};
-
 		timer {
 			compatible = "arm,armv8-timer";
 			interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_LOW>, /*Secure Physical Timer Event*/
@@ -599,6 +571,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 					regulator-min-microvolt = <2900000>;
 					regulator-max-microvolt = <3300000>;
 					regulator-enable-ramp-delay = <44>;
+					regulator-boot-on;
 				};
 				mt_pmic_vtref_ldo_reg: ldo_vtref {
 					regulator-name = "vtref";
@@ -611,6 +584,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 					regulator-min-microvolt = <1800000>;
 					regulator-max-microvolt = <3300000>;
 					regulator-enable-ramp-delay = <44>;
+					regulator-boot-on;
 				};
 				mt_pmic_vcam_af_ldo_reg: ldo_vcamaf {
 					regulator-name = "vcamaf";
@@ -640,7 +614,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 				mt_pmic_vcamd_ldo_reg: ldo_vcamd {
 					regulator-name = "vcamd";
 					regulator-min-microvolt = <900000>;
-					regulator-max-microvolt = <1500000>;
+					regulator-max-microvolt = <1800000>;/*<1500000>modified by xiehaifei 151212*/
 					regulator-enable-ramp-delay = <264>;
 				};
 				mt_pmic_vrf18_0_ldo_reg: ldo_vrf18_0 {
@@ -651,7 +625,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 				};
 				mt_pmic_vrf18_1_ldo_reg: ldo_vrf18_1 {
 					regulator-name = "vrf18_1";
-					regulator-min-microvolt = <1200000>;
+					regulator-min-microvolt = <1000000>;/*<1200000>modified by xiehaifei 151212*/
 					regulator-max-microvolt = <1825000>;
 					regulator-enable-ramp-delay = <220>;
 				};
@@ -883,6 +857,12 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-div = <1>;
 			clocks = <&perisys PERI_IRTX>;
 			clock-names = "clk-irtx-main";
+
+			pinctrl-names = "irtx_gpio_default",
+					"irtx_gpio_led_set";
+			pinctrl-0 = <&irtx_gpio_default>;
+			pinctrl-1 = <&irtx_gpio_led_set>;
+			status = "okay";
 		};
 
 		apuart0: apuart0@11002000 {
@@ -899,17 +879,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-div = <1>;
 			clocks = <&perisys PERI_UART0>, <&perisys PERI_APDMA>;
 			clock-names = "uart0-main", "uart-apdma";
-			pinctrl-names = "default",
-					"uart0_rx_set",
-					"uart0_rx_clear",
-					"uart0_tx_set",
-					"uart0_tx_clear";
-
-			pinctrl-0 = <&uart0_gpio_def_cfg>;
-			pinctrl-1 = <&uart0_rx_set_cfg>;
-			pinctrl-2 = <&uart0_rx_clr_cfg>;
-			pinctrl-3 = <&uart0_tx_set_cfg>;
-			pinctrl-4 = <&uart0_tx_clr_cfg>;
 		};
 
 		apuart1: apuart1@11003000 {
@@ -926,17 +895,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-div = <1>;
 			clocks = <&perisys PERI_UART1>;
 			clock-names = "uart1-main";
-			pinctrl-names = "uart1_gpio_default",
-					"uart1_rx_set",
-					"uart1_rx_clear",
-					"uart1_tx_set",
-					"uart1_tx_clear";
-
-			pinctrl-0 = <&uart1_gpio_def_cfg>;
-			pinctrl-1 = <&uart1_rx_set_cfg>;
-			pinctrl-2 = <&uart1_rx_clr_cfg>;
-			pinctrl-3 = <&uart1_tx_set_cfg>;
-			pinctrl-4 = <&uart1_tx_clr_cfg>;
 		};
 
 		apuart2: apuart2@11004000 {
@@ -953,17 +911,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-div = <1>;
 			clocks = <&perisys PERI_UART2>;
 			clock-names = "uart2-main";
-			pinctrl-names = "uart2_gpio_default",
-					"uart2_rx_set",
-					"uart2_rx_clear",
-					"uart2_tx_set",
-					"uart2_tx_clear";
-
-			pinctrl-0 = <&uart2_gpio_def_cfg>;
-			pinctrl-1 = <&uart2_rx_set_cfg>;
-			pinctrl-2 = <&uart2_rx_clr_cfg>;
-			pinctrl-3 = <&uart2_tx_set_cfg>;
-			pinctrl-4 = <&uart2_tx_clr_cfg>;
 		};
 
 		apuart3: apuart3@11005000 {
@@ -980,17 +927,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-div = <1>;
 			clocks = <&perisys PERI_UART3>;
 			clock-names = "uart3-main";
-			pinctrl-names = "uart3_gpio_default",
-					"uart3_rx_set",
-					"uart3_rx_clear",
-					"uart3_tx_set",
-					"uart3_tx_clear";
-
-			pinctrl-0 = <&uart3_gpio_def_cfg>;
-			pinctrl-1 = <&uart3_rx_set_cfg>;
-			pinctrl-2 = <&uart3_rx_clr_cfg>;
-			pinctrl-3 = <&uart3_tx_set_cfg>;
-			pinctrl-4 = <&uart3_tx_clr_cfg>;
 		};
 
 		THERM_CTRL@0x1100B000 {
@@ -1248,10 +1184,16 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			vcamd-supply = <&mt_pmic_vcamd_ldo_reg>;
 			vcamaf-supply = <&mt_pmic_vcam_af_ldo_reg>;
 			vcamio-supply = <&mt_pmic_vcam_io_ldo_reg>;
+			vcama_sub-supply = <&mt_pmic_vcama_ldo_reg>;
+			vcamd_sub-supply = <&mt_pmic_vrf18_1_ldo_reg>;
 		};
 
 		kd_camera_hw2:kd_camera_hw2@15008000 {
 			compatible = "mediatek,camera_hw2";
+			vcama_sub-supply = <&mt_pmic_vcama_ldo_reg>;
+			vcamd_sub-supply = <&mt_pmic_vrf18_1_ldo_reg>;
+			vcamaf-supply = <&mt_pmic_vcam_af_ldo_reg>;
+			vcamio-supply = <&mt_pmic_vcam_io_ldo_reg>;
 			reg = <0x15008000 0x1000>;  /* SENINF_ADDR */
 		};
 
@@ -1337,10 +1279,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			status = "disabled";
 		};
 
-		swtp: swtp {
-			compatible = "mediatek, swtp-eint";
-		};
-
 		dsi_te: dsi_te {
 			compatible = "mediatek, dsi_te_1-eint";
 			status = "disabled";
@@ -1375,17 +1313,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			mediatek,mapping_table_entry = <0>;
 			mediatek,max_deint_cnt = <4>;
 			mediatek,deint_possible_irq = <187 188 189 190>;
-			mediatek,debtime_setting_entry = <10>;
-			mediatek,debtime_setting_array	= <0 125>,
-							<1 250>,
-							<2 500>,
-							<3 1000>,
-							<4 16000>,
-							<5 32000>,
-							<6 64000>,
-							<7 128000>,
-							<8 256000>,
-							<9 512000>;
 		};
 
 
@@ -1425,6 +1352,24 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			interrupts = <GIC_SPI 85 IRQ_TYPE_LEVEL_LOW>,
 				<GIC_SPI 99 IRQ_TYPE_LEVEL_LOW>;
 			def_speed = <100>;
+			gsl_touch@40 {
+           		compatible = "mediatek,gsl_touch";
+           		reg = <0x40>;
+      			};   
+			himax-ts@48 {
+			compatible               	= "himax,852xes";
+			reg                      	= <0x48>;
+			interrupts               	= <10 0x0>;
+			vdd_ana-supply = <&mt_pmic_vgp1_ldo_reg>;
+			vcc_i2c-supply = <&mt_pmic_vio18_ldo_reg>;
+			himax,panel-coords   	= <0 720 0 1280>;
+			himax,display-coords 	= <0 720 0 1280>;
+			report_type              	= <1>;
+			};
+			focaltech@38 {
+                                 compatible = "mediatek, ft5x0x";
+                                 reg = <0x38>;
+			};
 		};
 
 		i2c2:i2c@11009000 {
@@ -1650,8 +1595,8 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			      <0x10206514 0x000c>,  /*DISP_DPI_EFUSE_PERMISSION */
 			      <0x10206558 0x000c>,  /*DISP_DPI_EFUSE_KEY */
 			      <0x102100a0 0x1000>,  /*DISP_TVDPLL_CFG6 */
-			      <0x10209260 0x1000>,  /*DISP_TVDPLL_CON0 */
-			      <0x10209264 0x1000>,  /*DISP_TVDPLL_CON1 */
+			      <0x10209270 0x1000>,  /*DISP_TVDPLL_CON0 */
+			      <0x10209274 0x1000>,  /*DISP_TVDPLL_CON1 */
 			      <0x14012000 0x1000>,  /*DISP_OD      */
 			      <0x10209000 0x1000>;  /*DISP_VENCPLL      */
 
@@ -1687,10 +1632,10 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 				     <0 0 8>, /*DISP_TVDPLL_CON0 */
 				     <0 0 8>, /*DISP_TVDPLL_CON1 */
 				     <0 210 8>, /*DISP_OD      */
-				     <0 0 8>; /*DISP_VENCPLL      */
+				     <0 0 8>;  /*DISP_VENCPLL      */
 		};
 		mhl:mhl@0 {
-			compatible = "mediatek,extd_dev";
+			compatible = "mediatek,sii8348-hdmi";
 		};
 
 		lcm: lcm {
@@ -1700,9 +1645,38 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 		lcm_mode: lcm_mode {
 			compatible = "mediatek,lcm_mode";
 		};
-
-		cpu_dbgapb: cpu_dbgapb {
-			compatible = "mediatek,hw_dbg";
+		/*LY LCM PIN CTRL added by xiehaifei*/
+		lcmpinctrl:lcm_pinctrl {
+            		compatible = "mediatek,lcm_pinctrl";
+        	};
+		/*LY LCM PIN CTRL ended by xiehaifei*/
+		/*add by zhangchongyong for TE ESD*/
+ 		dsi_te_1:dsi_te_1 { 
+                         compatible = "mediatek, DSI_TE_1-eint";
+                };
+		/*end by zhangchongyong for TE ESD*/
+       		/*zhangtao add switch drv start*/
+               	mhall: mhall { 
+                       compatible = "mediatek, MHALL-eint";
+               	};
+               	/*zhangtao add switch drv end*/
+		/*add by zhangchongyong for Camkey*/
+		hall_1: hall_1 { 
+                       compatible = "mediatek, HALL_1-eint";
+		};
+		/*end by zhangchongyong for Camkey*/
+		/*added by xiehaifei 20151215  for fingerprint detect*/
+		fingerprint:fingerprint {
+			compatible = "mediatek,fingerprint";
+		};
+		/*end by xiehaifei 20151215*/
+		/*added by xiehaifei 20160603  for three color leds gpio pinctrl*/
+		ledspinctrl:ledspinctrl {
+			compatible = "mediatek,ledspinctrl";
+		};
+		/*end by xiehaifei 20160603*/
+		cpu_dbgapb: cpu_dbgapb@10810000 {
+			compatible = "mediatek,mt6735-dbg_debug";
 			num = <8>;
 			reg =  <0x10810000 0x1000
 				0x10910000 0x1000
@@ -1749,7 +1723,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 
 
 		gps {
-			compatible = "mediatek,gps";
+			compatible = "mediatek,mt3326-gps";
 		};
 		wifi@180F0000 {
 			compatible = "mediatek,wifi";
@@ -1773,7 +1747,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 			clock-names = "usb0";
 			VUSB33-supply = <&mt_pmic_vusb33_ldo_reg>;
 			iddig_gpio = <0 1>;
-			drvvbus_gpio = <83 2>;
+			drvvbus_gpio = <2 0>;
 		};
 
 		audio@11220000 {
@@ -2022,134 +1996,6 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 
 #include "cust.dtsi"
 
-&pio {
-	/* UART GPIO Settings - Start */
-	/* UART0: rx set, rx clear, tx clear, tx clear*/
-	uart0_gpio_def_cfg:uart0gpiodefault {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO74__FUNC_URXD0>;
-			slew-rate = <0>;
-			bias-pull-up;
-		};
-	};
-	uart0_rx_set_cfg:uart0_rx_set {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO74__FUNC_URXD0>;
-			slew-rate = <0>;
-			bias-pull-up;
-		};
-	};
-	uart0_rx_clr_cfg:uart0_rx_clear  {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO74__FUNC_GPIO74>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-	uart0_tx_set_cfg:uart0_tx_set  {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO75__FUNC_UTXD0>;
-		};
-	};
-	uart0_tx_clr_cfg:uart0_tx_clear  {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO75__FUNC_GPIO75>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-
-	/* UART1: rx set, rx clear, tx clear, tx clear*/
-	uart1_gpio_def_cfg:uart1gpiodefault {
-
-	};
-	uart1_rx_set_cfg:uart1_rx_set {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO76__FUNC_URXD1>;
-		};
-	};
-	uart1_rx_clr_cfg:uart1_rx_clear {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO76__FUNC_GPIO76>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-	uart1_tx_set_cfg:uart1_tx_set {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO77__FUNC_UTXD1>;
-		};
-	};
-	uart1_tx_clr_cfg:uart1_tx_clear {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO77__FUNC_GPIO77>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-
-	/* UART2: rx set, rx clear, tx clear, tx clear*/
-	uart2_gpio_def_cfg:uart2gpiodefault {
-
-	};
-	uart2_rx_set_cfg:uart2_rx_set {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO57__FUNC_URXD2>;
-		};
-	};
-	uart2_rx_clr_cfg:uart2_rx_clear {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO57__FUNC_GPIO57>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-	uart2_tx_set_cfg:uart2_tx_set {
-		pins_cmd_dat {
-			pins = <PINMUX_GPIO58__FUNC_UTXD2>;
-		};
-	};
-	uart2_tx_clr_cfg:uart2_tx_clear {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO58__FUNC_GPIO58>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-
-	/* UART3: rx set, rx clear, tx clear, tx clear*/
-	uart3_gpio_def_cfg:uart3gpiodefault {
-
-	};
-	uart3_rx_set_cfg:uart3_rx_set {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO59__FUNC_URXD3>;
-		};
-	};
-	uart3_rx_clr_cfg:uart3_rx_clear {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO59__FUNC_GPIO59>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-	uart3_tx_set_cfg:uart3_tx_set {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO60__FUNC_UTXD3>;
-			};
-		};
-	uart3_tx_clr_cfg:uart3_tx_clear {
-		pins_cmd_dat {
-			pinmux = <PINMUX_GPIO60__FUNC_GPIO60>;
-			slew-rate = <1>;
-			output-high;
-		};
-	};
-
-	/* UART GPIO Settings - End */
-};
-
-
 &eintc {
 	pmic@206 {
 	compatible = "mediatek, pmic-eint";
@@ -2328,8 +2174,24 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 };
 /*CLDMA end*/
 
-#include <trusty.dtsi>
+&pio {
+	/* IRTX GPIO Settings -Start */
+	/* default: GPIO0, output, high */
+	irtx_gpio_default:irtx_gpio_led_def@gpio12 {
+	    pins_cmd_dat {
+			pins = <PINMUX_GPIO12__FUNC_GPIO12>;
+			slew-rate = <1>;
+			bias-disable;
+			output-high;
+			input-schmitt-enable = <0>;
+		};
+	};
 
-#ifdef CONFIG_MTK_RT9466_SUPPORT
-#include "rt9466.dtsi"
-#endif
+	irtx_gpio_led_set:irtx_gpio_led_set@gpio12 {
+	    pins_cmd_dat {
+			pins = <PINMUX_GPIO12__FUNC_IRTX_OUT>;
+		};
+	};
+	/* IRTX GPIO Settings -End */
+};
+#include <trusty.dtsi>

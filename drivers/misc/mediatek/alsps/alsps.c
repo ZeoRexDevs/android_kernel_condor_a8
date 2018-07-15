@@ -1,21 +1,12 @@
-/*
-* Copyright (C) 2013 MediaTek Inc.
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License version 2 as
-* published by the Free Software Foundation.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
-*/
+#include <linux/proc_fs.h>	/* proc file use */
+#include <linux/seq_file.h>
 
 #include "inc/alsps.h"
 #include "inc/aal_control.h"
 struct alsps_context *alsps_context_obj = NULL;
 struct platform_device *pltfm_dev;
 
+static char mtk_alsps_name[128] = {0};/*zhangtao add Alsps infos*/
 
 static struct alsps_init_info *alsps_init_list[MAX_CHOOSE_ALSPS_NUM] = {0};
 
@@ -83,7 +74,7 @@ static void als_work_func(struct work_struct *work)
 			goto als_loop;
 		}
 	}
-	/* ALSPS_LOG(" als data[%d]\n" , cxt->drv_data.als_data.values[0]); */
+	ALSPS_LOG(" als data[%d]\n" , cxt->drv_data.als_data.values[0]);
 	als_data_report(cxt->idev,
 	cxt->drv_data.als_data.values[0],
 	cxt->drv_data.als_data.status);
@@ -131,12 +122,12 @@ static void ps_work_func(struct work_struct *work)
 			goto ps_loop;
 		}
 	}
-
+/*
 	if (cxt->is_get_valid_ps_data_after_enable == false) {
-		if (ALSPS_INVALID_VALUE != cxt->drv_data.ps_data.values[0])
+		if (ALSPS_INVALID_VALUE != cxt->drv_data.als_data.values[0])
 			cxt->is_get_valid_ps_data_after_enable = true;
 	}
-
+*/
 	ps_data_report(cxt->idev,
 	cxt->drv_data.ps_data.values[0],
 	cxt->drv_data.ps_data.status);
@@ -209,7 +200,7 @@ static int als_real_enable(int enable)
 	if (1 == enable) {
 		if (true == cxt->is_als_active_data || true == cxt->is_als_active_nodata) {
 			err = cxt->als_ctl.enable_nodata(1);
-			if (err) {
+			if (err)
 				err = cxt->als_ctl.enable_nodata(1);
 				if (err) {
 					err = cxt->als_ctl.enable_nodata(1);
@@ -217,8 +208,7 @@ static int als_real_enable(int enable)
 						ALSPS_ERR("alsps enable(%d) err 3 timers = %d\n", enable, err);
 				}
 			}
-		}
-		ALSPS_LOG("alsps real enable\n");
+			ALSPS_LOG("alsps real enable\n");
 	}
 
 	if (0 == enable) {
@@ -496,14 +486,8 @@ static ssize_t als_show_devnum(struct device *dev,
 	unsigned int devnum;
 	const char *devname = NULL;
 	int ret;
-	struct input_handle *handle;
 
-	list_for_each_entry(handle, &alsps_context_obj->idev->h_list, d_node)
-		if (strncmp(handle->name, "event", 5) == 0) {
-			devname = handle->name;
-			break;
-		}
-
+	devname = dev_name(&alsps_context_obj->idev->dev);
 	ret = sscanf(devname+5, "%d", &devnum);
 	return snprintf(buf, PAGE_SIZE, "%d\n", devnum);
 }
@@ -648,14 +632,8 @@ static ssize_t ps_show_devnum(struct device *dev,
 	unsigned int devnum;
 	const char *devname = NULL;
 	int ret;
-	struct input_handle *handle;
 
-	list_for_each_entry(handle, &alsps_context_obj->idev->h_list, d_node)
-		if (strncmp(handle->name, "event", 5) == 0) {
-			devname = handle->name;
-			break;
-		}
-
+	devname = dev_name(&alsps_context_obj->idev->dev);
 	ret = sscanf(devname+5, "%d", &devnum);
 	return snprintf(buf, PAGE_SIZE, "%d\n", devnum);
 }
@@ -696,6 +674,8 @@ static int alsps_real_driver_init(void)
 	int i = 0;
 	int err = 0;
 
+	memset(mtk_alsps_name, 0, 128);/*zhangtao add Alsps infos*/
+		
 	ALSPS_LOG(" alsps_real_driver_init +\n");
 	for (i = 0; i < MAX_CHOOSE_ALSPS_NUM; i++) {
 		ALSPS_LOG("alsps_real_driver_init i=%d\n", i);
@@ -704,6 +684,7 @@ static int alsps_real_driver_init(void)
 			err = alsps_init_list[i]->init();
 			if (0 == err) {
 				ALSPS_LOG(" alsps real driver %s probe ok\n", alsps_init_list[i]->name);
+				strcpy((char *)mtk_alsps_name, alsps_init_list[i]->name);/*zhangtao add Alsps infos*/
 				break;
 			}
 		}
@@ -1023,6 +1004,25 @@ int alsps_aal_get_data(void)
 }
 /* *************************************************** */
 
+/* Alsps information */
+static int subsys_alsps_info_read(struct seq_file *m, void *v)
+{
+   seq_printf(m, "%s\n",mtk_alsps_name);
+   return 0;
+};
+
+static int proc_alsps_info_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, subsys_alsps_info_read, NULL);
+};
+
+static  struct file_operations alsps_proc_fops = {
+    .owner = THIS_MODULE,
+    .open  = proc_alsps_info_open,
+    .read  = seq_read,
+};
+
+
 static int alsps_probe(void)
 {
 	int err;
@@ -1050,6 +1050,9 @@ static int alsps_probe(void)
 		ALSPS_ERR("unable to register alsps input device!\n");
 		goto exit_alloc_input_dev_failed;
 	}
+
+	proc_create("hw_info/alsps_info", 0, NULL, &alsps_proc_fops);/*zhangtao add Alsps infos*/
+	
 	ALSPS_LOG("----alsps_probe OK !!\n");
 	return 0;
 

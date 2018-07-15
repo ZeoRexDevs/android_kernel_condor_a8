@@ -13,6 +13,9 @@
 #include <linux/workqueue.h>
 #include <linux/wait.h>
 #include <linux/slab.h>
+#include <linux/proc_fs.h>   //proc file use
+#include <linux/seq_file.h>
+
 #include <linux/module.h>
 
 #include <hwmsensor.h>
@@ -30,6 +33,10 @@
 
 #include <cust_alsps.h>
 #include <aal_control.h>
+
+#ifndef LYCONFIG_DETECT_HW_INFO_SUPPORT
+#define LYCONFIG_DETECT_HW_INFO_SUPPORT
+#endif
 
 #define SENSOR_INVALID_VALUE -1
 #define MAX_CHOOSE_G_NUM 5
@@ -62,15 +69,18 @@ struct hwmsen_context {		/*sensor context */
 
 #if defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
 static char gsensor_name[25];
-static struct sensor_init_info *gsensor_init_list[MAX_CHOOSE_G_NUM] = { 0 };	/*modified*/
+static struct sensor_init_info* gsensor_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
+static char mtk_acc_name[128] = {0};
 #endif
 #if defined(CONFIG_MTK_AUTO_DETECT_MAGNETOMETER)
 static char msensor_name[25];
-static struct sensor_init_info *msensor_init_list[MAX_CHOOSE_G_NUM] = { 0 };	/*modified*/
+static struct sensor_init_info* msensor_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
+static char mtk_msensor_name[128] = {0};
 #endif
 #if defined(CONFIG_MTK_AUTO_DETECT_ALSPS)
 static char alsps_name[25];
-static struct sensor_init_info *alsps_init_list[MAX_CHOOSE_G_NUM] = { 0 };	/*modified*/
+static struct sensor_init_info* alsps_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
+static char mtk_alsps_name[128] = {0};
 #endif
 
 /*----------------------------------------------------------------------------*/
@@ -594,8 +604,7 @@ static int hwmsen_enable(struct hwmdev_object *obj, int sensor, int enable)
 
 	sensor_type = 1LL << sensor;
 
-
-	if (sensor > MAX_ANDROID_SENSOR_NUM || sensor < 0) {
+	if (sensor > MAX_ANDROID_SENSOR_NUM) {
 		HWM_ERR("handle %d!\n", sensor);
 		return -EINVAL;
 	}
@@ -610,10 +619,11 @@ static int hwmsen_enable(struct hwmdev_object *obj, int sensor, int enable)
 
 	if (sensor > MAX_ANDROID_SENSOR_NUM) {
 		HWM_ERR("sensor %d!\n", sensor);
-		return -ENODEV;
+		return -EINVAL;
 	}
 	mutex_lock(&obj->dc->lock);
 	cxt = obj->dc->cxt[sensor];
+
 
 	if (enable == 1) {
 		/*{@for mt6582 blocking issue work around*/
@@ -717,7 +727,7 @@ static int hwmsen_enable_nodata(struct hwmdev_object *obj, int sensor, int enabl
 	HWM_FUN(f);
 	sensor_type = 1LL << sensor;
 
-	if (sensor > MAX_ANDROID_SENSOR_NUM || sensor < 0) {
+	if (sensor > MAX_ANDROID_SENSOR_NUM) {
 		HWM_ERR("handle %d!\n", sensor);
 		return -EINVAL;
 	}
@@ -729,6 +739,7 @@ static int hwmsen_enable_nodata(struct hwmdev_object *obj, int sensor, int enabl
 		HWM_ERR("the sensor (%d) is not attached!!\n", sensor);
 		return -ENODEV;
 	}
+
 
 	if (sensor > MAX_ANDROID_SENSOR_NUM) {
 		HWM_ERR("sensor %d!\n", sensor);
@@ -780,7 +791,7 @@ static int hwmsen_set_delay(int delay, int handle)
 	int err = 0;
 	struct hwmsen_context *cxt = NULL;
 
-	if (handle > MAX_ANDROID_SENSOR_NUM || handle < 0) {
+	if (handle > MAX_ANDROID_SENSOR_NUM) {
 		HWM_ERR("handle %d!\n", handle);
 		return -EINVAL;
 	}
@@ -986,13 +997,8 @@ static ssize_t hwmsen_show_sensordevnum(struct device *dev,
 					struct device_attribute *attr, char *buf)
 {
 	const char *devname = NULL;
-	struct input_handle *handle;
 
-	list_for_each_entry(handle, &hwm_obj->idev->h_list, d_node)
-		if (strncmp(handle->name, "event", 5) == 0) {
-			devname = handle->name;
-			break;
-		}
+	devname = dev_name(&hwm_obj->idev->dev);
 
 	return snprintf(buf, PAGE_SIZE, "%s\n", devname + 5);
 }
@@ -1166,7 +1172,7 @@ static long hwmsen_unlocked_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 	void __user *argp = (void __user *)arg;
 	uint32_t flag;
 	struct sensor_delay delayPara;
-	struct hwm_trans_data *hwm_sensors_data;
+	struct hwm_trans_data hwm_sensors_data;
 	int i = 0;
 	int idx = 0;
 	atomic_t delaytemp;
@@ -1213,13 +1219,8 @@ static long hwmsen_unlocked_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 		break;
 
 	case HWM_IO_GET_SENSORS_DATA:
-		hwm_sensors_data = kmalloc(sizeof(*hwm_sensors_data), GFP_KERNEL);
-		if (!hwm_sensors_data)
-			return -ENOMEM;
-
-		if (copy_from_user(hwm_sensors_data, argp, sizeof(*hwm_sensors_data))) {
+		if (copy_from_user(&hwm_sensors_data, argp, sizeof(hwm_sensors_data))) {
 			HWM_ERR("copy_from_user fail!!\n");
-			kfree(hwm_sensors_data);
 			return -EFAULT;
 		}
 
@@ -1228,22 +1229,20 @@ static long hwmsen_unlocked_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			sizeof(struct hwm_sensor_data) * MAX_ANDROID_SENSOR_NUM);*/
 		for (i = 0, idx = 0;
 		     i < MAX_ANDROID_SENSOR_NUM && idx < MAX_SENSOR_DATA_UPDATE_ONCE; i++) {
-			if (hwm_sensors_data->data_type & (1LL << i)) {
-				memcpy(&(hwm_sensors_data->data[idx]), &(obj_data.sensors_data[i]),
+			if (hwm_sensors_data.data_type & (1LL << i)) {
+				memcpy(&hwm_sensors_data.data[idx], &(obj_data.sensors_data[i]),
 				       sizeof(struct hwm_sensor_data));
-				hwm_sensors_data->data[idx].update = 1;
+				hwm_sensors_data.data[idx].update = 1;
 				idx++;
 			}
 		}
 		if (idx < MAX_SENSOR_DATA_UPDATE_ONCE)
-			hwm_sensors_data->data[idx].update = 0;
+			hwm_sensors_data.data[idx].update = 0;
 		mutex_unlock(&obj_data.lock);
-		if (copy_to_user(argp, hwm_sensors_data, sizeof(*hwm_sensors_data))) {
+		if (copy_to_user(argp, &hwm_sensors_data, sizeof(hwm_sensors_data))) {
 			HWM_ERR("copy_to_user fail!!\n");
-			kfree(hwm_sensors_data);
 			return -EFAULT;
 		}
-		kfree(hwm_sensors_data);
 		break;
 
 	case HWM_IO_ENABLE_SENSOR_NODATA:
@@ -1269,47 +1268,7 @@ static long hwmsen_unlocked_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 
 	return 0;
 }
-/*----------------------------------------------------------------------------*/
-#ifdef CONFIG_COMPAT
-static long hwmsen_compat_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
-{
-	long err = 0;
 
-	void __user *arg32 = compat_ptr(arg);
-
-	if (!fp->f_op || !fp->f_op->unlocked_ioctl)
-		return -ENOTTY;
-
-	switch (cmd) {
-	case COMPAT_HWM_IO_SET_DELAY:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_SET_DELAY, (unsigned long)arg32);
-		break;
-	case COMPAT_HWM_IO_SET_WAKE:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_SET_WAKE, (unsigned long)arg32);
-		break;
-	case COMPAT_HWM_IO_ENABLE_SENSOR:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_ENABLE_SENSOR, (unsigned long)arg32);
-		break;
-	case COMPAT_HWM_IO_DISABLE_SENSOR:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_DISABLE_SENSOR, (unsigned long)arg32);
-		break;
-	case COMPAT_HWM_IO_GET_SENSORS_DATA:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_GET_SENSORS_DATA, (unsigned long)arg32);
-		break;
-	case COMPAT_HWM_IO_ENABLE_SENSOR_NODATA:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_ENABLE_SENSOR_NODATA, (unsigned long)arg32);
-		break;
-	case COMPAT_HWM_IO_DISABLE_SENSOR_NODATA:
-		err = fp->f_op->unlocked_ioctl(fp, HWM_IO_DISABLE_SENSOR_NODATA, (unsigned long)arg32);
-		break;
-	default:
-		HWM_ERR("Unknown cmd %x!!\n", cmd);
-		return -ENOIOCTLCMD;
-	}
-
-	return err;
-}
-#endif
 /*----------------------------------------------------------------------------*/
 static const struct file_operations hwmsen_fops = {
 /*      .owner  = THIS_MODULE,*/
@@ -1317,9 +1276,6 @@ static const struct file_operations hwmsen_fops = {
 	.release = hwmsen_release,
 /*      .ioctl  = hwmsen_ioctl,*/
 	.unlocked_ioctl = hwmsen_unlocked_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = hwmsen_compat_ioctl,
-#endif
 };
 
 /*----------------------------------------------------------------------------*/
@@ -1458,15 +1414,21 @@ static int msensor_probe(struct platform_device *pdev)
 	int err = 0;
 
 	HWM_LOG(" msensor_probe +\n");
+	memset(mtk_msensor_name, 0, 128);
 	for (i = 0; i < MAX_CHOOSE_G_NUM; i++) {
 		if (NULL != msensor_init_list[i]) {
 			err = msensor_init_list[i]->init();
 			if (0 == err) {
 				strcpy(msensor_name, msensor_init_list[i]->name);
+		   		strcpy((char *)mtk_msensor_name, msensor_init_list[i]->name);
 				HWM_LOG(" msensor %s probe ok\n", msensor_name);
 				break;
 			}
 		}
+	if (i == MAX_CHOOSE_G_NUM) {
+		HWM_LOG(" msensor_init_list fail\n");
+		strcpy((char *)mtk_acc_name, "UNKNOWN");
+		err = -1;
 	}
 	return 0;
 }
@@ -1505,7 +1467,23 @@ int hwmsen_msensor_add(struct sensor_init_info *obj)
 	return err;
 }
 EXPORT_SYMBOL_GPL(hwmsen_msensor_add);
+/* Msensor information */
+static int subsys_msensor_info_read(struct seq_file *m, void *v)
+{
+   seq_printf(m, "%s\n",mtk_msensor_name);
+   return 0;
+};
 
+static int proc_msensor_info_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, subsys_msensor_info_read, NULL);
+};
+
+static  struct file_operations msensor_proc_fops = {
+    .owner = THIS_MODULE,
+    .open  = proc_msensor_info_open,
+    .read  = seq_read,
+};
 #endif
 
 
@@ -1534,8 +1512,8 @@ static int gsensor_probe(struct platform_device *pdev)
 	int err = 0;
 
 	HWM_LOG(" gsensor_probe +\n");
-
-	/*  */
+	memset(mtk_acc_name, 0, 128);
+	//
 /*
      for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
      {
@@ -1550,6 +1528,7 @@ static int gsensor_probe(struct platform_device *pdev)
 			err = gsensor_init_list[i]->init();
 			if (0 == err) {
 				strcpy(gsensor_name, gsensor_init_list[i]->name);
+		   strcpy((char *)mtk_acc_name, gsensor_init_list[i]->name);
 				HWM_LOG(" gsensor %s probe ok\n", gsensor_name);
 				break;
 			}
@@ -1596,7 +1575,23 @@ int hwmsen_gsensor_add(struct sensor_init_info *obj)
 	return err;
 }
 EXPORT_SYMBOL_GPL(hwmsen_gsensor_add);
+/* Acc information */
+static int subsys_acc_info_read(struct seq_file *m, void *v)
+{
+   seq_printf(m, "%s\n",mtk_acc_name);
+   return 0;
+};
 
+static int proc_acc_info_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, subsys_acc_info_read, NULL);
+};
+
+static  struct file_operations acc_proc_fops = {
+    .owner = THIS_MODULE,
+    .open  = proc_acc_info_open,
+    .read  = seq_read,
+};
 #endif
 
 #if defined(CONFIG_MTK_AUTO_DETECT_ALSPS)
@@ -1624,15 +1619,21 @@ static int alsps_sensor_probe(struct platform_device *pdev)
 	int err = 0;
 
 	HWM_LOG(" als_ps sensor_probe +\n");
+	memset(mtk_alsps_name, 0, 128);
 	for (i = 0; i < MAX_CHOOSE_G_NUM; i++) {
 		if (NULL != alsps_init_list[i]) {
 			err = alsps_init_list[i]->init();
 			if (0 == err) {
 				strcpy(alsps_name, alsps_init_list[i]->name);
+		   strcpy((char *)mtk_alsps_name, alsps_init_list[i]->name);
 				HWM_LOG(" alsps sensor %s probe ok\n", alsps_name);
 				break;
 			}
 		}
+	if (i == MAX_CHOOSE_G_NUM) {
+		HWM_LOG(" alsps_init_list fail\n");
+		strcpy((char *)mtk_alsps_name, "UNKNOWN");
+		err = -1;
 	}
 	return 0;
 }
@@ -1670,7 +1671,23 @@ int hwmsen_alsps_sensor_add(struct sensor_init_info *obj)
 	return err;
 }
 EXPORT_SYMBOL_GPL(hwmsen_alsps_sensor_add);
+/* Alsps information */
+static int subsys_alsps_info_read(struct seq_file *m, void *v)
+{
+   seq_printf(m, "%s\n",mtk_alsps_name);
+   return 0;
+};
 
+static int proc_alsps_info_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, subsys_alsps_info_read, NULL);
+};
+
+static  struct file_operations alsps_proc_fops = {
+    .owner = THIS_MODULE,
+    .open  = proc_alsps_info_open,
+    .read  = seq_read,
+};
 #endif
 
 /*----------------------------------------------------------------------------*/
@@ -1687,6 +1704,10 @@ static int __init hwmsen_init(void)
 		HWM_ERR("failed to register gensor driver");
 		return -ENODEV;
 	}
+#ifdef LYCONFIG_DETECT_HW_INFO_SUPPORT
+	/*Acc information*/
+	proc_create("hw_info/acc_info", 0, NULL, &acc_proc_fops);
+#endif
 #endif
 
 #if defined(CONFIG_MTK_AUTO_DETECT_MAGNETOMETER)
@@ -1694,6 +1715,10 @@ static int __init hwmsen_init(void)
 		HWM_ERR("failed to register mensor driver");
 		return -ENODEV;
 	}
+#ifdef LYCONFIG_DETECT_HW_INFO_SUPPORT	
+	/*Msensor information*/
+	proc_create("hw_info/msensor_info", 0, NULL, &msensor_proc_fops);
+#endif
 #endif
 
 #if defined(CONFIG_MTK_AUTO_DETECT_ALSPS)
@@ -1701,6 +1726,10 @@ static int __init hwmsen_init(void)
 		HWM_ERR("failed to register alsps_sensor_driver driver");
 		return -ENODEV;
 	}
+#ifdef LYCONFIG_DETECT_HW_INFO_SUPPORT		
+	/*Alsps information*/
+	proc_create("hw_info/alsps_info", 0, NULL, &alsps_proc_fops);
+#endif
 #endif
 
 

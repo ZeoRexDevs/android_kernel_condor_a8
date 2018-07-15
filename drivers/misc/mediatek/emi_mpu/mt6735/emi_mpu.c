@@ -1,16 +1,3 @@
-/*
- * Copyright (C) 2015 MediaTek Inc.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -842,6 +829,7 @@ static int __match_id(u32 axi_id, int tbl_idx, u32 port_ID)
 	}
 }
 
+#ifdef CONFIG_MTK_AEE_FEATURE
 static u32 __id2mst(u32 id)
 {
 
@@ -861,6 +849,7 @@ static u32 __id2mst(u32 id)
 
 	return MST_INVALID;
 }
+#endif
 
 static char *__id2name(u32 id)
 {

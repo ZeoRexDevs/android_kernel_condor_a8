@@ -1,19 +1,17 @@
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2007 The Android Open Source Project
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- * You should have received a copy of the GNU General Public License
- * along with this program
- * If not, see <http://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 /*******************************************************************************
  *
@@ -88,11 +86,37 @@
 */
 #include <mt-plat/upmu_common.h>
 
+#define CLASS_D
+
+#if defined(CLASS_D)
+#define LYCONFIG_COMB_SPEAKER_SUPPORT_CLASS_D 
+#elif defined(CLASS_K)
+#define LYCONFIG_COMB_SPEAKER_SUPPORT_CLASS_K
+#endif
+
+#if defined(LYCONFIG_COMB_SPEAKER_SUPPORT_CLASS_D) || defined(LYCONFIG_COMB_SPEAKER_SUPPORT_CLASS_AB)
+#define CONFIG_MTK_SPEAKER
+#endif
+
 #ifdef CONFIG_MTK_SPEAKER
 #include "mt_soc_codec_speaker_63xx.h"
 /*#include <cust_pmic.h>*/
 /* int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd); */
 #endif
+
+
+#ifndef CONFIG_MTK_SPEAKER
+#include <mach/gpio_const.h>
+#include <mt-plat/mt_gpio.h>
+
+/* AW8736 PA output power mode control */
+#if defined(LYCONFIG_COMB_SPEAKER_SUPPORT_CLASS_K)
+#define AW8736_MODE3_CTRL
+#endif
+#define GPIO_EXT_SPKAMP_EN_PIN         (GPIO87 | 0x80000000)
+extern void ext_spkamp_en_gpio_output( int level );
+#endif
+
 
 #include "mt_soc_pcm_common.h"
 #include "AudDrv_Common_func.h"
@@ -143,7 +167,11 @@ static unsigned int pin_mode_extspkamp, pin_mode_extspkamp_2, pin_mode_vowclk, p
 
 
 #ifdef CONFIG_MTK_SPEAKER
+#if defined(LYCONFIG_COMB_SPEAKER_SUPPORT_CLASS_D)
+static int Speaker_mode = AUDIO_SPEAKER_MODE_D;
+#else
 static int Speaker_mode = AUDIO_SPEAKER_MODE_AB;
+#endif
 static unsigned int Speaker_pga_gain = 1;	/* default 0Db. */
 static bool mSpeaker_Ocflag;
 #endif
@@ -575,8 +603,6 @@ void OpenTrimBufferHardware(bool enable)
 	if (enable) {
 		pr_warn("%s true\n", __func__);
 		TurnOnDacPower();
-		/* AUXADC large scale - AUXADC_CON2(AUXADC ADC AVG SELECTION[9]) */
-		Ana_Set_Reg(0x0E9C, 0x0200, 0x0200);
 		/* set analog part (HP playback) */
 		Ana_Set_Reg(AUDDEC_ANA_CON8, 0x0000, 0x0002);
 		/* Enable AUDGLB */
@@ -628,8 +654,7 @@ void OpenTrimBufferHardware(bool enable)
 		Ana_Set_Reg(AUDDEC_ANA_CON0, 0x0000, 0xffff);	/* Disable Audio DAC */
 		Ana_Set_Reg(AUDDEC_ANA_CON6, 0x2AC0, 0xfeeb);	/* Disable AUD_CLK, bit2/4/8 is for ADC, do not set */
 		Ana_Set_Reg(AUDDEC_ANA_CON7, 0x0000, 0x8000);	/* Disable NV regulator (-1.5V) */
-		/*Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);*/
-		Ana_Set_Reg(AUDDEC_ANA_CON6, 0x02c1, 0xfeeb); /* for AUX detection ,Disable cap-less LDOs (1.5V) & Disable IBIST */	
+		Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);	/* Disable cap-less LDOs (1.5V) & Disable IBIST */
 		TurnOffDacPower();
 	}
 }
@@ -702,8 +727,7 @@ void OpenAnalogTrimHardware(bool enable)
 		/* Disable AUD_CLK, bit2/4/8 is for ADC, do not set */
 		Ana_Set_Reg(AUDDEC_ANA_CON7, 0x0000, 0x8000);
 		/* Disable NV regulator (-1.5V) */
-		/*Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);*/
-		Ana_Set_Reg(AUDDEC_ANA_CON6, 0x02c1, 0xfeeb); /* for AUX detection */				
+		Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);
 		/* Disable cap-less LDOs (1.5V) & Disable IBIST */
 		TurnOffDacPower();
 	}
@@ -1275,6 +1299,13 @@ static struct snd_soc_dai_driver mtk_6331_dai_codecs[] = {
 		      .rates = SNDRV_PCM_RATE_8000_192000,
 		      .formats = SND_SOC_ADV_MT_FMTS,
 		      },
+	 .capture = {
+		     .stream_name = MT_SOC_FM_I2S_PLAYBACK_STREAM_NAME,
+		     .channels_min = 1,
+		     .channels_max = 8,
+		     .rates = SNDRV_PCM_RATE_8000_192000,
+		     .formats = SND_SOC_ADV_MT_FMTS,
+		     },
 	 },
 	{
 	 .name = MT_SOC_CODEC_TXDAI2_NAME,
@@ -1321,7 +1352,6 @@ uint32 GetDLNewIFFrequency(unsigned int frequency)
 		break;
 	case 48000:
 		Reg_value = 8;
-		break;
 	default:
 		pr_warn("ApplyDLNewIFFrequency with frequency = %d", frequency);
 	}
@@ -1537,7 +1567,7 @@ static void Audio_Amp_Change(int channels, bool enable)
 		    false) {
 			pr_warn("Audio_Amp_Change off amp\n");
 			HeadsetVoloumeRestore();	/* Set HPR/HPL gain as -1dB, step by step */
-			Ana_Set_Reg(ZCD_CON2, 0x0F9F, 0xffff); /* Set HPR/HPL gain as minimum (~ -40dB) */
+			/* Ana_Set_Reg(ZCD_CON2, 0x0F9F, 0xffff); //Set HPR/HPL gain as minimum (~ -40dB) */
 			Ana_Set_Reg(AUDDEC_ANA_CON0, 0xF40F, 0xffff);	/* Disable HPR/HPL */
 		}
 
@@ -1550,8 +1580,7 @@ static void Audio_Amp_Change(int channels, bool enable)
 			/* Disable AUD_CLK, bit2/4/8 is for ADC, do not set */
 			Ana_Set_Reg(AUDDEC_ANA_CON7, 0x0000, 0x8000);
 			/* Disable NV regulator (-1.5V) */
-			/*Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);*/
-			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x02c1, 0xfeeb); /* for AUX detection */		 		
+			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);
 			/* Disable cap-less LDOs (1.5V) & Disable IBIST */
 			TurnOffDacPower();
 		}
@@ -1688,8 +1717,7 @@ static void Voice_Amp_Change(bool enable)
 			/* Disable AUD_CLK, bit2/4/8 is for ADC, do not set */
 			Ana_Set_Reg(AUDDEC_ANA_CON7, 0x0000, 0x8000);
 			/* Disable NV regulator (-1.5V) */
-			/*Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);*/
-			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x02c1, 0xfeeb); /* for AUX detection */
+			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);
 			/* Disable cap-less LDOs (1.5V) & Disable IBIST */
 
 			TurnOffDacPower();
@@ -1810,8 +1838,7 @@ static void Speaker_Amp_Change(bool enable)
 			/* Disable AUD_CLK, bit2/4/8 is for ADC, do not set */
 			Ana_Set_Reg(AUDDEC_ANA_CON7, 0x0000, 0x8000);
 			/* Disable NV regulator (-1.5V) */
-			/*Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);*/
-			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x02c1, 0xfeeb); /* for AUX detection */			
+			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);
 			/* Disable cap-less LDOs (1.5V) & Disable IBIST */
 
 			TurnOffDacPower();
@@ -1847,7 +1874,7 @@ static int Speaker_Amp_Set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 
 
 
-#ifdef CONFIG_OF
+#if 0//defined(CONFIG_OF)
 
 #define GAP (2)			/* unit: us */
 #if defined(CONFIG_MTK_LEGACY)
@@ -1947,59 +1974,65 @@ static void Ext_Speaker_Amp_Change(bool enable)
 
 #else /*CONFIG_OF*/
 #ifndef CONFIG_MTK_SPEAKER
-#ifdef AW8736_MODE_CTRL
 /* 0.75us<TL<10us; 0.75us<TH<10us */
 #define GAP (2)			/* unit: us */
+#if defined(AW8736_MODE_CTRL)
 /*1.2w*/
 static void AW8736_MODE1(void)
 {
-	mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+	//mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+	ext_spkamp_en_gpio_output(1);
 }
+#elif defined(AW8736_MODE2_CTRL)
 /*1.0w*/
 static void AW8736_MODE2(void)
 {
 	do {
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		//mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		//mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
-	} while (0)
+		//mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
+	} while (0);
 }
+#elif defined(AW8736_MODE3_CTRL)
 /*0.8w*/
 static void AW8736_MODE3(void)
 {
 	do {
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
-	} while (0)
+		ext_spkamp_en_gpio_output(1);
+	} while (0);
 }
-
+#elif defined(AW8736_MODE4_CTRL)
 /*it depends on THD, range: 1.5 ~ 2.0w*/
 static void AW8736_MODE4(void)
 {
 	do {
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
+		ext_spkamp_en_gpio_output(1);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);
 		udelay(GAP);
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);
-	} while (0)
+		ext_spkamp_en_gpio_output(1);
+	} while (0);
 }
 #endif
 #endif
@@ -2013,17 +2046,23 @@ static void Ext_Speaker_Amp_Change(bool enable)
 		pr_debug("Ext_Speaker_Amp_Change ON+\n");
 #ifndef CONFIG_MTK_SPEAKER
 		pr_warn("Ext_Speaker_Amp_Change ON set GPIO\n");
-		mt_set_gpio_mode(GPIO_EXT_SPKAMP_EN_PIN, GPIO_MODE_00);	/* GPIO117: DPI_D3, mode 0 */
-		mt_set_gpio_pull_enable(GPIO_EXT_SPKAMP_EN_PIN, GPIO_PULL_ENABLE);
-		mt_set_gpio_dir(GPIO_EXT_SPKAMP_EN_PIN, GPIO_DIR_OUT);	/* output */
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);	/* low disable */
+		//mt_set_gpio_mode(GPIO_EXT_SPKAMP_EN_PIN, GPIO_MODE_00);	/* GPIO117: DPI_D3, mode 0 */
+		//mt_set_gpio_pull_enable(GPIO_EXT_SPKAMP_EN_PIN, GPIO_PULL_ENABLE);
+		//mt_set_gpio_dir(GPIO_EXT_SPKAMP_EN_PIN, GPIO_DIR_OUT);	/* output */
+		ext_spkamp_en_gpio_output(0);	/* low disable */
 		udelay(1000);
-		mt_set_gpio_dir(GPIO_EXT_SPKAMP_EN_PIN, GPIO_DIR_OUT);	/* output */
+		//mt_set_gpio_dir(GPIO_EXT_SPKAMP_EN_PIN, GPIO_DIR_OUT);	/* output */
 
-#ifdef AW8736_MODE_CTRL
+#if defined(AW8736_MODE1_CTRL)
+		AW8736_MODE1();
+#elif defined(AW8736_MODE2_CTRL)
+		AW8736_MODE2();
+#elif defined(AW8736_MODE3_CTRL)
 		AW8736_MODE3();
+#elif defined(AW8736_MODE4_CTRL)
+		AW8736_MODE4();
 #else
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ONE);	/* high enable */
+		ext_spkamp_en_gpio_output(1);;	/* high enable */
 #endif
 
 		msleep(SPK_WARM_UP_TIME);
@@ -2033,8 +2072,9 @@ static void Ext_Speaker_Amp_Change(bool enable)
 		pr_debug("Ext_Speaker_Amp_Change OFF+\n");
 #ifndef CONFIG_MTK_SPEAKER
 		/* mt_set_gpio_mode(GPIO_EXT_SPKAMP_EN_PIN, GPIO_MODE_00); //GPIO117: DPI_D3, mode 0 */
-		mt_set_gpio_dir(GPIO_EXT_SPKAMP_EN_PIN, GPIO_DIR_OUT);	/* output */
-		mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);	/* low disbale */
+		//mt_set_gpio_dir(GPIO_EXT_SPKAMP_EN_PIN, GPIO_DIR_OUT);	/* output */
+		//mt_set_gpio_out(GPIO_EXT_SPKAMP_EN_PIN, GPIO_OUT_ZERO);
+		ext_spkamp_en_gpio_output(0);	/* low disbale */
 		udelay(500);
 #endif
 		pr_debug("Ext_Speaker_Amp_Change OFF-\n");
@@ -2262,8 +2302,8 @@ static void Headset_Speaker_Amp_Change(bool enable)
 		Ana_Set_Reg(ZCD_CON4, 0x0707, 0xffff);
 		/* Set min -2dB IV buffer gain */
 
-		HeadsetVoloumeRestore();/* Set HPR/HPL gain as 0dB, step by step */
-		Ana_Set_Reg(ZCD_CON2, 0x0F9F, 0xffff); /* Set HPR/HPL gain as minimum (~ -40dB) */
+		/* HeadsetVoloumeRestore();// Set HPR/HPL gain as 0dB, step by step */
+		/* Ana_Set_Reg(ZCD_CON2, 0x0F9F, 0xffff); //Set HPR/HPL gain as minimum (~ -40dB) */
 		Ana_Set_Reg(AUDDEC_ANA_CON0, 0xF20F, 0xffff);	/* Disable HPR/HPL */
 		if (GetDLStatus() == false) {
 			Ana_Set_Reg(AUDDEC_ANA_CON4, 0x0000, 0xffff);
@@ -2274,8 +2314,7 @@ static void Headset_Speaker_Amp_Change(bool enable)
 			/* Disable AUD_CLK, bit2/4/8 is for ADC, do not set */
 			Ana_Set_Reg(AUDDEC_ANA_CON7, 0x0000, 0x8000);
 			/* Disable NV regulator (-1.5V) */
-			/*Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);*/
-			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x02c1, 0xfeeb); /* for AUX detection */	
+			Ana_Set_Reg(AUDDEC_ANA_CON6, 0x0001, 0xfeeb);
 			/* Disable cap-less LDOs (1.5V) & Disable IBIST */
 
 			TurnOffDacPower();
@@ -2950,12 +2989,6 @@ static bool TurnOnADcPowerACC(int ADCType, bool enable)
 			/* UL turn on */
 		}
 	} else {
-		if (GetMicbias == 0) {
-			MicbiasRef = Ana_Get_Reg(AUDENC_ANA_CON9) & 0x0700;
-			/* save current micbias ref set by accdet */
-			pr_warn("MicbiasRef=0x%x\n", MicbiasRef);
-			GetMicbias = 1;
-		}
 		if (GetAdcStatus() == false) {
 			Ana_Set_Reg(AFE_UL_SRC0_CON0_L, 0x0000, 0xffff);
 			/* UL turn off */
