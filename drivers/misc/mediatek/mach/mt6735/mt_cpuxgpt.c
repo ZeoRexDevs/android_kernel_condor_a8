@@ -1,3 +1,15 @@
+/*
+ * Copyright (C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ */
 #include <linux/init.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
@@ -48,7 +60,7 @@ static irqreturn_t __cpuxgpt5_irq_handler(int irq, void *dev_id);
 static irqreturn_t __cpuxgpt6_irq_handler(int irq, void *dev_id);
 static irqreturn_t __cpuxgpt7_irq_handler(int irq, void *dev_id);
 
-static const struct of_device_id cpuxgpt_addr_ids[] __initconst = {
+static const struct of_device_id cpuxgpt_addr_ids[] = {
 	{.compatible = "mediatek,mt6735-cpuxgpt"},
 	{},
 };

@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef BUILD_LK
 #include <linux/string.h>
 #include <linux/kernel.h>
@@ -196,6 +209,11 @@ static const unsigned char LCD_MODULE_ID = 0x01; /* haobing modified 2013.07.11 
 #define FRAME_WIDTH										(540)
 #define FRAME_HEIGHT										(960)
 #endif
+
+/* physical size in um */
+#define LCM_PHYSICAL_WIDTH    (59500)
+#define LCM_PHYSICAL_HEIGHT   (104700)
+
 /*
 #ifndef CONFIG_FPGA_EARLY_PORTING
 #define GPIO_65132_EN GPIO_LCD_BIAS_ENP_PIN
@@ -203,8 +221,8 @@ static const unsigned char LCD_MODULE_ID = 0x01; /* haobing modified 2013.07.11 
 */
 #define REGFLAG_DELAY									0xFC
 #define REGFLAG_UDELAY									0xFB
-#define REGFLAG_RAR							0xFA
-#define REGFLAG_NULL							0xF9
+#define REGFLAG_RAR									0xFA
+#define REGFLAG_NULL									0xF9
 
 #define REGFLAG_END_OF_TABLE							0xFD   /* END OF REGISTERS MARKER */
 #define REGFLAG_RESET_LOW								0xFE
@@ -232,16 +250,11 @@ struct LCM_setting_table {
 };
 
 static struct LCM_setting_table lcm_suspend_setting[] = {
-#ifndef LCM_DSI_CMD_MODE
-	/* switch to CMD mode for fitting DSI state */
-	{0xB3, 1, {0x04} },
-	{REGFLAG_DELAY, 120, {} },
-#endif
 	{0x28, 0, {} },
 	{REGFLAG_DELAY, 20, {} },
 	{0x10, 0, {} },
-	{0xB0, 1, {0x00} },
-	{0xB1, 1, {0x01} },
+	{0xB0, 1, {0x00 } },
+	{0xB1, 1, {0x01 } },
 	{REGFLAG_DELAY, 80, {} },
 };
 
@@ -260,7 +273,6 @@ static struct LCM_setting_table lcm_initialization_setting[] = {
 	{REGFLAG_NULL, 8, {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} },
 	/* RAR packet */
 	{REGFLAG_RAR, 1, {} },
-
 #ifndef LCM_DSI_CMD_MODE
 	/* video mode */
 	{0xB3, 1, {0x35} },
@@ -304,6 +316,7 @@ static void push_table(struct LCM_setting_table *table, unsigned int count, unsi
 
 		case REGFLAG_END_OF_TABLE:
 			break;
+
 		case REGFLAG_RAR:
 			RAR(table[i].count);
 			break;
@@ -311,6 +324,7 @@ static void push_table(struct LCM_setting_table *table, unsigned int count, unsi
 		case REGFLAG_NULL:
 			dsi_set_null(cmd, table[i].count, table[i].para_list, force_update);
 			break;
+
 		default:
 			dsi_set_cmdq_V2(cmd, table[i].count, table[i].para_list, force_update);
 		}
@@ -335,6 +349,11 @@ static void lcm_get_params(LCM_PARAMS *params)
 
 	params->width  = FRAME_WIDTH;
 	params->height = FRAME_HEIGHT;
+
+	params->physical_width = LCM_PHYSICAL_WIDTH/1000;
+	params->physical_height = LCM_PHYSICAL_HEIGHT/1000;
+	params->physical_width_um = LCM_PHYSICAL_WIDTH;
+	params->physical_height_um = LCM_PHYSICAL_HEIGHT;
 
 #ifdef LCM_DSI_CMD_MODE
 	params->dsi.mode   = CMD_MODE;

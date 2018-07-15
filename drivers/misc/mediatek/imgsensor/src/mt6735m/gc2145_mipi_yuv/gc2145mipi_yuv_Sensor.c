@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 /*****************************************************************************
  *
  * Filename:
@@ -2128,37 +2141,37 @@ BOOL GC2145MIPI_set_param_exposure(UINT16 para)
 		
 		case AE_EV_COMP_n30:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0x45);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x65);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		case AE_EV_COMP_n20:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0x55);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x70);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		case AE_EV_COMP_n10:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0x65);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x75);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		case AE_EV_COMP_00:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0x75);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x7b);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		case AE_EV_COMP_10:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0x85);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x85);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		case AE_EV_COMP_20:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0x95);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x90);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		case AE_EV_COMP_30:
 			GC2145MIPI_SET_PAGE1;
-			GC2145MIPI_write_cmos_sensor(0x13,0xa5);
+			GC2145MIPI_write_cmos_sensor(0x13, 0x95);
 			GC2145MIPI_SET_PAGE0;
 		break;
 		default:

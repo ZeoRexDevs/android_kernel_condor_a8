@@ -142,7 +142,7 @@ int ubi_start_update(struct ubi_device *ubi, struct ubi_volume *vol,
 		return err;
 
 	/* Before updating - wipe out the volume */
-#ifdef CONFIG_MTK_SLC_BUFFER_SUPPORT
+#ifdef CONFIG_MTK_TLC_NAND_SUPPORT
 	ubi_wipe_mtbl_record(ubi, vol->vol_id);
 #endif
 	for (i = 0; i < vol->reserved_pebs; i++) {

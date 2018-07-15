@@ -1057,7 +1057,7 @@ ubi_zalloc_vid_hdr(const struct ubi_device *ubi, gfp_t gfp_flags)
 {
 	void *vid_hdr;
 
-	vid_hdr = kzalloc(ubi->vid_hdr_alsize, gfp_flags);
+	vid_hdr = vzalloc(ubi->vid_hdr_alsize);
 	if (!vid_hdr)
 		return NULL;
 
@@ -1081,7 +1081,7 @@ static inline void ubi_free_vid_hdr(const struct ubi_device *ubi,
 	if (!p)
 		return;
 
-	kfree(p - ubi->vid_hdr_shift);
+	vfree(p - ubi->vid_hdr_shift);
 }
 
 /*

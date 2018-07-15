@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <generated/autoconf.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -31,7 +44,7 @@
 #include <linux/proc_fs.h>
 #include <linux/fs.h>
 #include <asm/uaccess.h>
-
+#include <core.h>
 
 
 #define PARTITION_NAME_LENGTH    (64)
@@ -65,7 +78,7 @@ static int simple_sd_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int sd_ioctl_reinit(struct msdc_ioctl *msdc_ctl)
+static int sd_ioctl_reinit(void)
 {
 	struct msdc_host *host = msdc_get_host(MSDC_SD, 0, 0);
 
@@ -75,7 +88,7 @@ static int sd_ioctl_reinit(struct msdc_ioctl *msdc_ctl)
 		return -EINVAL;
 }
 
-static int sd_ioctl_cd_pin_en(struct msdc_ioctl *msdc_ctl)
+static int sd_ioctl_cd_pin_en(void)
 {
 	struct msdc_host *host = msdc_get_host(MSDC_SD, 0, 0);
 
@@ -137,18 +150,16 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 	char l_buf[512];
 	struct scatterlist msdc_sg;
 	struct mmc_data msdc_data;
+	struct mmc_command msdc_sbc;
 	struct mmc_command msdc_cmd;
 	struct mmc_command msdc_stop;
 	int ret = 0;
-
-#ifdef MTK_MSDC_USE_CMD23
-	struct mmc_command msdc_sbc;
-#endif
-
 	struct mmc_request msdc_mrq;
 	struct msdc_host *host_ctl;
 
 	if (!msdc_ctl)
+		return -EINVAL;
+	if (msdc_ctl->host_num != 0)
 		return -EINVAL;
 	if (msdc_ctl->total_size <= 0)
 		return -EINVAL;
@@ -162,6 +173,11 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 		return -EINVAL;
 
 	msdc_ctl->result = 0;
+	memset(&msdc_data, 0, sizeof(struct mmc_data));
+	memset(&msdc_mrq, 0, sizeof(struct mmc_request));
+	memset(&msdc_sbc, 0, sizeof(struct mmc_command));
+	memset(&msdc_cmd, 0, sizeof(struct mmc_command));
+	memset(&msdc_stop, 0, sizeof(struct mmc_command));
 
 	/*
 	 * workaround here, if sd.c has remove baisc DMA 64KB limit
@@ -170,8 +186,8 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 	 */
 	if (msdc_ctl->total_size > (64 * 1024)) {
 		pr_err("%s [%d]: read or write size excced 64KB\n", __func__, __LINE__);
-		msdc_ctl->result = -1;
-		goto multi_end_without_release;
+		ret = -EFAULT;
+		goto out;
 	}
 
 	if (msdc_ctl->iswrite) {
@@ -180,7 +196,7 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 				msdc_ctl->total_size)) {
 				dma_force[host_ctl->id] = FORCE_NOTHING;
 				ret = -EFAULT;
-				goto multi_end_without_release;
+				goto out;
 			}
 		} else {
 			/* called from other kernel module */
@@ -197,7 +213,7 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 	ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
 	if (ret) {
 		pr_debug("mmc_send_ext_csd error, multi rw\n");
-		goto multi_end;
+		goto release;
 	}
 #ifdef CONFIG_MTK_EMMC_SUPPORT
 	switch (msdc_ctl->partition) {
@@ -230,15 +246,6 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 		}
 		break;
 	}
-#endif
-
-	memset(&msdc_data, 0, sizeof(struct mmc_data));
-	memset(&msdc_mrq, 0, sizeof(struct mmc_request));
-	memset(&msdc_cmd, 0, sizeof(struct mmc_command));
-	memset(&msdc_stop, 0, sizeof(struct mmc_command));
-
-#ifdef MTK_MSDC_USE_CMD23
-	memset(&msdc_sbc, 0, sizeof(struct mmc_command));
 #endif
 
 	msdc_mrq.cmd = &msdc_cmd;
@@ -311,7 +318,7 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 		ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
 		if (ret) {
 			pr_debug("mmc_send_ext_csd error, multi rw2\n");
-			goto multi_end;
+			goto release;
 		}
 
 		if (l_buf[179] & 0x7) {
@@ -322,14 +329,15 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 				179, l_buf[179], 1000);
 		}
 	}
+
+release:
 	mmc_release_host(host_ctl->mmc);
-	if (!msdc_ctl->iswrite) {
+	if (!ret && !msdc_ctl->iswrite) {
 		if (MSDC_CARD_DUNM_FUNC != msdc_ctl->opcode) {
 			if (copy_to_user(msdc_ctl->buffer, sg_msdc_multi_buffer,
 				msdc_ctl->total_size)) {
 				dma_force[host_ctl->id] = FORCE_NOTHING;
 				ret = -EFAULT;
-				goto multi_end_without_release;
 			}
 		} else {
 			/* called from other kernel module */
@@ -338,12 +346,8 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl *msdc_ctl)
 	}
 	/* clear the global buffer of R/W IOCTL */
 	memset(sg_msdc_multi_buffer, 0 , msdc_ctl->total_size);
-	goto multi_end_without_release;
 
-multi_end:
-	mmc_release_host(host_ctl->mmc);
-multi_end_without_release:
-
+out:
 	if (ret)
 		msdc_ctl->result = ret;
 
@@ -370,6 +374,8 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 
 	if (!msdc_ctl)
 		return -EINVAL;
+	if (msdc_ctl->host_num != 0)
+		return -EINVAL;
 	if (msdc_ctl->total_size <= 0)
 		return -EINVAL;
 
@@ -382,6 +388,9 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 		return -EINVAL;
 
 	msdc_ctl->result = 0;
+	memset(&msdc_data, 0, sizeof(struct mmc_data));
+	memset(&msdc_mrq, 0, sizeof(struct mmc_request));
+	memset(&msdc_cmd, 0, sizeof(struct mmc_command));
 #ifdef MTK_MSDC_USE_CACHE
 	if (msdc_ctl->iswrite && mmc_card_mmc(host_ctl->mmc->card)
 	    && (host_ctl->mmc->card->ext_csd.cache_ctrl & 0x1))
@@ -392,7 +401,7 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 			if (copy_from_user(sg_msdc_multi_buffer, msdc_ctl->buffer, 512)) {
 				dma_force[host_ctl->id] = FORCE_NOTHING;
 				ret = -EFAULT;
-				goto single_end_without_release;
+				goto out;
 			}
 		} else {
 			/* called from other kernel module */
@@ -403,8 +412,8 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 	}
 
 	if (msdc_ctl->total_size > 512) {
-		msdc_ctl->result = -1;
-		goto single_end_without_release;
+		ret = -EFAULT;
+		goto out;
 	}
 
 	mmc_claim_host(host_ctl->mmc);
@@ -415,8 +424,8 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 
 	ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
 	if (ret) {
-		pr_debug("mmc_send_ext_csd error, single rw\n");
-		goto single_end;
+		pr_err("%s:%d:get ext_csd error,ret=%d\n", __func__, __LINE__, ret);
+		goto release;
 	}
 #ifdef CONFIG_MTK_EMMC_SUPPORT
 	switch (msdc_ctl->partition) {
@@ -454,9 +463,6 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 #if DEBUG_MMC_IOCTL
 	pr_debug("start MSDC_SINGLE_READ_WRITE !!\n");
 #endif
-	memset(&msdc_data, 0, sizeof(struct mmc_data));
-	memset(&msdc_mrq, 0, sizeof(struct mmc_request));
-	memset(&msdc_cmd, 0, sizeof(struct mmc_command));
 
 	msdc_mrq.cmd = &msdc_cmd;
 	msdc_mrq.data = &msdc_data;
@@ -503,8 +509,8 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 	if (msdc_ctl->partition) {
 		ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
 		if (ret) {
-			pr_debug("mmc_send_ext_csd error, single rw2\n");
-			goto single_end;
+			pr_err("%s:%d:get ext_csd error,ret=%d\n", __func__, __LINE__, ret);
+			goto release;
 		}
 
 		if (l_buf[179] & 0x7) {
@@ -515,13 +521,14 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 				179, l_buf[179], 1000);
 		}
 	}
+
+release:
 	mmc_release_host(host_ctl->mmc);
-	if (!msdc_ctl->iswrite) {
+	if (!ret && !msdc_ctl->iswrite) {
 		if (MSDC_CARD_DUNM_FUNC != msdc_ctl->opcode) {
 			if (copy_to_user(msdc_ctl->buffer, sg_msdc_multi_buffer, 512)) {
 				dma_force[host_ctl->id] = FORCE_NOTHING;
 				ret = -EFAULT;
-				goto single_end_without_release;
 			}
 		} else {
 			/* called from other kernel module */
@@ -531,12 +538,7 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl *msdc_ctl)
 
 	/* clear the global buffer of R/W IOCTL */
 	memset(sg_msdc_multi_buffer, 0, 512);
-	goto single_end_without_release;
-
-single_end:
-	mmc_release_host(host_ctl->mmc);
-single_end_without_release:
-
+out:
 	if (ret)
 		msdc_ctl->result = ret;
 
@@ -627,7 +629,6 @@ static int simple_sd_ioctl_get_excsd(struct msdc_ioctl *msdc_ctl)
 	char l_buf[512];
 	struct msdc_host *host_ctl;
 	int ret = 0;
-
 #if DEBUG_MMC_IOCTL
 	int i;
 #endif
@@ -644,9 +645,6 @@ static int simple_sd_ioctl_get_excsd(struct msdc_ioctl *msdc_ctl)
 	if (IS_ERR_OR_NULL(host_ctl->mmc->card))
 		goto out;
 
-#if DEBUG_MMC_IOCTL
-	pr_debug("user want the extend csd in msdc slot%d\n", msdc_ctl->host_num);
-#endif
 	mmc_claim_host(host_ctl->mmc);
 	ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
 	mmc_release_host(host_ctl->mmc);
@@ -693,11 +691,6 @@ static int simple_sd_ioctl_set_driving(struct msdc_ioctl *msdc_ctl)
 
 	base = host->base;
 #ifndef FPGA_PLATFORM
-#ifdef CONFIG_MTK_CLKMGR
-	enable_clock(MT_CG_PERI_MSDC30_0 + host->id, "SD");
-#else
-	clk_enable(host->clock_control);
-#endif
 #if DEBUG_MMC_IOCTL
 	pr_debug("set: clk driving is 0x%x\n", msdc_ctl->clk_pu_driving);
 	pr_debug("set: cmd driving is 0x%x\n", msdc_ctl->cmd_pu_driving);
@@ -714,11 +707,6 @@ static int simple_sd_ioctl_set_driving(struct msdc_ioctl *msdc_ctl)
 	host->hw->cmd_drv_sd_18 = msdc_ctl->cmd_pu_driving;
 	host->hw->dat_drv_sd_18 = msdc_ctl->dat_pu_driving;
 	msdc_set_driving(host, host->hw, 0);
-#if DEBUG_MMC_IOCTL
-#if 0
-	msdc_dump_padctl(host);
-#endif
-#endif
 #endif
 
 	return 0;
@@ -747,11 +735,6 @@ static int simple_sd_ioctl_get_driving(struct msdc_ioctl *msdc_ctl)
 
 	base = host->base;
 #ifndef FPGA_PLATFORM
-#ifdef CONFIG_MTK_CLKMGR
-	enable_clock(MT_CG_PERI_MSDC30_0 + host->id, "SD");
-#else
-	clk_enable(host->clock_control);
-#endif
 	simple_sd_get_driving(mtk_msdc_host[msdc_ctl->host_num], msdc_ctl);
 #if DEBUG_MMC_IOCTL
 	pr_debug("read: clk driving is 0x%x\n", msdc_ctl->clk_pu_driving);
@@ -846,244 +829,308 @@ static int simple_sd_ioctl_sd30_mode_switch(struct msdc_ioctl *msdc_ctl)
 	pr_debug("\n [%s]: msdc%d, line:%d, msdc_host_mode2=%d\n",
 		 __func__, id, __LINE__, msdc_host_mode2[id]);
 
-#ifdef CONFIG_MTK_EMMC_SUPPORT
-	/* just for emmc slot */
-	if (msdc_ctl->host_num == 0)
-		g_emmc_mode_switch = 1;
-	else
-		g_emmc_mode_switch = 0;
-#endif
 	return 0;
 }
 
-/*  to ensure format operate is clean the emmc device fully(partition erase) */
-typedef struct mbr_part_info {
-	unsigned int start_sector;
-	unsigned int nr_sects;
-	unsigned int part_no;
-	unsigned char *part_name;
-} MBR_PART_INFO_T;
-
-#define MBR_PART_NUM  6
-#define __MMC_ERASE_ARG        0x00000000
-#define __MMC_TRIM_ARG         0x00000001
-#define __MMC_DISCARD_ARG      0x00000003
-
-struct __mmc_blk_data {
-	spinlock_t lock;
-	struct gendisk *disk;
-	struct mmc_queue queue;
-
-	unsigned int usage;
-	unsigned int read_only;
-};
-
-#ifdef CONFIG_MTK_EMMC_SUPPORT
-static int simple_mmc_get_disk_info(struct mbr_part_info *mpi, unsigned char *name)
+static int simple_sd_ioctl_get_bootpart(struct msdc_ioctl *msdc_ctl)
 {
-	struct disk_part_iter piter;
-	struct hd_struct *part;
-	struct msdc_host *host;
-	struct gendisk *disk;
-	struct __mmc_blk_data *md;
+	char *l_buf;
+	struct msdc_host *host_ctl;
+	int ret = 0;
+	int bootpart = 0;
 
-	/* emmc always in slot0 */
-	host = msdc_get_host(MSDC_EMMC, MSDC_BOOT_EN, 0);
-	if (IS_ERR_OR_NULL(host))
+	host_ctl = mtk_msdc_host[msdc_ctl->host_num];
+	if (IS_ERR_OR_NULL(host_ctl))
 		return -EINVAL;
-	if (IS_ERR_OR_NULL(host->mmc))
+	if (IS_ERR_OR_NULL(host_ctl->mmc))
 		return -EINVAL;
-	if (IS_ERR_OR_NULL(host->mmc->card))
+	if (IS_ERR_OR_NULL(host_ctl->mmc->card))
 		return -EINVAL;
 
-	md = mmc_get_drvdata(host->mmc->card);
-	BUG_ON(!md);
-	BUG_ON(!md->disk);
+	if (msdc_ctl->buffer == NULL)
+		return -EINVAL;
 
-	disk = md->disk;
+	l_buf = kzalloc((512), GFP_KERNEL);
+	if (!l_buf)
+		return -ENOMEM;
 
-	/* use this way to find partition info is to avoid handle addr transfer in scatter file
-	 * and 64bit address calculate */
-	disk_part_iter_init(&piter, disk, 0);
-	while ((part = disk_part_iter_next(&piter))) {
 #if DEBUG_MMC_IOCTL
-		pr_debug("part_name = %s name = %s\n", part->info->volname, name);
+	pr_debug("user want get boot partition info in msdc slot%d\n",
+		msdc_ctl->host_num);
 #endif
-		if (!strncmp(part->info->volname, name, PARTITION_NAME_LENGTH)) {
-			mpi->start_sector = part->start_sect;
-			mpi->nr_sects = part->nr_sects;
-			mpi->part_no = part->partno;
-			mpi->part_name = part->info->volname;
-			disk_part_iter_exit(&piter);
-			return 0;
-		}
+	mmc_claim_host(host_ctl->mmc);
+	ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
+	mmc_release_host(host_ctl->mmc);
+	if (ret) {
+		pr_debug("mmc_send_ext_csd error, get boot part\n");
+		goto end;
 	}
-	disk_part_iter_exit(&piter);
+	bootpart = (l_buf[EXT_CSD_PART_CFG] & 0x38) >> 3;
 
-	return 1;
-}
+#if DEBUG_MMC_IOCTL
+	pr_debug("bootpart Byte[EXT_CSD_PART_CFG] =%x, booten=%x\n",
+		l_buf[EXT_CSD_PART_CFG], bootpart);
+#endif
 
-
-/* call mmc block layer interface for userspace to do erase operate */
-static int simple_mmc_erase_func(unsigned int start, unsigned int size)
-{
-	struct msdc_host *host;
-	unsigned int arg, ret = 0;
-
-	/* emmc always in slot0 */
-	host = msdc_get_host(MSDC_EMMC, MSDC_BOOT_EN, 0);
-	if (IS_ERR_OR_NULL(host))
-		return -EINVAL;
-	if (IS_ERR_OR_NULL(host->mmc))
-		return -EINVAL;
-	if (IS_ERR_OR_NULL(host->mmc->card))
-		return -EINVAL;
-
-	if (mmc_can_discard(host->mmc->card)) {
-		arg = __MMC_DISCARD_ARG;
-	} else if (mmc_can_trim(host->mmc->card)) {
-		arg = __MMC_TRIM_ARG;
-	} else if (mmc_can_erase(host->mmc->card)) {
-		/* mmc_erase() will remove the erase group un-aligned part,
-		 * msdc_command_start() will do trim for old combo erase un-aligned issue
-		 */
-		arg = __MMC_ERASE_ARG;
+	if (MSDC_CARD_DUNM_FUNC != msdc_ctl->opcode) {
+		if (copy_to_user(msdc_ctl->buffer, &bootpart, 1)) {
+			ret = -EFAULT;
+			goto end;
+		}
 	} else {
-		pr_err("[%s]: emmc card can't support trim / discard / erase\n", __func__);
-		goto out;
+		/* called from other kernel module */
+		memcpy(msdc_ctl->buffer, &bootpart, 1);
 	}
 
-	pr_debug
-	    ("[%s]: start=0x%x, size=%d, arg=0x%x, can_trim=(0x%x),EXT_CSD_SEC_GB_CL_EN=0x%lx\n",
-	     __func__, start, size, arg, host->mmc->card->ext_csd.sec_feature_support,
-	     EXT_CSD_SEC_GB_CL_EN);
-	mmc_claim_host(host->mmc);
-	ret = mmc_erase(host->mmc->card, start, size, arg);
-	mmc_release_host(host->mmc);
+end:
+	msdc_ctl->result = ret;
+
+	kfree(l_buf);
+
+	return ret;
+}
+
+static int simple_sd_ioctl_set_bootpart(struct msdc_ioctl *msdc_ctl)
+{
+	char *l_buf;
+	struct msdc_host *host_ctl;
+	int ret = 0;
+	int bootpart = 0;
+
+	host_ctl = mtk_msdc_host[msdc_ctl->host_num];
+	if (IS_ERR_OR_NULL(host_ctl))
+		return -EINVAL;
+	if (IS_ERR_OR_NULL(host_ctl->mmc))
+		return -EINVAL;
+	if (IS_ERR_OR_NULL(host_ctl->mmc->card))
+		return -EINVAL;
+
+	if (msdc_ctl->buffer == NULL)
+		return -EINVAL;
+
+	if (copy_from_user(&bootpart, msdc_ctl->buffer, 1))
+		return -EINVAL;
+
+	l_buf = kzalloc((512), GFP_KERNEL);
+	if (!l_buf)
+		return -ENOMEM;
 
 #if DEBUG_MMC_IOCTL
-	pr_debug("[%s]: erase done....arg=0x%x\n", __func__, arg);
+	pr_debug("user want set boot partition in msdc slot%d\n",
+		msdc_ctl->host_num);
 #endif
-	return ret;
- out:
-	return -EINVAL;
-}
-#endif
+	mmc_claim_host(host_ctl->mmc);
+	ret = mmc_send_ext_csd(host_ctl->mmc->card, l_buf);
+	if (ret) {
+		pr_debug("mmc_send_ext_csd error, set boot partition\n");
+		goto end;
+	}
 
-static int simple_mmc_erase_partition(unsigned char *name)
-{
-#ifdef CONFIG_MTK_EMMC_SUPPORT
-	struct mbr_part_info mbr_part;
-	int l_ret = -1;
+	if ((bootpart != EMMC_BOOT1_EN)
+	 && (bootpart != EMMC_BOOT2_EN)
+	 && (bootpart != EMMC_BOOT_USER)) {
+		pr_debug("set boot partition error, not support %d\n",
+			bootpart);
+		ret = -EFAULT;
+		goto end;
+	}
 
-	if (!name)
-		return -EINVAL;
-	/* just support erase cache & data partition now */
-	if (('u' == *name && 's' == *(name + 1) && 'r' == *(name + 2) && 'd' == *(name + 3) &&
-	     'a' == *(name + 4) && 't' == *(name + 5) && 'a' == *(name + 6)) ||
-	    ('c' == *name && 'a' == *(name + 1) && 'c' == *(name + 2) && 'h' == *(name + 3)
-	     && 'e' == *(name + 4))) {
-		/* find erase start address and erase size, just support high capacity emmc card now */
-		l_ret = simple_mmc_get_disk_info(&mbr_part, name);
-
-
-		if (l_ret == 0) {
-			/* do erase */
-			pr_debug("erase %s start sector: 0x%x size: 0x%x\n", mbr_part.part_name,
-				 mbr_part.start_sector, mbr_part.nr_sects);
-			simple_mmc_erase_func(mbr_part.start_sector, mbr_part.nr_sects);
+	if (((l_buf[EXT_CSD_PART_CFG] & 0x38) >> 3) != bootpart) {
+		/* active boot partition */
+		l_buf[EXT_CSD_PART_CFG] &= ~0x38;
+		l_buf[EXT_CSD_PART_CFG] |= (bootpart << 3);
+		pr_debug("mmc_switch set %x\n", l_buf[EXT_CSD_PART_CFG]);
+		ret = mmc_switch(host_ctl->mmc->card, EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_PART_CFG, l_buf[EXT_CSD_PART_CFG], 1000);
+		if (ret) {
+			pr_debug("mmc_switch error, set boot partition\n");
+		} else {
+			host_ctl->mmc->card->ext_csd.part_config =
+			l_buf[EXT_CSD_PART_CFG];
 		}
 	}
 
-	return 0;
-#else
-	return 0;
-#endif
+end:
+	msdc_ctl->result = ret;
 
+	mmc_release_host(host_ctl->mmc);
+
+	kfree(l_buf);
+	return ret;
+}
+static u64 msdc_get_user_capacity(struct msdc_host *host)
+{
+	u64 capacity = 0;
+	u32 legacy_capacity = 0;
+	struct mmc_card *card;
+
+	if ((host != NULL) && (host->mmc != NULL) && (host->mmc->card != NULL))
+		card = host->mmc->card;
+	else
+		return 0;
+
+	card = host->mmc->card;
+	if (mmc_card_mmc(card)) {
+		if (card->csd.read_blkbits) {
+			legacy_capacity =
+				(2 << (card->csd.read_blkbits - 1))
+				* card->csd.capacity;
+		} else {
+			legacy_capacity = card->csd.capacity;
+			ERR_MSG("XXX read_blkbits = 0 XXX");
+		}
+		capacity =
+			(u64)(card->ext_csd.sectors) * 512 > legacy_capacity ?
+			(u64)(card->ext_csd.sectors) * 512 : legacy_capacity;
+	} else if (mmc_card_sd(card)) {
+		capacity = (u64) (card->csd.capacity)
+			<< (card->csd.read_blkbits);
+	}
+	return capacity;
 }
 
-static int simple_mmc_erase_partition_wrap(struct msdc_ioctl *msdc_ctl)
+static unsigned int msdc_get_other_capacity(struct msdc_host *host, char *name)
 {
-	unsigned char name[PARTITION_NAME_LENGTH];
+	unsigned int device_other_capacity = 0;
+	int i;
+	struct mmc_card *card;
 
-	if (!msdc_ctl)
+	if ((host != NULL) && (host->mmc != NULL) && (host->mmc->card != NULL))
+		card = host->mmc->card;
+	else
+		return 0;
+
+	for (i = 0; i < card->nr_parts; i++) {
+		if (!name) {
+			device_other_capacity += card->part[i].size;
+		} else if (strcmp(name, card->part[i].name) == 0) {
+			device_other_capacity = card->part[i].size;
+			break;
+		}
+	}
+
+	return device_other_capacity;
+}
+
+static int simple_sd_ioctl_get_partition_size(struct msdc_ioctl *msdc_ctl)
+{
+	struct msdc_host *host_ctl;
+	unsigned long long partitionsize = 0;
+	struct msdc_host *host;
+	int ret = 0;
+
+	host_ctl = mtk_msdc_host[msdc_ctl->host_num];
+
+	if (IS_ERR_OR_NULL(host_ctl))
+		return -EINVAL;
+	if (IS_ERR_OR_NULL(host_ctl->mmc))
+		return -EINVAL;
+	if (IS_ERR_OR_NULL(host_ctl->mmc->card))
 		return -EINVAL;
 
-	if (msdc_ctl->total_size > PARTITION_NAME_LENGTH)
-		return -EFAULT;
+	host = mmc_priv(host_ctl->mmc);
 
-	if (copy_from_user(name, (unsigned char *)msdc_ctl->buffer, msdc_ctl->total_size))
-		return -EFAULT;
+#if DEBUG_MMC_IOCTL
+	pr_debug("user want get size of partition=%d\n", msdc_ctl->partition);
+#endif
 
-	return simple_mmc_erase_partition(name);
+	switch (msdc_ctl->partition) {
+	case EMMC_PART_BOOT1:
+		partitionsize = msdc_get_other_capacity(host, "boot0");
+		break;
+	case EMMC_PART_BOOT2:
+		partitionsize = msdc_get_other_capacity(host, "boot1");
+		break;
+	case EMMC_PART_RPMB:
+		partitionsize = msdc_get_other_capacity(host, "rpmb");
+		break;
+	case EMMC_PART_USER:
+		partitionsize = msdc_get_user_capacity(host);
+		break;
+	default:
+		pr_debug("not support partition =%d\n", msdc_ctl->partition);
+		partitionsize = 0;
+		break;
+	}
+#if DEBUG_MMC_IOCTL
+	pr_debug("bootpart partitionsize =%llx\n", partitionsize);
+#endif
+	if (copy_to_user(msdc_ctl->buffer, &partitionsize, 8))
+		ret = -EFAULT;
+
+	msdc_ctl->result = ret;
+
+	return ret;
 }
-
 static long simple_sd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct msdc_ioctl msdc_ctl;
-	int ret;
+	int ret = 0, size = sizeof(struct msdc_ioctl);
 
 	if ((struct msdc_ioctl *)arg == NULL) {
 		switch (cmd) {
 		case MSDC_REINIT_SDCARD:
-			ret = sd_ioctl_reinit((struct msdc_ioctl *)arg);
+			ret = sd_ioctl_reinit();
 			break;
-
 		case MSDC_CD_PIN_EN_SDCARD:
-			ret = sd_ioctl_cd_pin_en((struct msdc_ioctl *)arg);
+			ret = sd_ioctl_cd_pin_en();
 			break;
-
 		default:
 			pr_err("mt_sd_ioctl:this opcode value is illegal!!\n");
 			return -EINVAL;
 		}
 	} else {
-		if (copy_from_user(&msdc_ctl, (struct msdc_ioctl *)arg, sizeof(struct msdc_ioctl)))
+		if (copy_from_user(&msdc_ctl, (void *)arg, size))
 			return -EFAULT;
 		if (msdc_ctl.host_num >= HOST_MAX_NUM || msdc_ctl.host_num < 0) {
-			pr_err("msdc:host id=%d is not available.\n", msdc_ctl.host_num);
+			pr_err("%s: invalid host id :%d.\n", __func__, msdc_ctl.host_num);
 			return -EINVAL;
 		}
 
 		switch (msdc_ctl.opcode) {
 		case MSDC_SINGLE_READ_WRITE:
-			msdc_ctl.result = simple_sd_ioctl_single_rw(&msdc_ctl);
+			ret = simple_sd_ioctl_single_rw(&msdc_ctl);
 			break;
 		case MSDC_MULTIPLE_READ_WRITE:
-			msdc_ctl.result = simple_sd_ioctl_multi_rw(&msdc_ctl);
+			ret = simple_sd_ioctl_multi_rw(&msdc_ctl);
 			break;
 		case MSDC_GET_CID:
-			msdc_ctl.result = simple_sd_ioctl_get_cid(&msdc_ctl);
+			ret = simple_sd_ioctl_get_cid(&msdc_ctl);
 			break;
 		case MSDC_GET_CSD:
-			msdc_ctl.result = simple_sd_ioctl_get_csd(&msdc_ctl);
+			ret = simple_sd_ioctl_get_csd(&msdc_ctl);
 			break;
 		case MSDC_GET_EXCSD:
-			msdc_ctl.result = simple_sd_ioctl_get_excsd(&msdc_ctl);
+			ret = simple_sd_ioctl_get_excsd(&msdc_ctl);
 			break;
 		case MSDC_DRIVING_SETTING:
 			pr_debug("in ioctl to change driving\n");
 			if (msdc_ctl.iswrite)
-				msdc_ctl.result = simple_sd_ioctl_set_driving(&msdc_ctl);
+				ret = simple_sd_ioctl_set_driving(&msdc_ctl);
 			else
-				msdc_ctl.result = simple_sd_ioctl_get_driving(&msdc_ctl);
-			break;
-		case MSDC_ERASE_PARTITION:
-			msdc_ctl.result = simple_mmc_erase_partition_wrap(&msdc_ctl);
+				ret = simple_sd_ioctl_get_driving(&msdc_ctl);
 			break;
 		case MSDC_SD30_MODE_SWITCH:
-			msdc_ctl.result = simple_sd_ioctl_sd30_mode_switch(&msdc_ctl);
+			ret = simple_sd_ioctl_sd30_mode_switch(&msdc_ctl);
+			break;
+		case MSDC_GET_BOOTPART:
+			ret = simple_sd_ioctl_get_bootpart(&msdc_ctl);
+			break;
+		case MSDC_SET_BOOTPART:
+			ret = simple_sd_ioctl_set_bootpart(&msdc_ctl);
+			break;
+		case MSDC_GET_PARTSIZE:
+			ret = simple_sd_ioctl_get_partition_size(&msdc_ctl);
 			break;
 		default:
-			pr_err("simple_sd_ioctl:this opcode value is illegal!!\n");
+			pr_err("%s: illegal opcode\n", __func__);
 			return -EINVAL;
 		}
-		if (copy_to_user((struct msdc_ioctl *)arg, &msdc_ctl, sizeof(struct msdc_ioctl)))
+		msdc_ctl.result = ret;
+		if (copy_to_user((void *)arg, &msdc_ctl, size))
 			return -EFAULT;
-
-		return msdc_ctl.result;
 	}
-	return 0;
+	return ret;
 }
 
 static const struct file_operations simple_msdc_em_fops = {
@@ -1092,62 +1139,27 @@ static const struct file_operations simple_msdc_em_fops = {
 	.open = simple_sd_open,
 };
 
-static struct miscdevice simple_msdc_em_dev[] = {
-	{
+static struct miscdevice simple_msdc_em_dev = {
 	 .minor = MISC_DYNAMIC_MINOR,
 	 .name = "misc-sd",
 	 .fops = &simple_msdc_em_fops,
-	 }
-};
-
-static int simple_sd_probe(struct platform_device *pdev)
-{
-	int ret = 0;
-
-	pr_debug("in misc_sd_probe function\n");
-
-	return ret;
-}
-
-static int simple_sd_remove(struct platform_device *pdev)
-{
-	return 0;
-}
-
-static struct platform_driver simple_sd_driver = {
-	.probe = simple_sd_probe,
-	.remove = simple_sd_remove,
-
-	.driver = {
-		   .name = DRV_NAME_MISC,
-		   .owner = THIS_MODULE,
-		   },
 };
 
 static int __init simple_sd_init(void)
 {
-	int ret;
+	int ret = 0;
 
 	sg_msdc_multi_buffer = kmalloc(64 * 1024, GFP_KERNEL);
-	if (sg_msdc_multi_buffer == NULL)
-		return 0;
-
-	ret = platform_driver_register(&simple_sd_driver);
-	if (ret) {
-		pr_err(DRV_NAME_MISC ": Can't register driver\n");
-		return ret;
+	if (sg_msdc_multi_buffer == NULL) {
+		pr_err("%s: alloc memory fail\n", __func__);
+		ret = -ENOMEM;
+		goto out;
 	}
-	pr_debug(DRV_NAME_MISC ": MediaTek simple SD/MMC Card Driver\n");
-
-	/*msdc0 is for emmc only, just for emmc */
-	/* ret = misc_register(&simple_msdc_em_dev[host->id]); */
-	ret = misc_register(&simple_msdc_em_dev[0]);
-	if (ret) {
-		pr_err("register MSDC Slot[0] misc driver failed (%d)\n", ret);
-		return ret;
-	}
-
-	return 0;
+	ret = misc_register(&simple_msdc_em_dev);
+	if (ret)
+		pr_err("%s: register misc-sd fail, ret = %d\n", __func__, ret);
+out:
+	return ret;
 }
 
 static void __exit simple_sd_exit(void)
@@ -1157,13 +1169,10 @@ static void __exit simple_sd_exit(void)
 		sg_msdc_multi_buffer = NULL;
 	}
 
-	misc_deregister(&simple_msdc_em_dev[0]);
-
-	platform_driver_unregister(&simple_sd_driver);
+	misc_deregister(&simple_msdc_em_dev);
 }
 
 module_init(simple_sd_init);
 module_exit(simple_sd_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("simple MediaTek SD/MMC Card Driver");
-MODULE_AUTHOR("feifei.wang <feifei.wang@mediatek.com>");

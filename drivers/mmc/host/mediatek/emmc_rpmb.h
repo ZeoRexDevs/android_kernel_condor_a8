@@ -1,5 +1,15 @@
-
-
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
 
 #ifndef _EMMC_RPMB_H
 #define _EMMC_RPMB_H
@@ -18,7 +28,7 @@ extern struct msdc_host *mtk_msdc_host[];
 #define RPMB_IOCTL_WRITE_DATA   3
 #define RPMB_IOCTL_READ_DATA    4
 
-#if (defined(CONFIG_MICROTRUST_TZ_DRIVER))
+#if (defined(CONFIG_MICROTRUST_TEE_SUPPORT))
 
 #define RPMB_MULTI_BLOCK_ACCESS 1
 
@@ -35,6 +45,7 @@ extern struct msdc_host *mtk_msdc_host[];
 #define RPMB_IOCTL_SOTER_WRITE_DATA   5
 #define RPMB_IOCTL_SOTER_READ_DATA    6
 #define RPMB_IOCTL_SOTER_GET_CNT      7
+#define RPMB_IOCTL_SOTER_GET_WR_SIZE      8
 
 struct rpmb_infor {
 	unsigned int size;

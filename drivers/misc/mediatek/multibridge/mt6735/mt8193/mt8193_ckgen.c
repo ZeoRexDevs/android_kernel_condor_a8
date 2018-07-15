@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #define pr_fmt(fmt) "mt8193-ckgen: " fmt
 #define DEBUG 1
 
@@ -37,7 +50,6 @@ static int mt8193_ckgen_probe(struct platform_device *pdev);
 static int mt8193_ckgen_suspend(struct platform_device *pdev, pm_message_t state);
 static int mt8193_ckgen_resume(struct platform_device *pdev);
 static int mt8193_ckgen_remove(struct platform_device *pdev);
-static void mt8193_ckgen_shutdown(struct platform_device *pdev);
 
 /******************************************************************************
 Device driver structure
@@ -52,7 +64,6 @@ static const struct of_device_id mt8193ckgen_of_ids[] = {
 static struct platform_driver mt8193_ckgen_driver = {
 	.probe		= mt8193_ckgen_probe,
 	.remove		= mt8193_ckgen_remove,
-	.shutdown	= mt8193_ckgen_shutdown,
 	.suspend	= mt8193_ckgen_suspend,
 	.resume		= mt8193_ckgen_resume,
 	.driver		= {
@@ -70,8 +81,6 @@ static struct cdev *ckgen_cdev;
 static struct pinctrl *pinctrl;
 static struct pinctrl_state *pins_gpio;
 static struct pinctrl_state *pins_dpi;
-
-int multibridge_exit = 0;
 
 #if MT8193_CKGEN_VFY
 
@@ -450,14 +459,6 @@ static int mt8193_ckgen_probe(struct platform_device *pdev)
 static int mt8193_ckgen_remove(struct platform_device *pdev)
 {
 	return 0;
-}
-
-static void mt8193_ckgen_shutdown(struct platform_device *pdev)
-{
-	if (!multibridge_exit) {
-		multibridge_exit = 1;
-		mt8193_bus_clk_switch(false);
-	}
 }
 
 module_init(mt8193_ckgen_init);

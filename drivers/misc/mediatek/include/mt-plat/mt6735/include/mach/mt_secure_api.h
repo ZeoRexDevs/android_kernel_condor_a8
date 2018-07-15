@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 
 #ifndef _MT_SECURE_API_H_
 #define _MT_SECURE_API_H_
@@ -23,8 +36,11 @@
 #define MTK_SIP_KERNEL_EMIMPU_WRITE         0x82000207
 #define MTK_SIP_KERNEL_EMIMPU_READ          0x82000208
 #define MTK_SIP_KERNEL_EMIMPU_SET           0x82000209
-
+#define MTK_SIP_KERNEL_ICACHE_DUMP          0x82000210
+#define MTK_SIP_KERNEL_TIME_SYNC		0x82000213
 #define MTK_SIP_KERNEL_MSG                  0x820002ff
+#define MTK_SIP_KERNEL_GPIO_WRITE   0xC2000224
+#define MTK_SIP_KERNEL_GPIO_READ    0xC2000225
 
 #ifdef CONFIG_ARM64
 /* SIP SMC Call 64 */

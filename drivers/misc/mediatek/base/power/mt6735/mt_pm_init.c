@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/pm.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
@@ -30,7 +43,7 @@
 /* #include "mach/mt_cpufreq.h" */
 /* #include "mach/mt_gpufreq.h" */
 #include "mt_cpuidle.h"
-#include <mt_clkbuf_ctl.h>
+#include "mt_clkbuf_ctl.h"
 /* #include "mach/mt_clkbuf_ctl.h" */
 /* #include "mach/mt_chip.h" */
 #include "mt-plat/mtk_rtc.h"

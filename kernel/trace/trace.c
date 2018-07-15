@@ -45,6 +45,10 @@
 #include <linux/fs.h>
 #include <linux/sched/rt.h>
 
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+#include <linux/exm_driver.h>
+#endif
+
 #include "trace.h"
 #include "trace_output.h"
 
@@ -336,7 +340,11 @@ int tracing_is_enabled(void)
  * boot time and run time configurable.
  */
 #ifdef CONFIG_MTK_FTRACE_DEFAULT_ENABLE
+#ifdef CONFIG_LOW_RAM_DEBUG
+#define TRACE_BUF_SIZE_DEFAULT	3355443UL
+#else
 #define TRACE_BUF_SIZE_DEFAULT	4194304UL
+#endif
 #else
 #define TRACE_BUF_SIZE_DEFAULT	1441792UL /* 16384 * 88 (sizeof(entry)) */
 #endif
@@ -1334,14 +1342,26 @@ static inline void set_cmdline(int idx, const char *cmdline)
 static int allocate_cmdlines_buffer(unsigned int val,
 				    struct saved_cmdlines_buffer *s)
 {
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+	s->map_cmdline_to_pid = extmem_malloc(val * sizeof(*s->map_cmdline_to_pid));
+#else
 	s->map_cmdline_to_pid = kmalloc(val * sizeof(*s->map_cmdline_to_pid),
 					GFP_KERNEL);
+#endif
 	if (!s->map_cmdline_to_pid)
 		return -ENOMEM;
 
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+	s->saved_cmdlines = extmem_malloc(val * TASK_COMM_LEN);
+#else
 	s->saved_cmdlines = kmalloc(val * TASK_COMM_LEN, GFP_KERNEL);
+#endif
 	if (!s->saved_cmdlines) {
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+		extmem_free((void *)s->map_cmdline_to_pid);
+#else
 		kfree(s->map_cmdline_to_pid);
+#endif
 		return -ENOMEM;
 	}
 
@@ -1369,14 +1389,22 @@ static int allocate_cmdlines_buffer(unsigned int val,
 static int trace_create_savedcmd(void)
 {
 	int ret;
-
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+	savedcmd =
+		(struct saved_cmdlines_buffer *)extmem_malloc(sizeof(*savedcmd));
+#else
 	savedcmd = kmalloc(sizeof(*savedcmd), GFP_KERNEL);
+#endif
 	if (!savedcmd)
 		return -ENOMEM;
 
 	ret = allocate_cmdlines_buffer(SAVED_CMDLINES_DEFAULT, savedcmd);
 	if (ret < 0) {
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+		extmem_free((void *)savedcmd);
+#else
 		kfree(savedcmd);
+#endif
 		savedcmd = NULL;
 		return -ENOMEM;
 	}
@@ -1598,7 +1626,7 @@ static void __trace_find_cmdline(int pid, char comm[])
 
 	map = savedcmd->map_pid_to_cmdline[pid];
 	if (map != NO_CMDLINE_MAP)
-		strlcpy(comm, get_saved_cmdlines(map), TASK_COMM_LEN-1);
+		strlcpy(comm, get_saved_cmdlines(map), TASK_COMM_LEN - 1);
 	else
 		strcpy(comm, "<...>");
 }
@@ -2612,7 +2640,7 @@ static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
 	seq_printf(m, "# entries-in-buffer/entries-written: %lu/%lu   #P:%d\n",
 		   entries, total, num_online_cpus());
 #ifdef CONFIG_MTK_SCHED_TRACERS
-	print_enabled_events(m);
+	print_enabled_events(buf, m);
 #endif
 	seq_puts(m, "#\n");
 }
@@ -3281,11 +3309,17 @@ static int tracing_open(struct inode *inode, struct file *file)
 	/* If this file was open for write, then erase contents */
 	if ((file->f_mode & FMODE_WRITE) && (file->f_flags & O_TRUNC)) {
 		int cpu = tracing_get_cpu(inode);
+		struct trace_buffer *trace_buf = &tr->trace_buffer;
+
+#ifdef CONFIG_TRACER_MAX_TRACE
+		if (tr->current_trace->print_max)
+			trace_buf = &tr->max_buffer;
+#endif
 
 		if (cpu == RING_BUFFER_ALL_CPUS)
-			tracing_reset_online_cpus(&tr->trace_buffer);
+			tracing_reset_online_cpus(trace_buf);
 		else
-			tracing_reset(&tr->trace_buffer, cpu);
+			tracing_reset(trace_buf, cpu);
 	}
 
 	if (file->f_mode & FMODE_READ) {
@@ -3958,22 +3992,37 @@ tracing_saved_cmdlines_size_read(struct file *filp, char __user *ubuf,
 
 static void free_saved_cmdlines_buffer(struct saved_cmdlines_buffer *s)
 {
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+	extmem_free((void *)s->saved_cmdlines);
+	extmem_free((void *)s->map_cmdline_to_pid);
+	extmem_free((void *)s->map_cmdline_to_tgid);
+	extmem_free((void *)s);
+#else
 	kfree(s->saved_cmdlines);
 	kfree(s->map_cmdline_to_pid);
 	kfree(s->map_cmdline_to_tgid);
 	kfree(s);
+#endif
 }
 
 static int tracing_resize_saved_cmdlines(unsigned int val)
 {
 	struct saved_cmdlines_buffer *s, *savedcmd_temp;
 
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+	s = (struct saved_cmdlines_buffer *)extmem_malloc(sizeof(*s));
+#else
 	s = kmalloc(sizeof(*s), GFP_KERNEL);
+#endif
 	if (!s)
 		return -ENOMEM;
 
 	if (allocate_cmdlines_buffer(val, s) < 0) {
+#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
+		extmem_free((void *)s);
+#else
 		kfree(s);
+#endif
 		return -ENOMEM;
 	}
 
@@ -4625,7 +4674,7 @@ static int tracing_wait_pipe(struct file *filp)
 		 *
 		 * iter->pos will be 0 if we haven't read anything.
 		 */
-		if (!tracing_is_on() && iter->pos)
+		if (!tracer_tracing_is_on(iter->tr) && iter->pos)
 			break;
 
 		mutex_unlock(&iter->mutex);
@@ -5167,7 +5216,7 @@ static int tracing_set_clock(struct trace_array *tr, const char *clockstr)
 	tracing_reset_online_cpus(&tr->trace_buffer);
 
 #ifdef CONFIG_TRACER_MAX_TRACE
-	if (tr->flags & TRACE_ARRAY_FL_GLOBAL && tr->max_buffer.buffer)
+	if (tr->max_buffer.buffer)
 		ring_buffer_set_clock(tr->max_buffer.buffer, trace_clocks[i].func);
 	tracing_reset_online_cpus(&tr->max_buffer);
 #endif
@@ -6390,6 +6439,10 @@ rb_simple_write(struct file *filp, const char __user *ubuf,
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+	if (boot_ftrace_check(val))
+		return -EPERM;
+#endif
 	if (buffer) {
 		if (ring_buffer_record_is_on(buffer) ^ val)
 			pr_debug("[ftrace]tracing_on is toggled to %lu\n", val);
@@ -6602,7 +6655,7 @@ static int instance_rmdir(const char *name)
 	tracing_set_nop(tr);
 	event_trace_del_tracer(tr);
 	ftrace_destroy_function_files(tr);
-	debugfs_remove_recursive(tr->dir);
+	tracefs_remove_recursive(tr->dir);
 	free_trace_buffers(tr);
 
 	free_cpumask_var(tr->tracing_cpumask);

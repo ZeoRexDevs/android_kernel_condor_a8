@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
@@ -12,7 +25,7 @@
 
 #include "mt_spm_idle.h"
 
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 #include <irq.h>
 #endif
 
@@ -24,6 +37,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/of_reserved_mem.h>
 #endif
 
 void __weak aee_kernel_warning_api(const char *file, const int line, const int db_opt,
@@ -31,7 +45,7 @@ void __weak aee_kernel_warning_api(const char *file, const int line, const int d
 {
 }
 
-#if defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 #define ENABLE_DYNA_LOAD_PCM
 #endif
 
@@ -43,22 +57,61 @@ void __weak aee_kernel_warning_api(const char *file, const int line, const int d
 #include <linux/debugfs.h>
 #include <linux/dcache.h>
 #include <asm/cacheflush.h>
+#include <linux/uaccess.h>
 #include <linux/dma-direction.h>
+#include <linux/dma-mapping.h>
+#include <linux/slab.h>
+#include <linux/suspend.h>
+
+#ifndef dmac_map_area
+#define dmac_map_area __dma_map_area
+#endif
 
 static struct dentry *spm_dir;
 static struct dentry *spm_file;
 static struct platform_device *pspmdev;
-static int dyna_load_pcm_done;
+static int dyna_load_pcm_done __nosavedata;
+
+#if defined(CONFIG_ARCH_MT6735)
 static char *dyna_load_pcm_path[] = {
-	[DYNA_LOAD_PCM_SUSPEND] = "pcm_suspend.bin",
-	[DYNA_LOAD_PCM_SODI] = "pcm_sodi.bin",
-	[DYNA_LOAD_PCM_DEEPIDLE] = "pcm_deepidle.bin",
+	[DYNA_LOAD_PCM_SUSPEND] = "pcm_suspend_1.bin",
+	[DYNA_LOAD_PCM_SODI] = "pcm_sodi_1.bin",
+	[DYNA_LOAD_PCM_DEEPIDLE] = "pcm_deepidle_1.bin",
+	[DYNA_LOAD_PCM_VCORE_DVFS] = "pcm_vcore_dvfs_1.bin",
 	[DYNA_LOAD_PCM_MAX] = "pcm_path_max",
 };
 
 MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SUSPEND]);
 MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SODI]);
 MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_VCORE_DVFS]);
+#elif defined(CONFIG_ARCH_MT6735M)
+static char *dyna_load_pcm_path[] = {
+	[DYNA_LOAD_PCM_SUSPEND] = "pcm_suspend_2.bin",
+	[DYNA_LOAD_PCM_SODI] = "pcm_sodi_2.bin",
+	[DYNA_LOAD_PCM_DEEPIDLE] = "pcm_deepidle_2.bin",
+	[DYNA_LOAD_PCM_VCORE_DVFS] = "pcm_vcore_dvfs_2.bin",
+	[DYNA_LOAD_PCM_MAX] = "pcm_path_max",
+};
+
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SUSPEND]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SODI]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_VCORE_DVFS]);
+#elif defined(CONFIG_ARCH_MT6753)
+static char *dyna_load_pcm_path[] = {
+	[DYNA_LOAD_PCM_SUSPEND] = "pcm_suspend_3.bin",
+	[DYNA_LOAD_PCM_SODI] = "pcm_sodi_3.bin",
+	[DYNA_LOAD_PCM_DEEPIDLE] = "pcm_deepidle_3.bin",
+	[DYNA_LOAD_PCM_VCORE_DVFS] = "pcm_vcore_dvfs_3.bin",
+	[DYNA_LOAD_PCM_MAX] = "pcm_path_max",
+};
+
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SUSPEND]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_SODI]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_DEEPIDLE]);
+MODULE_FIRMWARE(dyna_load_pcm_path[DYNA_LOAD_PCM_VCORE_DVFS]);
+#endif
 
 struct dyna_load_pcm_t dyna_load_pcm[DYNA_LOAD_PCM_MAX];
 
@@ -78,7 +131,7 @@ static struct cdev gSPMDetectCdev;
 
 
 #ifdef CONFIG_OF
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 void __iomem *spm_base;
 void __iomem *scp_i2c0_base;
 void __iomem *scp_i2c1_base;
@@ -109,7 +162,7 @@ u32 spm_irq_0 = 120;
 u32 spm_irq_1 = 121;
 u32 spm_irq_2 = 122;
 u32 spm_irq_3 = 123;
-#endif /* CONFIG_ARCH_MT6580 */
+#endif /* !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580) */
 #endif /* CONFIG_OF */
 
 /*
@@ -238,10 +291,10 @@ static int spm_irq_register(void)
 #ifndef CONFIG_ARM64
 		/* assign each SPM IRQ to each CPU */
 		mt_gic_cfg_irq2cpu(irqdesc[i].irq, 0, 0);
-		mt_gic_cfg_irq2cpu(irqdesc[i].irq, i % num_possible_cpus(), 1);
+		mt_gic_cfg_irq2cpu(irqdesc[i].irq, i, 1);
 #endif
 	}
-#if defined(CONFIG_ARCH_MT6580)
+#if defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580)
 	mt_gic_set_priority(SPM_IRQ0_ID);
 #endif
 	return r;
@@ -250,7 +303,7 @@ static int spm_irq_register(void)
 static void spm_register_init(void)
 {
 	unsigned long flags;
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 	unsigned int code = mt_get_chip_hw_code();
 #endif
 #if defined(CONFIG_ARCH_MT6753)
@@ -273,12 +326,14 @@ static void spm_register_init(void)
 	spm_irq_1 = irq_of_parse_and_map(node, 1);
 	if (!spm_irq_1)
 		spm_err("get spm_irq_1 failed\n");
+#if !defined(CONFIG_ARCH_MT6570)
 	spm_irq_2 = irq_of_parse_and_map(node, 2);
 	if (!spm_irq_2)
 		spm_err("get spm_irq_2 failed\n");
 	spm_irq_3 = irq_of_parse_and_map(node, 3);
 	if (!spm_irq_3)
 		spm_err("get spm_irq_3 failed\n");
+#endif
 #if defined(CONFIG_ARCH_MT6753)
 #define MCUCFG_NODE "mediatek,MCUCFG"
 
@@ -300,7 +355,7 @@ static void spm_register_init(void)
 	}
 #endif
 
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 	node = of_find_compatible_node(NULL, NULL, "mediatek,SCP_I2C0");
 	if (!node)
 		spm_err("find SCP_I2C0 node failed\n");
@@ -348,7 +403,6 @@ static void spm_register_init(void)
 	spm_i2c2_base = of_iomap(node, 0);
 	if (!spm_i2c2_base)
 		spm_err("base spm_i2c2 failed\n");
-
 	node = of_find_compatible_node(NULL, NULL, "mediatek,MCUCFG");	/* mcucfg */
 	if (!node)
 		spm_err("[MCUCFG] find node failed\n");
@@ -375,7 +429,7 @@ static void spm_register_init(void)
 		spm_cksys_base, spm_mcucfg_base, spm_ddrphy_base);
 	spm_err("spm_irq_0 = %d, spm_irq_1 = %d, spm_irq_2 = %d, spm_irq_3 = %d\n", spm_irq_0,
 		spm_irq_1, spm_irq_2, spm_irq_3);
-#endif /*CONFIG_ARCH_MT6580*/
+#endif /*!defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)*/
 #endif /*CONFIG_OF*/
 
 	spin_lock_irqsave(&__spm_lock, flags);
@@ -407,7 +461,7 @@ static void spm_register_init(void)
 	spm_write(SPM_PCM_IM_PTR, 0);
 	spm_write(SPM_PCM_IM_LEN, 0);
 
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 	/*
 	 * SRCLKENA0: POWER_ON_VAL1 (PWR_IO_EN[7]=0) or
 	 *            E1: r7|SRCLKENAI0|SRCLKENAI1|MD1_SRCLKENA (PWR_IO_EN[7]=1)
@@ -456,15 +510,23 @@ static void spm_register_init(void)
 #if SPM_MD_DDR_EN_OUT
 	__spm_dbgout_md_ddr_en(true);
 #endif
+
+#if defined(CONFIG_ARCH_MT6570)
+	spm_set_sleep_nfi_sram_config(1, 1, 1, 1);
+	spm_crit(" nfi_sram ctrl:0x%x, ufozip sram ctrl:0x%x\n",
+			spm_get_sleep_nfi_sram_config(),
+			spm_get_sleep_ufozip_sram_config());
+#endif
 	spin_unlock_irqrestore(&__spm_lock, flags);
 }
 
-int spm_module_init(void)
+int __init spm_module_init(void)
 {
 	int r = 0;
 	/* This following setting is moved to LK by WDT init, because of DTS init level issue */
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 	struct wd_api *wd_api;
+	int wd_ret;
 #endif
 
 	spm_register_init();
@@ -474,7 +536,7 @@ int spm_module_init(void)
 
 #ifndef CONFIG_MTK_FPGA
 #if defined(CONFIG_PM)
-#if defined(CONFIG_ARCH_MT6735) || defined(CONFIG_ARCH_MT6580) \
+#if defined(CONFIG_ARCH_MT6735) || defined(CONFIG_ARCH_MT6570) || defined(CONFIG_ARCH_MT6580) \
 	|| defined(CONFIG_ARCH_MT6735M) || defined(CONFIG_ARCH_MT6753)
 	if (spm_fs_init() != 0)
 		r = -EPERM;
@@ -482,20 +544,24 @@ int spm_module_init(void)
 #endif
 #endif
 
-#if !defined(CONFIG_ARCH_MT6580)
-	get_wd_api(&wd_api);
-	if (wd_api->wd_spmwdt_mode_config) {
-		wd_api->wd_spmwdt_mode_config(WD_REQ_EN, WD_REQ_RST_MODE);
-	} else {
-		spm_err("FAILED TO GET WD API\n");
-		r = -ENODEV;
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
+	wd_ret = get_wd_api(&wd_api);
+	if (!wd_ret) {
+		if (wd_api->wd_spmwdt_mode_config) {
+			wd_api->wd_spmwdt_mode_config(WD_REQ_EN, WD_REQ_RST_MODE);
+		} else {
+			spm_err("FAILED TO GET WD API\n");
+			r = -ENODEV;
+		}
 	}
 #endif
 
 #ifndef CONFIG_MTK_FPGA
+#if !defined(CONFIG_ARCH_MT6570)
 	spm_sodi_init();
 	/* spm_mcdi_init(); */
-#if !defined(CONFIG_ARCH_MT6580)
+#endif
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 	spm_deepidle_init();
 #endif
 #endif
@@ -505,9 +571,10 @@ int spm_module_init(void)
 		aee_kernel_warning("SPM Warring", "dram golden setting mismach");
 	}
 
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 	spm_set_pcm_init_flag();
 #endif
+
 
 #ifdef SPM_VCORE_EN
 	spm_go_to_vcore_dvfs(SPM_VCORE_DVFS_EN, 0);
@@ -522,12 +589,31 @@ int spm_module_init(void)
 }
 
 #ifdef ENABLE_DYNA_LOAD_PCM	/* for dyna_load_pcm */
+static char *local_buf;
+static dma_addr_t local_buf_dma;
+static const struct firmware *spm_fw[DYNA_LOAD_PCM_MAX];
+
+int spm_fw_count = -1;
+
+/*Reserved memory by device tree!*/
+int reserve_memory_spm_fn(struct reserved_mem *rmem)
+{
+	pr_info(" name: %s, base: 0x%llx, size: 0x%llx\n", rmem->name,
+			   (unsigned long long)rmem->base, (unsigned long long)rmem->size);
+	WARN_ON(rmem->size < PCM_FIRMWARE_SIZE * DYNA_LOAD_PCM_MAX);
+
+	local_buf_dma = rmem->base;
+	return 0;
+}
+RESERVEDMEM_OF_DECLARE(reserve_memory_test, "mediatek,spm-reserve-memory", reserve_memory_spm_fn);
+
 int spm_load_pcm_firmware(struct platform_device *pdev)
 {
 	const struct firmware *fw;
 	int err = 0;
 	int i;
 	int offset = 0;
+	int check_spm_fw_count = DYNA_LOAD_PCM_MAX;
 
 	if (!pdev)
 		return err;
@@ -535,51 +621,81 @@ int spm_load_pcm_firmware(struct platform_device *pdev)
 	if (dyna_load_pcm_done)
 		return err;
 
+	if (NULL == local_buf) {
+		local_buf = (char *)ioremap_nocache(local_buf_dma, PCM_FIRMWARE_SIZE * DYNA_LOAD_PCM_MAX);
+		if (!local_buf) {
+			pr_debug("Failed to dma_alloc_coherent(), %d.\n", err);
+			return -ENOMEM;
+		}
+	}
+
 	for (i = DYNA_LOAD_PCM_SUSPEND; i < DYNA_LOAD_PCM_MAX; i++) {
 		u16 firmware_size = 0;
 		int copy_size = 0;
 		struct pcm_desc *pdesc = &(dyna_load_pcm[i].desc);
+		int j = 0;
 
-		err = request_firmware(&fw, dyna_load_pcm_path[i], &pdev->dev);
+		spm_fw[i] = NULL;
+		do {
+			j++;
+			pr_debug("try to request_firmware() %s - %d\n", dyna_load_pcm_path[i], j);
+			err = request_firmware(&fw, dyna_load_pcm_path[i], &pdev->dev);
+			if (err)
+				pr_err("Failed to load %s, err = %d.\n", dyna_load_pcm_path[i], err);
+		} while (err == -EAGAIN && j < 5);
 		if (err) {
-			pr_debug("Failed to load %s, %d.\n", dyna_load_pcm_path[i], err);
+			pr_err("Failed to load %s, err = %d.\n", dyna_load_pcm_path[i], err);
 			continue;
-			/* return -EINVAL; */
 		}
+		spm_fw[i] = fw;
 
 		/* Do whatever it takes to load firmware into device. */
+		/* start of binary size */
 		offset = 0;
 		copy_size = 2;
 		memcpy(&firmware_size, fw->data, copy_size);
 
+		/* start of binary */
 		offset += copy_size;
 		copy_size = firmware_size * 4;
-		memcpy(dyna_load_pcm[i].buf, fw->data + offset, copy_size);
-		dmac_map_area((void *)dyna_load_pcm[i].buf, PCM_FIRMWARE_SIZE, DMA_TO_DEVICE);
+		dyna_load_pcm[i].buf = local_buf + i * PCM_FIRMWARE_SIZE;
+		dyna_load_pcm[i].buf_dma = local_buf_dma + i * PCM_FIRMWARE_SIZE;
+		memcpy_toio(dyna_load_pcm[i].buf, fw->data + offset, copy_size);
+		/* dmac_map_area((void *)dyna_load_pcm[i].buf, PCM_FIRMWARE_SIZE, DMA_TO_DEVICE); */
 
+		/* start of pcm_desc without pointer */
 		offset += copy_size;
 		copy_size = sizeof(struct pcm_desc) - offsetof(struct pcm_desc, size);
 		memcpy((void *)&(dyna_load_pcm[i].desc.size), fw->data + offset, copy_size);
 
+		/* start of pcm_desc version */
 		offset += copy_size;
 		copy_size = fw->size - offset;
-		memcpy(dyna_load_pcm[i].version, fw->data + offset, copy_size);
+		snprintf(dyna_load_pcm[i].version, PCM_FIRMWARE_VERSION_SIZE - 1,
+				"%s", fw->data + offset);
 		pdesc->version = dyna_load_pcm[i].version;
-		pdesc->base = (u32 *)dyna_load_pcm[i].buf;
+		pdesc->base = (u32 *) dyna_load_pcm[i].buf;
+		pdesc->base_dma = dyna_load_pcm[i].buf_dma;
 
-		release_firmware(fw);
+		spm_crit2(" spm fw version(%d) = %s\n", i, (char *)pdesc->version);
 
 		dyna_load_pcm[i].ready = 1;
-		dyna_load_pcm_done = 1;
+		spm_fw_count++;
 	}
 
+	if (spm_fw_count == check_spm_fw_count)
+		dyna_load_pcm_done = 1;
 
 	return err;
 }
 
 int spm_load_pcm_firmware_nodev(void)
 {
-	spm_load_pcm_firmware(pspmdev);
+	if (spm_fw_count == -1) {
+		spm_fw_count = 0;
+		spm_load_pcm_firmware(pspmdev);
+	} else
+		spm_crit2("spm_fw_count = %d\n", spm_fw_count);
 	return 0;
 }
 
@@ -587,6 +703,37 @@ int spm_load_firmware_status(void)
 {
 	return dyna_load_pcm_done;
 }
+
+void *get_spm_firmware_version(uint32_t index)
+{
+	void *ptr = NULL;
+#if 0
+	int loop = 30;
+
+	while (dyna_load_pcm_done == 0 && loop > 0) {
+		loop--;
+		msleep(100);
+	}
+#endif
+
+	if (!dyna_load_pcm_done)
+		spm_load_pcm_firmware_nodev();
+
+	if (dyna_load_pcm_done) {
+		if (index == 0) {
+			ptr = (void *)&spm_fw_count;
+			spm_crit("SPM firmware version count = %d\n", spm_fw_count);
+		} else if (index <= DYNA_LOAD_PCM_MAX) {
+			ptr = dyna_load_pcm[index - 1].version;
+			spm_crit("SPM firmware version(0x%x) = %s\n", index - 1, (char *)ptr);
+		}
+	} else {
+		spm_crit("SPM firmware is not ready, dyna_load_pcm_done = %d\n", dyna_load_pcm_done);
+	}
+
+	return ptr;
+}
+EXPORT_SYMBOL(get_spm_firmware_version);
 
 static int spm_dbg_show_firmware(struct seq_file *s, void *unused)
 {
@@ -668,6 +815,44 @@ const struct file_operations gSPMDetectFops = {
 	.write = SPM_detect_write,
 };
 
+static int spm_pm_event(struct notifier_block *notifier, unsigned long pm_event,
+			void *unused)
+{
+	int i = 0;
+
+	switch (pm_event) {
+	case PM_HIBERNATION_PREPARE:
+		for (i = DYNA_LOAD_PCM_SUSPEND; i < DYNA_LOAD_PCM_MAX; i++) {
+			if (spm_fw[i])
+				release_firmware(spm_fw[i]);
+		}
+		dyna_load_pcm_done = 0;
+		for (i = DYNA_LOAD_PCM_SUSPEND; i < DYNA_LOAD_PCM_MAX; i++)
+			dyna_load_pcm[i].ready = 0;
+		return NOTIFY_DONE;
+	case PM_RESTORE_PREPARE:
+		return NOTIFY_DONE;
+	case PM_POST_HIBERNATION:
+		dyna_load_pcm_done = 0;
+		for (i = DYNA_LOAD_PCM_SUSPEND; i < DYNA_LOAD_PCM_MAX; i++)
+			dyna_load_pcm[i].ready = 0;
+		if (local_buf) {
+			iounmap(local_buf);
+			local_buf = NULL;
+		}
+		spm_fw_count = -1;
+		spm_load_pcm_firmware_nodev();
+
+		return NOTIFY_DONE;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block spm_pm_notifier_func = {
+	.notifier_call = spm_pm_event,
+	.priority = 0,
+};
+
 int spm_module_late_init(void)
 {
 	int i = 0;
@@ -721,6 +906,12 @@ int spm_module_late_init(void)
 
 	for (i = DYNA_LOAD_PCM_SUSPEND; i < DYNA_LOAD_PCM_MAX; i++)
 		dyna_load_pcm[i].ready = 0;
+
+	ret = register_pm_notifier(&spm_pm_notifier_func);
+	if (ret) {
+		pr_debug("Failed to register PM notifier.\n");
+		goto err2;
+	}
 
 	return 0;
 
@@ -839,7 +1030,7 @@ struct ddrphy_golden_cfg {
 };
 
 static struct ddrphy_golden_cfg ddrphy_setting[] = {
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 #ifdef CONFIG_OF
 	{0x5c0, 0x063c0000},
 	{0x5c4, 0x00000000},
@@ -859,7 +1050,7 @@ static struct ddrphy_golden_cfg ddrphy_setting[] = {
 #endif
 	{0xf02135cc, 0x40101000},
 #endif
-#else /* CONFIG_ARCH_MT6580 */
+#else /* CONFIG_ARCH_MT6570 || CONFIG_ARCH_MT6580 */
 #ifdef CONFIG_OF
 	{0x5c0, 0x063c0000},
 	{0x5c4, 0x00000000},
@@ -871,7 +1062,7 @@ static struct ddrphy_golden_cfg ddrphy_setting[] = {
 	{0xf02085c8, 0x0000fC10},	/* temp remove mempll2/3 control for golden setting refine */
 	{0xf02085cc, 0x40101000},
 #endif
-#endif /* CONFIG_ARCH_MT6580 */
+#endif /* !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580) */
 };
 
 int spm_golden_setting_cmp(bool en)
@@ -885,7 +1076,7 @@ int spm_golden_setting_cmp(bool en)
 	ddrphy_num = sizeof(ddrphy_setting) / sizeof(ddrphy_setting[0]);
 	for (i = 0; i < ddrphy_num; i++) {
 #ifdef CONFIG_OF
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 		if (ucDram_Register_Read(ddrphy_setting[i].addr) != ddrphy_setting[i].value) {
 			spm_err("dramc setting mismatch addr: 0x%x, val: 0x%x\n",
 				ddrphy_setting[i].addr,
@@ -899,7 +1090,7 @@ int spm_golden_setting_cmp(bool en)
 				spm_read(spm_ddrphy_base + ddrphy_setting[i].addr));
 			r = -EPERM;
 		}
-#endif /*CONFIG_ARCH_MT6580*/
+#endif
 #else /* CONFIG_OF */
 		if (spm_read(ddrphy_setting[i].addr) != ddrphy_setting[i].value) {
 			spm_err("dramc setting mismatch addr: 0x%x, val: 0x%x\n",
@@ -912,7 +1103,7 @@ int spm_golden_setting_cmp(bool en)
 	return r;
 }
 
-#if !defined(CONFIG_ARCH_MT6580)
+#if !defined(CONFIG_ARCH_MT6570) && !defined(CONFIG_ARCH_MT6580)
 /*
  * SPM AP-BSI Protocol Generator
  */
@@ -946,4 +1137,26 @@ unsigned int spm_get_cpu_pwr_status(void)
 	return stat;
 }
 
+#if defined(CONFIG_ARCH_MT6570)
+unsigned int spm_get_sleep_ufozip_sram_config(void)
+{
+	return spm_read(SPM_SLEEP_UFOZIP_SRAM_CON);
+}
+void spm_set_sleep_ufozip_sram_config(int sram_pdn)
+{
+	spm_write(SPM_SLEEP_UFOZIP_SRAM_CON, !!sram_pdn);
+}
+
+unsigned int spm_get_sleep_nfi_sram_config(void)
+{
+	return spm_read(SPM_SLEEP_NFI_SRAM_CON);
+}
+void spm_set_sleep_nfi_sram_config(int sram_pdn, int sram_ckiso, int sram_sleep_b, int sram_isoint_b)
+{
+	spm_write(SPM_SLEEP_NFI_SRAM_CON, ((!!sram_pdn) |
+					   (!!sram_ckiso << 4) |
+					   (!!sram_sleep_b << 8) |
+					   (!!sram_isoint_b << 12)));
+}
+#endif
 MODULE_DESCRIPTION("SPM Driver v0.1");

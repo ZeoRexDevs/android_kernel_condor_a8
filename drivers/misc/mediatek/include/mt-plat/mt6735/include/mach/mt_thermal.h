@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 
 #ifndef _MT6589_THERMAL_H
 #define _MT6589_THERMAL_H
@@ -299,6 +312,7 @@ struct TS_PTPOD {
 
 extern int mtktscpu_limited_dmips;
 
+extern int tscpu_is_temp_valid(void); /* Valid if it returns 1, invalid if it returns 0*/
 extern void get_thermal_slope_intercept(struct TS_PTPOD *ts_info, thermal_bank_name ts_bank);
 extern void set_taklking_flag(bool flag);
 extern int tscpu_get_cpu_temp(void);

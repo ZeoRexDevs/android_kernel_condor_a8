@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -11,7 +24,6 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include "mt-plat/mtk_thermal_monitor.h"
-#include "mtk_thermal_typedefs.h"
 #include "mach/mt_thermal.h"
 #include <mt-plat/upmu_common.h>
 #include <tspmic_settings.h>
@@ -23,6 +35,8 @@
  *=============================================================*/
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
+static DEFINE_SEMAPHORE(sem_mutex);
+static int isTimerCancelled;
 
 /**
  * If curr_temp >= polling_trip_temp1, use interval
@@ -304,7 +318,7 @@ static ssize_t mtktspmic_write(struct file *file, const char __user *buffer, siz
 
 	if (sscanf
 	    (ptr_mtktspmic_data->desc,
-	     "%d %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d",
+	     "%d %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d",
 		&num_trip,
 		&ptr_mtktspmic_data->trip[0], &ptr_mtktspmic_data->t_type[0], ptr_mtktspmic_data->bind0,
 		&ptr_mtktspmic_data->trip[1], &ptr_mtktspmic_data->t_type[1], ptr_mtktspmic_data->bind1,
@@ -318,6 +332,7 @@ static ssize_t mtktspmic_write(struct file *file, const char __user *buffer, siz
 		&ptr_mtktspmic_data->trip[9], &ptr_mtktspmic_data->t_type[9], ptr_mtktspmic_data->bind9,
 		&ptr_mtktspmic_data->time_msec) == 32) {
 
+		down(&sem_mutex);
 		mtktspmic_dprintk("[mtktspmic_write] mtktspmic_unregister_thermal\n");
 		mtktspmic_unregister_thermal();
 
@@ -326,6 +341,7 @@ static ssize_t mtktspmic_write(struct file *file, const char __user *buffer, siz
 					"Bad argument");
 			mtktspmic_dprintk("[mtktspmic_write] bad argument\n");
 			kfree(ptr_mtktspmic_data);
+			up(&sem_mutex);
 			return -EINVAL;
 		}
 
@@ -373,6 +389,7 @@ static ssize_t mtktspmic_write(struct file *file, const char __user *buffer, siz
 
 		mtktspmic_dprintk("[mtktspmic_write] mtktspmic_register_thermal\n");
 		mtktspmic_register_thermal();
+		up(&sem_mutex);
 		kfree(ptr_mtktspmic_data);
 		return count;
 	}
@@ -390,8 +407,15 @@ void mtkts_pmic_cancel_thermal_timer(void)
 	/* pr_debug("mtkts_pmic_cancel_thermal_timer\n"); */
 
 	/* stop thermal framework polling when entering deep idle */
-	if (thz_dev)
+	if (down_trylock(&sem_mutex))
+		return;
+
+	if (thz_dev) {
 		cancel_delayed_work(&(thz_dev->poll_queue));
+		isTimerCancelled = 1;
+	}
+
+	up(&sem_mutex);
 }
 
 
@@ -399,8 +423,19 @@ void mtkts_pmic_start_thermal_timer(void)
 {
 	/* pr_debug("mtkts_pmic_start_thermal_timer\n"); */
 	/* resume thermal framework polling when leaving deep idle */
-	if (thz_dev != NULL && interval != 0)
-		mod_delayed_work(system_freezable_wq, &(thz_dev->poll_queue), round_jiffies(msecs_to_jiffies(1000)));
+	if (!isTimerCancelled)
+		return;
+
+	if (down_trylock(&sem_mutex))
+		return;
+
+	if (thz_dev != NULL && interval != 0) {
+		mod_delayed_work(system_freezable_wq, &(thz_dev->poll_queue),
+			round_jiffies(msecs_to_jiffies(1000)));
+		isTimerCancelled = 0;
+	}
+
+	up(&sem_mutex);
 }
 
 

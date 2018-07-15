@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #define pr_fmt(fmt)		"[PBM] " fmt
 
 #include <linux/kernel.h>
@@ -20,8 +33,8 @@
 #include <mach/mt_pbm.h>
 #include <mach/upmu_sw.h>
 #include <mt-plat/upmu_common.h>
-#include <mt_cpufreq.h>
-#include <mt_gpufreq.h>
+#include "mt_cpufreq.h"
+#include "mt_gpufreq.h"
 #include <mach/mt_thermal.h>
 
 #ifndef DISABLE_PBM_FEATURE
@@ -701,7 +714,7 @@ static int __init pbm_module_init(void)
 }
 
 #endif				/* #ifndef DISABLE_PBM_FEATURE */
-
+EXPORT_SYMBOL(kicker_pbm_by_flash);
 static void __exit pbm_module_exit(void)
 {
 

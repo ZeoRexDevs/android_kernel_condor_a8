@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/device.h>
@@ -342,11 +355,12 @@ static void systracker_enable_default(void)
 	if (track_config.enable_slave_err)
 		con |= BUS_DBG_CON_SLV_ERR_EN;
 
-	if (track_config.enable_irq)
+	if (track_config.enable_irq) {
 		con |= BUS_DBG_CON_IRQ_EN;
 		/* for safety, BUS_DBG_CON_IRQ_WP_EN is set later...
 		   K2 encouter many strange behaviors when set BUS_DBG_CON_IRQ_WP_EN at the same time */
 		con &= ~BUS_DBG_CON_IRQ_WP_EN;
+	}
 
 	con |= BUS_DBG_CON_HALT_ON_EN;
 	writel(con, IOMEM(BUS_DBG_CON));

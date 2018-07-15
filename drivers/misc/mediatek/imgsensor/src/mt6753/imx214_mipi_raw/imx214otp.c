@@ -1,4 +1,17 @@
 /*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
+/*
  * Driver for CAM_CAL
  *
  *
@@ -17,13 +30,13 @@
 #include "imx214otp.h"
 //#include <asm/system.h>  // for SMP
 #include <linux/dma-mapping.h>
-#include "kd_camera_typedef.h"
 
 
 #define CAM_CALGETDLT_DEBUG
 //#define CAM_CAL_DEBUG
-#ifdef CAM_CAL_DEBUG
-#define CAM_CALDB printk
+#ifdef CAM_CAL_DEBUGs
+#define PFX "imx214otp"
+#define CAM_CALDB(format, args...)    pr_debug(PFX "[%s] " format, __FUNCTION__, ##args)
 #else
 #define CAM_CALDB(x,...)
 #endif
@@ -65,13 +78,13 @@ static atomic_t g_CAM_CALatomic;
 
 int otp_flag=0;
 
-//static kal_uint8 lscotpdata[LSCOTPDATASIZE];
+static kal_uint8 lscotpdata[LSCOTPDATASIZE];
 extern int iReadReg(u16 a_u2Addr , u8 * a_puBuff , u16 i2cId);
 extern int iWriteReg(u16 a_u2Addr , u32 a_u4Data , u32 a_u4Bytes , u16 i2cId);
 
 #if 0
 #define iWriteCAM_CAL(addr, bytes, para,) iWriteReg((u16) addr , (u32) para , 1, IMX214OTP_DEVICE_ID)
-//#else
+#else
 
 /*******************************************************************************
 *
@@ -106,7 +119,6 @@ static int iWriteCAM_CAL(u16 a_u2Addr  , u32 a_u4Bytes, u8 puDataInBytes)
 #endif
 
 //Address: 2Byte, Data: 1Byte
-#if 0
 static int iReadCAM_CAL(u16 a_u2Addr, u32 ui4_length, u8 * a_puBuff)
 {
     #if 0
@@ -148,7 +160,6 @@ static int iReadCAM_CAL(u16 a_u2Addr, u32 ui4_length, u8 * a_puBuff)
 	#endif
     return 0;
 }
-#endif
 
 int iReadCAM_CAL_8(u8 a_u2Addr, u8 * a_puBuff, u16 i2c_id)
 {
@@ -193,7 +204,7 @@ static kal_uint8 check_IMX214_otp_valid_AFPage(void)
 {	
 
     kal_uint8 AF_OK = 0x00;
-	u8 readbuff;
+	u8 readbuff, i;
 
 	iReadCAM_CAL_8(0x28,&readbuff,0xA0);
 	
@@ -214,7 +225,8 @@ static kal_uint8 check_IMX214_otp_valid_AFPage(void)
 static kal_uint8 check_IMX214_otp_valid_AWBPage(void)
 {
 	kal_uint8 AWB_OK = 0x00;
-	u8 readbuff;
+	u8 readbuff, i;
+	kal_uint16 LSC_lengthL,LSC_lengthH;
 
 	iReadCAM_CAL_8(0x11,&readbuff,0xA0);
 	
@@ -236,7 +248,7 @@ static kal_uint8 check_IMX214_otp_valid_AWBPage(void)
 kal_bool check_IMX214_otp_valid_LSC_Page(kal_uint8 page)
 {
 	kal_uint8 LSC_OK = 0x00;
-	u8 readbuff;
+	u8 readbuff, i;
 
 	iReadCAM_CAL_8(0x30,&readbuff,0xA0);
 	
@@ -315,7 +327,7 @@ else{
  void IMX214_ReadOtp(kal_uint8 page,kal_uint16 address,unsigned char *iBuffer,unsigned int buffersize)
 {
 		kal_uint16 i = 0;
-		u8 readbuff;
+		u8 readbuff, base_add;
 		int ret ;
 		//base_add=(address/10)*16+(address%10);
 			
@@ -334,14 +346,13 @@ else{
 //Burst Write Data
 static int iWriteData(unsigned int  ui4_offset, unsigned int  ui4_length, unsigned char * pinputdata)
 {
-	return 0;
 }
 
 //Burst Read Data
  int iReadData(kal_uint16 ui4_offset, unsigned int  ui4_length, unsigned char * pinputdata)
 {
    int  i4RetValue = 0;
-    kal_uint8 page = 0;
+    kal_uint8 page = 0, pageS=0,pageE=1;;
 	//1. check which page is valid
 	
 	if(ui4_length ==1)
@@ -382,7 +393,7 @@ static int iWriteData(unsigned int  ui4_offset, unsigned int  ui4_length, unsign
    	}
 	else{
 
-		#if 0
+		#if 1
 		CAM_CALDB("[CAM_CAL]Read LSC data 452bit!\n");
 
 		if(IMX214_Read_LSC_Otp(pageS,pageE,ui4_length,pinputdata))
@@ -488,7 +499,7 @@ static long CAM_CAL_Ioctl(
             {
                 TimeIntervalUS = ktv2.tv_usec - ktv1.tv_usec;
             }
-            printk("Write data %d bytes take %lu us\n",ptempbuf->u4Length, TimeIntervalUS);
+            CAM_CALDB("Write data %d bytes take %lu us\n",ptempbuf->u4Length, TimeIntervalUS);
 #endif            
             break;
         case CAM_CALIOC_G_READ:
@@ -515,7 +526,7 @@ static long CAM_CAL_Ioctl(
             {
                 TimeIntervalUS = ktv2.tv_usec - ktv1.tv_usec;
             }
-            printk("Read data %d bytes take %lu us\n",ptempbuf->u4Length, TimeIntervalUS);
+            CAM_CALDB("Read data %d bytes take %lu us\n",ptempbuf->u4Length, TimeIntervalUS);
 #endif            
 
             break;
@@ -786,8 +797,8 @@ static void __exit CAM_CAL_i2C_exit(void)
 module_init(CAM_CAL_i2C_init);
 module_exit(CAM_CAL_i2C_exit);
 
-//MODULE_DESCRIPTION("CAM_CAL driver");
-//MODULE_AUTHOR("Sean Lin <Sean.Lin@Mediatek.com>");
-//MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("CAM_CAL driver");
+MODULE_AUTHOR("Sean Lin <Sean.Lin@Mediatek.com>");
+MODULE_LICENSE("GPL");
 
 

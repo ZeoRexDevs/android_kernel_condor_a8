@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/videodev2.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
@@ -51,6 +64,7 @@
 #define camera_info_size 128
 #define PDAF_DATA_SIZE 4096
 char mtk_ccm_name[camera_info_size] = { 0 };
+#define FEATURE_CONTROL_MAX_DATA_SIZE 128000
 
 static unsigned int gDrvIndex;
 
@@ -421,6 +435,7 @@ int iReadRegI2C(u8 *a_pSendData , u16 a_sizeSendData, u8 *a_pRecvData, u16 a_siz
 	}
 	return 0;
 }
+EXPORT_SYMBOL(iReadRegI2C);
 
 
 /*******************************************************************************
@@ -510,6 +525,7 @@ void kdSetI2CSpeed(u32 i2cSpeed)
 	}
 
 }
+EXPORT_SYMBOL(kdSetI2CSpeed);
 
 /*******************************************************************************
 * kdReleaseI2CTriggerLock
@@ -698,6 +714,7 @@ int iWriteRegI2C(u8 *a_pSendData, u16 a_sizeSendData, u16 i2cId)
 	/* KD_IMGSENSOR_PROFILE("iWriteRegI2C"); */
 	return 0;
 }
+EXPORT_SYMBOL(iWriteRegI2C);
 
 /*******************************************************************************
 * sensor function adapter
@@ -1299,7 +1316,9 @@ int kdSensorSyncFunctionPtr(void)
 	/* if the delay frame is 0 or 0xFF, stop to count */
 	if ((g_NewSensorExpGain.uISPGainDelayFrame != 0xFF)
 	    && (g_NewSensorExpGain.uISPGainDelayFrame != 0)) {
+		spin_lock(&kdsensor_drv_lock);
 		g_NewSensorExpGain.uISPGainDelayFrame--;
+		spin_unlock(&kdsensor_drv_lock);
 	}
 	mutex_unlock(&kdCam_Mutex);
 	return 0;
@@ -1362,33 +1381,6 @@ int kdSetExpGain(CAMERA_DUAL_CAMERA_SENSOR_ENUM InvokeCamera)
 
 }
 
-/*******************************************************************************
-*
-********************************************************************************/
-static UINT32 ms_to_jiffies(MUINT32 ms)
-{
-	return ((ms * HZ + 512) >> 10);
-}
-
-
-int kdSensorSetExpGainWaitDone(int *ptime)
-{
-	int timeout;
-
-	PK_DBG("[kd_sensorlist]enter kdSensorSetExpGainWaitDone: time: %d\n", *ptime);
-	timeout = wait_event_interruptible_timeout(kd_sensor_wait_queue,
-						   (setExpGainDoneFlag & 1), ms_to_jiffies(*ptime));
-
-	PK_DBG("[kd_sensorlist]after wait_event_interruptible_timeout\n");
-	if (timeout == 0) {
-		PK_ERR("[kd_sensorlist] kdSensorSetExpGainWait: timeout=%d\n", *ptime);
-
-		return -EAGAIN;
-	}
-
-	return 0;		/* No error. */
-
-}
 
 
 
@@ -1481,9 +1473,9 @@ static inline int adopt_CAMERA_HW_CheckIsAlive(void)
 				} else {
 
 					PK_DBG(" Sensor found ID = 0x%x\n", sensorID);
-					snprintf(mtk_ccm_name, sizeof(mtk_ccm_name),
-						 "%s CAM[%d]:%s;", mtk_ccm_name,
-						 g_invokeSocketIdx[i], g_invokeSensorNameStr[i]);
+					snprintf(mtk_ccm_name + strlen(mtk_ccm_name),
+						 sizeof(mtk_ccm_name) - strlen(mtk_ccm_name),
+						 " CAM[%d]:%s;", g_invokeSocketIdx[i], g_invokeSensorNameStr[i]);
 					err = ERROR_NONE;
 				}
 				if (ERROR_NONE != err) {
@@ -1497,7 +1489,8 @@ static inline int adopt_CAMERA_HW_CheckIsAlive(void)
 	}
 
 	/* reset sensor state after power off */
-	err1 = g_pSensorFunc->SensorClose();
+    if (g_pSensorFunc)
+	    err1 = g_pSensorFunc->SensorClose();
 	if (ERROR_NONE != err1) {
 		PK_DBG("SensorClose\n");
 	}
@@ -1623,22 +1616,24 @@ MSDK_SENSOR_INFO_STRUCT ginfo1[2];
 MSDK_SENSOR_INFO_STRUCT ginfo2[2];
 MSDK_SENSOR_INFO_STRUCT ginfo3[2];
 MSDK_SENSOR_INFO_STRUCT ginfo4[2];
+MSDK_SENSOR_INFO_STRUCT *pInfo[2];
+MSDK_SENSOR_CONFIG_STRUCT config[2], *pConfig[2];
+MSDK_SENSOR_INFO_STRUCT *pInfo1[2];
+MSDK_SENSOR_CONFIG_STRUCT config1[2], *pConfig1[2];
+MSDK_SENSOR_INFO_STRUCT *pInfo2[2];
+MSDK_SENSOR_CONFIG_STRUCT config2[2], *pConfig2[2];
+MSDK_SENSOR_INFO_STRUCT *pInfo3[2];
+MSDK_SENSOR_CONFIG_STRUCT config3[2], *pConfig3[2];
+MSDK_SENSOR_INFO_STRUCT *pInfo4[2];
+MSDK_SENSOR_CONFIG_STRUCT config4[2], *pConfig4[2];
+
 /* adopt_CAMERA_HW_GetInfo() */
 inline static int adopt_CAMERA_HW_GetInfo2(void *pBuf)
 {
 	IMAGESENSOR_GETINFO_STRUCT *pSensorGetInfo = (IMAGESENSOR_GETINFO_STRUCT *) pBuf;
 	ACDK_SENSOR_INFO2_STRUCT SensorInfo = { 0 };
 	MUINT32 IDNum = 0;
-	MSDK_SENSOR_INFO_STRUCT *pInfo[2];
-	MSDK_SENSOR_CONFIG_STRUCT config[2], *pConfig[2];
-	MSDK_SENSOR_INFO_STRUCT *pInfo1[2];
-	MSDK_SENSOR_CONFIG_STRUCT config1[2], *pConfig1[2];
-	MSDK_SENSOR_INFO_STRUCT *pInfo2[2];
-	MSDK_SENSOR_CONFIG_STRUCT config2[2], *pConfig2[2];
-	MSDK_SENSOR_INFO_STRUCT *pInfo3[2];
-	MSDK_SENSOR_CONFIG_STRUCT config3[2], *pConfig3[2];
-	MSDK_SENSOR_INFO_STRUCT *pInfo4[2];
-	MSDK_SENSOR_CONFIG_STRUCT config4[2], *pConfig4[2];
+
 	MSDK_SENSOR_RESOLUTION_INFO_STRUCT SensorResolution[2], *psensorResolution[2];
 
 	MUINT32 ScenarioId[2], *pScenarioId[2];
@@ -1952,6 +1947,11 @@ static inline int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		PK_ERR(" ioctl copy from user failed\n");
 		return -EFAULT;
 	}
+	/* data size exam */
+	if (FeatureParaLen > FEATURE_CONTROL_MAX_DATA_SIZE) {
+		PK_ERR(" exceed data size limitation\n");
+		return -EFAULT;
+	}
 
 	pFeaturePara = kmalloc(FeatureParaLen, GFP_KERNEL);
 	if (NULL == pFeaturePara) {
@@ -2038,6 +2038,7 @@ static inline int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		g_NewSensorExpGain.uSensorExpDelayFrame = pSensorSyncInfo->uSensorExpDelayFrame;
 		g_NewSensorExpGain.uSensorGainDelayFrame = pSensorSyncInfo->uSensorGainDelayFrame;
 		g_NewSensorExpGain.uISPGainDelayFrame = pSensorSyncInfo->uISPGainDelayFrame;
+		spin_unlock(&kdsensor_drv_lock);
 		/* AE smooth not change shutter to speed up */
 		if ((0 == g_NewSensorExpGain.u2SensorNewExpTime)
 		    || (0xFFFF == g_NewSensorExpGain.u2SensorNewExpTime)) {
@@ -2070,7 +2071,9 @@ static inline int  adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		/* if the delay frame is 0 or 0xFF, stop to count */
 		if ((g_NewSensorExpGain.uISPGainDelayFrame != 0xFF)
 		    && (g_NewSensorExpGain.uISPGainDelayFrame != 0)) {
+			spin_lock(&kdsensor_drv_lock);
 			g_NewSensorExpGain.uISPGainDelayFrame--;
+			spin_unlock(&kdsensor_drv_lock);
 		}
 
 
@@ -2941,6 +2944,7 @@ bool _hwPowerOn(KD_REGULATOR_TYPE_T type, int powerVolt)
 
 	return ret;
 }
+EXPORT_SYMBOL(_hwPowerOn);
 
 bool _hwPowerDown(KD_REGULATOR_TYPE_T type)
 {
@@ -2973,6 +2977,7 @@ bool _hwPowerDown(KD_REGULATOR_TYPE_T type)
 	}
 	return ret;
 }
+EXPORT_SYMBOL(_hwPowerDown);
 #endif
 
 #ifdef CONFIG_COMPAT
@@ -3407,7 +3412,6 @@ static long CAMERA_HW_Ioctl(struct file *a_pstFile,
 		break;
 
 	case KDIMGSENSORIOC_X_SET_SHUTTER_GAIN_WAIT_DONE:
-		i4RetValue = kdSensorSetExpGainWaitDone((int *)pBuff);
 		break;
 
 	case KDIMGSENSORIOC_X_SET_CURRENT_SENSOR:
@@ -4181,7 +4185,7 @@ static ssize_t CAMERA_HW_Reg_Debug(struct file *file, const char *buffer, size_t
 		}
 	} else
 	    if (sscanf
-		(regBuf, "%s %s %d %x", debugSensor.debugStruct, debugSensor.debugSubstruct,
+		(regBuf, "%31s %31s %d %x", debugSensor.debugStruct, debugSensor.debugSubstruct,
 		 &debugSensor.isGet, &debugSensor.value) == 4) {
 		if (g_pSensorFunc != NULL) {
 			g_pSensorFunc->SensorFeatureControl(DUAL_CAMERA_MAIN_SENSOR,

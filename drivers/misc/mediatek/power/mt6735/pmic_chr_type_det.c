@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <generated/autoconf.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -37,7 +50,10 @@
 #include <mt-plat/battery_common.h>
 #endif
 #include <linux/time.h>
-#include <mt-plat/mt_boot.h>
+
+#ifdef CONFIG_MTK_USB2JTAG_SUPPORT
+#include <mt-plat/mt_usb2jtag.h>
+#endif
 
 /* ============================================================ // */
 /* extern function */
@@ -65,16 +81,6 @@ static void hw_bc11_dump_register(void)
 static void hw_bc11_init(void)
 {
 	msleep(200);
-
-	/* add make sure USB Ready */
-	if (is_usb_rdy() == KAL_FALSE) {
-		battery_log(BAT_LOG_CRTI, "CDP, block\n");
-		while(is_usb_rdy() == KAL_FALSE)
-			msleep(100);
-		battery_log(BAT_LOG_CRTI, "CDP, free\n");
-	} else
-		battery_log(BAT_LOG_CRTI, "CDP, PASS\n");
-
 #if defined(CONFIG_MTK_SMART_BATTERY)
 	Charger_Detect_Init();
 #endif
@@ -208,36 +214,24 @@ static unsigned int hw_bc11_stepB2(void)
 {
 	unsigned int wChargerAvail = 0;
 
-	/* RG_bc11_IPU_EN[1:0]=10 */
-	bc11_set_register_value(PMIC_RG_BC11_IPU_EN, 0x2);
-	/* RG_bc11_VREF_VTH = [1:0]=01 */
-	bc11_set_register_value(PMIC_RG_BC11_VREF_VTH, 0x1);
-	/* RG_bc11_CMP_EN[1.0] = 01 */
-	bc11_set_register_value(PMIC_RG_BC11_CMP_EN, 0x1);
-
+	/*enable the voltage source to DM*/
+	bc11_set_register_value(PMIC_RG_BC11_VSRC_EN, 0x1);
+	/* enable the pull-down current to DP */
+	bc11_set_register_value(PMIC_RG_BC11_IPD_EN, 0x2);
+	/* VREF threshold voltage for comparator  =0.325V */
+	bc11_set_register_value(PMIC_RG_BC11_VREF_VTH, 0x0);
+	/* enable the comparator to DP */
+	bc11_set_register_value(PMIC_RG_BC11_CMP_EN, 0x2);
 	msleep(80);
-	/* mdelay(80); */
-
 	wChargerAvail = bc11_get_register_value(PMIC_RGS_BC11_CMP_OUT);
-
-	if (Enable_BATDRV_LOG == BAT_LOG_FULL) {
-		battery_log(BAT_LOG_FULL, "hw_bc11_stepB2() \r\n");
-		hw_bc11_dump_register();
-	}
-
-
 	if (!wChargerAvail) {
 		/* RG_bc11_VSRC_EN[1.0] = 10 */
-		/* mt6325_upmu_set_rg_bc11_vsrc_en(0x2); */
 		bc11_set_register_value(PMIC_RG_BC11_VSRC_EN, 0x2);
 	}
-	/* RG_bc11_IPU_EN[1.0] = 00 */
-	bc11_set_register_value(PMIC_RG_BC11_IPU_EN, 0x0);
-	/* RG_bc11_CMP_EN[1.0] = 00 */
+	/*reset to default value*/
+	bc11_set_register_value(PMIC_RG_BC11_VSRC_EN, 0x0);
+	bc11_set_register_value(PMIC_RG_BC11_IPD_EN, 0x0);
 	bc11_set_register_value(PMIC_RG_BC11_CMP_EN, 0x0);
-	/* RG_bc11_VREF_VTH = [1:0]=00 */
-	bc11_set_register_value(PMIC_RG_BC11_VREF_VTH, 0x0);
-
 
 	return wChargerAvail;
 }
@@ -275,6 +269,13 @@ int hw_charging_get_charger_type(void)
 	/* return STANDARD_CHARGER; //adaptor */
 #else
 	CHARGER_TYPE CHR_Type_num = CHARGER_UNKNOWN;
+
+#ifdef CONFIG_MTK_USB2JTAG_SUPPORT
+	if (usb2jtag_mode()) {
+		pr_err("[USB2JTAG] in usb2jtag mode, skip charger detection\n");
+		return STANDARD_HOST;
+	}
+#endif
 
 	/********* Step initial  ***************/
 	hw_bc11_init();

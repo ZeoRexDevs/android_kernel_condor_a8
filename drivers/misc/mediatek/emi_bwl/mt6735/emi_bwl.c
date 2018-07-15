@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -40,7 +53,7 @@ static struct emi_bwl_ctrl ctrl_tbl[NR_CON_SCE];
 /* current concurrency scenario */
 static int cur_con_sce = 0x0FFFFFFF;
 
-#if defined(CONFIG_ARCH_MT6735) && !defined(CONFIG_MTK_EMI_D1P)
+#if defined(CONFIG_ARCH_MT6735)
 
 /* define concurrency scenario strings */
 static const char const *con_sce_str[] = {
@@ -238,7 +251,7 @@ static const unsigned int emi_arbg2_lpddr3_1600_val[] = {
 };
 
 
-#elif defined(CONFIG_ARCH_MT6753) || defined(CONFIG_MTK_EMI_D1P)
+#elif defined(CONFIG_ARCH_MT6753)
 /* define concurrency scenario strings */
 static const char const *con_sce_str[] = {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, \
@@ -463,28 +476,10 @@ DRIVER_ATTR(ddr_type, 0644, ddr_type_show, ddr_type_store);
 
 static ssize_t con_sce_show(struct device_driver *driver, char *buf)
 {
-	char *ptr = buf;
-	int i = 0;
-
 	if (cur_con_sce >= NR_CON_SCE)
-		ptr += sprintf(ptr, "none\n");
-	else
-		ptr += sprintf(ptr, "current scenario: %s\n",
-		con_sce_str[cur_con_sce]);
+		return sprintf(buf, "none\n");
 
 #if 1
-	ptr += sprintf(ptr, "%s\n", con_sce_str[cur_con_sce]);
-	ptr += sprintf(ptr, "EMI_ARBA = 0x%x\n", readl(IOMEM(EMI_ARBA)));
-	ptr += sprintf(ptr, "EMI_ARBB = 0x%x\n", readl(IOMEM(EMI_ARBB)));
-	ptr += sprintf(ptr, "EMI_ARBC = 0x%x\n", readl(IOMEM(EMI_ARBC)));
-	ptr += sprintf(ptr, "EMI_ARBD = 0x%x\n", readl(IOMEM(EMI_ARBD)));
-	ptr += sprintf(ptr, "EMI_ARBE = 0x%x\n", readl(IOMEM(EMI_ARBE)));
-	ptr += sprintf(ptr, "EMI_ARBF = 0x%x\n", readl(IOMEM(EMI_ARBF)));
-	ptr += sprintf(ptr, "EMI_ARBG = 0x%x\n", readl(IOMEM(EMI_ARBG_2ND)));
-	for (i = 0; i < NR_CON_SCE; i++)
-		ptr += sprintf(ptr, "%s = 0x%x\n", con_sce_str[i],
-		ctrl_tbl[i].ref_cnt);
-
 	pr_debug("[EMI BWL] EMI_ARBA = 0x%x\n", readl(IOMEM(EMI_ARBA)));
 	pr_debug("[EMI BWL] EMI_ARBB = 0x%x\n", readl(IOMEM(EMI_ARBB)));
 	pr_debug("[EMI BWL] EMI_ARBC = 0x%x\n", readl(IOMEM(EMI_ARBC)));
@@ -494,7 +489,7 @@ static ssize_t con_sce_show(struct device_driver *driver, char *buf)
 	pr_debug("[EMI BWL] EMI_ARBG = 0x%x\n", readl(IOMEM(EMI_ARBG_2ND)));
 #endif
 
-	return strlen(buf);
+	return sprintf(buf, "current scenario: %s\n", con_sce_str[cur_con_sce]);
 }
 
 /*

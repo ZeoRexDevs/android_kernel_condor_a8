@@ -250,7 +250,7 @@ out:
 		res = 0;
 	key_put(keyring_key);
 	ext4_free_crypt_info(crypt_info);
-	memset(raw_key, 0, sizeof(raw_key));
+	memzero_explicit(raw_key, sizeof(raw_key));
 	return res;
 }
 

@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/delay.h>	/* for mdely */
@@ -1691,7 +1705,7 @@ static int simp_msdc_pio_write(struct simp_msdc_host *host, unsigned int *ptr, u
 		}
 
 		l_count++;
-		if (l_count > 500) {
+		if (l_count > 50000) {
 			l_count = 0;
 			if (print_count > 0) {
 				pr_err("size= %d, left= %d.\r\n", size, left);
@@ -2038,12 +2052,10 @@ static int simp_emmc_dump_write(unsigned char *buf, unsigned int len,
 				unsigned int offset, unsigned int dev)
 {
 	/* maybe delete in furture */
-	unsigned int i;
 	unsigned int status = 0;
 	int polling = MAX_POLLING_STATUS;
 	unsigned long long l_start_offset;
 	unsigned int l_addr;
-	unsigned char *l_buf;
 	unsigned int ret = 1;	/* != 0 means error occur */
 	int err = 0;
 	static int force;
@@ -2088,31 +2100,18 @@ static int simp_emmc_dump_write(unsigned char *buf, unsigned int len,
 		simp_init_emmc();
 		force = 1;
 	}
-	for (i = 0; i < (len / 512); i++) {
-		/* code */
-		l_addr = (l_start_offset >> 9) + i;	/*blk address */
-		l_buf = (buf + i * 512);
 
-#if MTK_MMC_DUMP_DBG
-		pr_debug("l_start_offset =0x%x\n", l_addr);
-#endif
-		/* add address check over expdb for each block */
-		if (l_addr >= (lp_start_sect + lp_nr_sects)) {
-			pr_err("write 512 Bytes address over boundary at 0x%x\n", l_addr);
-			return ret;
-		}
-
-		err = simp_mmc_single_write(pmmc_boot_host, l_addr, l_buf, 512);
-
-		if (err) {
-			pr_err("write 512 Bytes fail at 0x%x\n", l_addr);
-			return ret;
-		}
-
-		do {
-			simp_mmc_get_status(pmmc_boot_host, &status);
-		} while (R1_CURRENT_STATE(status) == 7 && polling--);
+	l_addr = l_start_offset >> 9;
+	/* add address check over expdb for  blocks */
+	if ((l_addr + (len / 512-1)) >= (lp_start_sect + lp_nr_sects)) {
+		pr_err("write 512 Bytes address over boundary at 0x%x\n", l_addr);
+		return ret;
 	}
+
+	err = simp_mmc_multi_write(pmmc_boot_host, l_addr, buf, len / 512);
+	do {
+		simp_mmc_get_status(pmmc_boot_host, &status);
+	} while (R1_CURRENT_STATE(status) == 7 && polling--);
 	if (err == 0)
 		return 0;
 	else

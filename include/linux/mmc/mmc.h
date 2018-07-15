@@ -53,11 +53,6 @@
 #define MMC_SEND_TUNING_BLOCK    19   /* adtc                    R1  */
 #define MMC_SEND_TUNING_BLOCK_HS200	21	/* adtc R1  */
 
-#define MMC_TUNING_BLK_PATTERN_4BIT_SIZE	 64
-#define MMC_TUNING_BLK_PATTERN_8BIT_SIZE	128
-extern const u8 tuning_blk_pattern_4bit[MMC_TUNING_BLK_PATTERN_4BIT_SIZE];
-extern const u8 tuning_blk_pattern_8bit[MMC_TUNING_BLK_PATTERN_8BIT_SIZE];
-
   /* class 3 */
 #define MMC_WRITE_DAT_UNTIL_STOP 20   /* adtc [31:0] data addr   R1  */
 
@@ -88,6 +83,13 @@ extern const u8 tuning_blk_pattern_8bit[MMC_TUNING_BLK_PATTERN_8BIT_SIZE];
   /* class 8 */
 #define MMC_APP_CMD              55   /* ac   [31:16] RCA        R1  */
 #define MMC_GEN_CMD              56   /* adtc [0] RD/WR          R1  */
+
+  /* class 11 */
+#define MMC_SET_QUEUE_CONTEXT    44   /* ac   [31:0] data addr   R1  */
+#define MMC_QUEUE_READ_ADDRESS   45   /* ac   [31:0] data addr   R1  */
+#define MMC_READ_REQUESTED_QUEUE 46   /* adtc                    R1  */
+#define MMC_WRITE_REQUESTED_QUEUE 47  /* adtc                    R1  */
+#define MMC_CMDQ_TASK_MGMT       48   /* ac                      R1b */
 
 static inline bool mmc_op_multi(u32 opcode)
 {
@@ -338,6 +340,9 @@ struct _mmc_csd {
 #define EXT_CSD_GENERIC_CMD6_TIME	248	/* RO */
 #define EXT_CSD_CACHE_SIZE		249	/* RO, 4 bytes */
 #define EXT_CSD_PWR_CL_DDR_200_360	253	/* RO */
+#define EXT_CSD_PRE_EOL_INFO		267	/* RO */
+#define EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A	268	/* RO */
+#define EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B	269	/* RO */
 #define EXT_CSD_NUM_OF_FW_SEC_PROG	302	/* RO */
 #define EXT_CSD_CMDQ_DEPTH		307	/* RO */
 #define EXT_CSD_CMDQ_SUPPORT		308	/* RO */
@@ -345,9 +350,6 @@ struct _mmc_csd {
 #define EXT_CSD_OPERATION_CODE_TIMEOUT	491	/* RO */
 #define EXT_CSD_FFU_FEATURES		492	/* RO */
 #define EXT_CSD_SUPPORTED_MODE		493	/* RO */
-#define EXT_CSD_PRE_EOL_INFO		267	/* RO */
-#define EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A	268	/* RO */
-#define EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B	269	/* RO */
 #define EXT_CSD_TAG_UNIT_SIZE		498	/* RO */
 #define EXT_CSD_DATA_TAG_SUPPORT	499	/* RO */
 #define EXT_CSD_MAX_PACKED_WRITES	500	/* RO */

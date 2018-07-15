@@ -30,7 +30,6 @@
 #define hib_warn(fmt, ...) pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__)
 
 DEFINE_MUTEX(pm_mutex);
-EXPORT_SYMBOL_GPL(pm_mutex);
 
 #ifdef CONFIG_PM_SLEEP
 

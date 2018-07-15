@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -8,6 +21,7 @@
 
 
 static enum ppm_power_state ppm_ut_get_power_state_cb(enum ppm_power_state cur_state);
+static void ppm_ut_update_limit_cb(enum ppm_power_state new_state);
 
 /* other members will init by ppm_main */
 static struct ppm_policy_data ut_policy = {
@@ -16,7 +30,7 @@ static struct ppm_policy_data ut_policy = {
 	.policy			= PPM_POLICY_UT,
 	.priority		= PPM_POLICY_PRIO_HIGHEST,
 	.get_power_state_cb	= ppm_ut_get_power_state_cb,
-	.update_limit_cb	= NULL,
+	.update_limit_cb	= ppm_ut_update_limit_cb,
 	.status_change_cb	= NULL,
 	.mode_change_cb		= NULL,
 };
@@ -40,6 +54,10 @@ static enum ppm_power_state ppm_ut_get_power_state_cb(enum ppm_power_state cur_s
 		return cur_state;
 }
 
+static void ppm_ut_update_limit_cb(enum ppm_power_state new_state)
+{
+}
+
 static int ppm_ut_fix_core_num_proc_show(struct seq_file *m, void *v)
 {
 	int i;
@@ -58,17 +76,21 @@ static ssize_t ppm_ut_fix_core_num_proc_write(struct file *file, const char __us
 	bool activated = true;
 	bool is_clear = true;
 	unsigned int cluster_num = ut_policy.req.cluster_num;
-	char *buf = ppm_copy_from_user_for_proc(buffer, count);
-	char *tok;
+	char *buf, *tok, *tmp;
 
-	if (!buf || !ut_data.limit)
+	if (!ut_data.limit)
 		return -EINVAL;
+
+	buf = ppm_copy_from_user_for_proc(buffer, count);
+	if (!buf)
+		return -ENOMEM;
 
 	fix_core = kcalloc(cluster_num, sizeof(*fix_core), GFP_KERNEL);
 	if (!fix_core)
 		goto no_mem;
 
-	while ((tok = strsep(&buf, " ")) != NULL) {
+	tmp = buf;
+	while ((tok = strsep(&tmp, " ")) != NULL) {
 		if (i == cluster_num) {
 			ppm_err("@%s: number of arguments > %d!\n", __func__, cluster_num);
 			goto out;
@@ -155,17 +177,21 @@ static ssize_t ppm_ut_fix_freq_idx_proc_write(struct file *file, const char __us
 	bool activated = true;
 	bool is_clear = true;
 	unsigned int cluster_num = ut_policy.req.cluster_num;
-	char *buf = ppm_copy_from_user_for_proc(buffer, count);
-	char *tok;
+	char *buf, *tok, *tmp;
 
-	if (!buf || !ut_data.limit)
+	if (!ut_data.limit)
 		return -EINVAL;
+
+	buf = ppm_copy_from_user_for_proc(buffer, count);
+	if (!buf)
+		return -ENOMEM;
 
 	fix_freq = kcalloc(cluster_num, sizeof(*fix_freq), GFP_KERNEL);
 	if (!fix_freq)
 		goto no_mem;
 
-	while ((tok = strsep(&buf, " ")) != NULL) {
+	tmp = buf;
+	while ((tok = strsep(&tmp, " ")) != NULL) {
 		if (i == cluster_num) {
 			ppm_err("@%s: number of arguments > %d!\n", __func__, cluster_num);
 			goto out;

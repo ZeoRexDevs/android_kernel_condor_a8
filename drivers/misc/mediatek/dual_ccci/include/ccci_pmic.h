@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef __CCCI_PMIC_H__
 #define __CCCI_PMIC_H__
 
@@ -48,8 +61,8 @@ struct shared_mem_pmic_t {
 	struct pmic6326_ccci_msg_info ccci_msg_info;
 };
 
-int __init ccci_pmic_init(void);
-void __exit ccci_pmic_exit(void);
+int ccci_pmic_init(void);
+void ccci_pmic_exit(void);
 
 #define CCCI_PMIC_SMEM_SIZE sizeof(struct shared_mem_pmic_t)
 #endif				/*  __CCCI_PMIC_H__ */

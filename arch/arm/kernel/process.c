@@ -43,7 +43,6 @@
 #include <asm/mach/time.h>
 #include <asm/tls.h>
 #include <asm/vdso.h>
-
 #include "reboot.h"
 
 #ifdef CONFIG_CC_STACKPROTECTOR

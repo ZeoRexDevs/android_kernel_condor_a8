@@ -24,7 +24,6 @@
 #include <linux/i2c.h>
 #include <linux/sched.h>
 #include <linux/kthread.h>
-#include <linux/rtpm_prio.h>
 #include <linux/wait.h>
 #include <linux/time.h>
 #include <linux/delay.h>
@@ -405,16 +404,13 @@ static s32 goodix_tool_write(struct file *filp, const char __user *buff, unsigne
 		/*memcpy(IC_TYPE, cmd_head.data, cmd_head.data_len);*/
 		return cmd_head.data_len + CMD_HEAD_LENGTH;
 	} else if (7 == cmd_head.wr) {	/*disable irq!*/
-		{disable_irq(touch_irq);
-		printk("zhangchongyong tpd disable_irq!\n");
-	}
+		disable_irq(touch_irq);
 #if GTP_ESD_PROTECT
 		gtp_esd_switch(i2c_client_point, SWITCH_OFF);
 #endif
 		return CMD_HEAD_LENGTH;
 	} else if (9 == cmd_head.wr) {/*enable irq!*/
 		enable_irq(touch_irq);
-		printk("zhangchongyong tpd enable_irq!\n");
 #if GTP_ESD_PROTECT
 		gtp_esd_switch(i2c_client_point, SWITCH_ON);
 #endif
@@ -504,7 +500,7 @@ static s32 goodix_tool_write(struct file *filp, const char __user *buff, unsigne
 							 rqst_hotknot_state == (got_hotknot_state & rqst_hotknot_state),
 							 wait_hotknot_timeout);
 			wait_hotknot_state &= (~rqst_hotknot_state);
-			if (rqst_hotknot_state == (got_hotknot_state & rqst_hotknot_state)) 
+			if (rqst_hotknot_state == (got_hotknot_state & rqst_hotknot_state)) {
 				return got_hotknot_extra_state;
 			GTP_ERROR("Wait 0x%x block polling waiter timeout.", rqst_hotknot_state);
 			force_wake_flag = 0;

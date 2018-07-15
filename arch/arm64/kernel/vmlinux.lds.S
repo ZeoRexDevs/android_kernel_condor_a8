@@ -5,6 +5,7 @@
  */
 
 #include <asm-generic/vmlinux.lds.h>
+#include <asm/kernel-pgtable.h>
 #include <asm/thread_info.h>
 #include <asm/memory.h>
 #include <asm/page.h>
@@ -32,6 +33,22 @@ jiffies = jiffies_64;
 	VMLINUX_SYMBOL(__hyp_text_start) = .;		\
 	*(.hyp.text)					\
 	VMLINUX_SYMBOL(__hyp_text_end) = .;
+
+/*
+ * The size of the PE/COFF section that covers the kernel image, which
+ * runs from stext to _edata, must be a round multiple of the PE/COFF
+ * FileAlignment, which we set to its minimum value of 0x200. 'stext'
+ * itself is 4 KB aligned, so padding out _edata to a 0x200 aligned
+ * boundary should be sufficient.
+ */
+PECOFF_FILE_ALIGNMENT = 0x200;
+
+#ifdef CONFIG_EFI
+#define PECOFF_EDATA_PADDING	\
+	.pecoff_edata_padding : { BYTE(0); . = ALIGN(PECOFF_FILE_ALIGNMENT); }
+#else
+#define PECOFF_EDATA_PADDING
+#endif
 
 #ifdef CONFIG_DEBUG_ALIGN_RODATA
 #define ALIGN_DEBUG_RO			. = ALIGN(1<<SECTION_SHIFT);
@@ -63,7 +80,7 @@ SECTIONS
 		_text = .;
 		HEAD_TEXT
 	}
-#ifdef CONFIG_MTK_AEE_MRDUMP
+#ifdef CONFIG_MTK_AEE_IPANIC
 	.mrdump ALIGN (0x400): {
 	}
 #endif
@@ -132,6 +149,7 @@ SECTIONS
 	_data = .;
 	_sdata = .;
 	RW_DATA_SECTION(64, PAGE_SIZE, THREAD_SIZE)
+	PECOFF_EDATA_PADDING
 	_edata = .;
 
 	BSS_SECTION(0, 0, 0)
@@ -141,6 +159,11 @@ SECTIONS
 	. += IDMAP_DIR_SIZE;
 	swapper_pg_dir = .;
 	. += SWAPPER_DIR_SIZE;
+
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+	reserved_ttbr0 = .;
+	. += RESERVED_TTBR0_SIZE;
+#endif
 
 	_end = .;
 

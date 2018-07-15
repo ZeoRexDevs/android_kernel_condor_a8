@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef __USB20_H__
 #define __USB20_H__
 
@@ -20,27 +33,12 @@ extern struct musb *mtk_musb;
 extern unsigned int mt_gpio_to_irq(unsigned int gpio);
 #endif
 
-#define MTK_SM5414_SUPPORT
-
-#if defined(MTK_SM5414_SUPPORT)
-#define LYCONFIG_COMB_CHARGER_IC_MTK_SM5414_SUPPORT
-#elif defined(MTK_SM5701_SUPPORT)
-#define LYCONFIG_COMB_CHARGER_IC_MTK_SM5701_SUPPORT
-#elif defined(MTK_FAN5405_SUPPORT)
-#define LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT
-#endif
-
-
-
 #if defined(CONFIG_MTK_FAN5405_SUPPORT) \
 || defined(CONFIG_MTK_BQ24158_SUPPORT) \
 || defined(CONFIG_MTK_NCP1851_SUPPORT) \
 || defined(CONFIG_MTK_BQ24196_SUPPORT) \
 || defined(CONFIG_MTK_BQ24296_SUPPORT) \
-|| defined(CONFIG_MTK_NCP1854_SUPPORT) \
-|| defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5701_SUPPORT) \
-|| defined(LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT)\
-|| defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5414_SUPPORT)
+|| defined(CONFIG_MTK_NCP1854_SUPPORT)
 #define SWITCH_CHARGER 1
 #endif
 
@@ -102,15 +100,11 @@ usb_acm_temp_device,
 #endif
 
 /* switch charger API*/
-#if	defined(LYCONFIG_COMB_CHARGER_IC_MTK_FAN5405_SUPPORT)
+#ifdef CONFIG_MTK_FAN5405_SUPPORT
 extern void fan5405_set_opa_mode(unsigned int val);
 extern void fan5405_set_otg_pl(unsigned int val);
 extern void fan5405_set_otg_en(unsigned int val);
 extern unsigned int fan5405_reg_config_interface(unsigned char RegNum, unsigned char val);
-#elif defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5701_SUPPORT)
-extern int sm5701_boost_notification(int on);
-#elif defined(LYCONFIG_COMB_CHARGER_IC_MTK_SM5414_SUPPORT)
-extern int sm5414_boost_notification(int on);
 #elif defined(CONFIG_MTK_BQ24261_SUPPORT)
 extern void bq24261_set_en_boost(unsigned int val);
 #elif defined(CONFIG_MTK_BQ24296_SUPPORT)

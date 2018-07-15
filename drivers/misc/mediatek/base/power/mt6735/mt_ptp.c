@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 unsigned int reg_dump_addr_off[] = {
 	0x0000,
 	0x0004,
@@ -137,6 +150,7 @@ unsigned int reg_dump_addr_off[] = {
 #include "mach/mt_thermal.h"
 #include "mach/mt_clkmgr.h"
 #include "mach/mt_freqhopping.h"
+#include "mt-plat/upmu_common.h"
 
 #ifdef CONFIG_OF
 #include <linux/of.h>
@@ -145,7 +159,7 @@ unsigned int reg_dump_addr_off[] = {
 #include <linux/of_fdt.h>
 #endif
 /* local includes */
-#include <mt_spm.h>
+#include "mt_spm.h"
 #include "aee.h"
 #include <linux/gpio.h>
 
@@ -742,9 +756,9 @@ static int base_ops_init02(struct ptp_det *det)
 		return -2;
 	}
 
-	ptp_notice("%s(%s) start (ptp_level = 0x%08X).\n", __func__, det->name, ptp_level);
+	/* ptp_notice("%s(%s) start (ptp_level = 0x%08X).\n", __func__, det->name, ptp_level);
 	ptp_notice("DCVOFFSETIN = 0x%08X\n", det->DCVOFFSETIN);
-	ptp_notice("AGEVOFFSETIN = 0x%08X\n", det->AGEVOFFSETIN);
+	ptp_notice("AGEVOFFSETIN = 0x%08X\n", det->AGEVOFFSETIN); */
 	/* det->ops->dump_status(det); */
 	det->ops->set_phase(det, PTP_PHASE_INIT02);
 
@@ -772,7 +786,7 @@ static int base_ops_mon_mode(struct ptp_det *det)
 		return -2;
 	}
 
-	ptp_notice("%s(%s) start (ptp_level = 0x%08X).\n", __func__, det->name, ptp_level);
+	/* ptp_notice("%s(%s) start (ptp_level = 0x%08X).\n", __func__, det->name, ptp_level); */
 
 	ts_bank = det->ctrl_id;
 	get_thermal_slope_intercept(&ts_info, ts_bank);
@@ -1161,7 +1175,6 @@ static void ptp_init_ctrl(struct ptp_ctrl *ctrl)
 }
 
 #define _BIT_(_bit_)                        (unsigned)(1 << (_bit_))
-#define _BITS_(_bits_, _val_)               ((((unsigned) -1 >> (31 - ((1) ? _bits_))) & ~((1U << ((0) ? _bits_)) - 1)) & ((_val_)<<((0) ? _bits_)))
 #define _BITMASK_(_bits_)                   (((unsigned) -1 >> (31 - ((1) ? _bits_))) & ~((1U << ((0) ? _bits_)) - 1))
 #define _GET_BITS_VAL_(_bits_, _val_)       (((_val_) & (_BITMASK_(_bits_))) >> ((0) ? _bits_))
 
@@ -1244,16 +1257,25 @@ static void ptp_init_det(struct ptp_det *det, struct ptp_devinfo *devinfo)
 	FUNC_EXIT(FUNC_LV_HELP);
 }
 
+int __attribute__((weak)) tscpu_is_temp_valid(void)
+{
+	return 1;
+}
+
+void __attribute__((weak)) pmic_force_vproc_pwm(unsigned int en)
+{
+}
 
 static void ptp_set_ptp_volt(struct ptp_det *det)
 {
 #if SET_PMIC_VOLT
 	int i, cur_temp, low_temp_offset;
 	struct ptp_ctrl *ctrl = id_to_ptp_ctrl(det->ctrl_id);
+	int tscpu_bank0_temp_is_valid = tscpu_is_temp_valid();
 
 	 cur_temp = det->ops->get_temp(det);
-	 ptp_debug("ptp_set_ptp_volt cur_temp = %d\n", cur_temp);
-	if (cur_temp <= 33000) {
+	ptp_debug("ptp_set_ptp_volt(): cur_temp = %d, valid = %d\n", cur_temp, tscpu_bank0_temp_is_valid);
+	if (!tscpu_bank0_temp_is_valid || cur_temp <= 33000) {
 		low_temp_offset = 10;
 		ctrl->volt_update |= PTP_VOLT_UPDATE;
 	} else {
@@ -1578,7 +1600,7 @@ static inline void handle_mon_mode_isr(struct ptp_det *det)
 			     det->name, i, det->volt_tbl[i],
 			     PTP_PMIC_VAL_TO_VOLT(det->volt_tbl[i]));
 
-	ptp_isr_info("ptp_level = 0x%08X\n", ptp_level);
+	/* ptp_isr_info("ptp_level = 0x%08X\n", ptp_level); */
 
 	ptp_set_ptp_volt(det);
 
@@ -1774,8 +1796,11 @@ static int ptp_probe(struct platform_device *pdev)
 	int ret;
 	struct ptp_det *det;
 	struct ptp_ctrl *ctrl;
+	enum mt_cpu_dvfs_id cpu;
 
 	FUNC_ENTER(FUNC_LV_MODULE);
+
+	cpu = MT_CPU_DVFS_LITTLE;
 
 	/* set PTP IRQ */
 	ret = request_irq(ptpod_irq_number, ptp_isr, IRQF_TRIGGER_LOW, "ptp", NULL);
@@ -1797,6 +1822,10 @@ static int ptp_probe(struct platform_device *pdev)
 	/* disable DVFS and set vproc = 1.15v (1 GHz) */
 	mt_cpufreq_disable_by_ptpod(MT_CPU_DVFS_LITTLE);
 
+	/* Enable PWM mode here */
+	if (mt_cpufreq_get_freq_by_idx(cpu, 0) <= 1300000)
+		pmic_force_vproc_pwm(1);
+
 	/*for slow idle */
 	ptp_data[0] = 0xffffffff;
 
@@ -1804,6 +1833,11 @@ static int ptp_probe(struct platform_device *pdev)
 		ptp_init_det(det, &ptp_devinfo);
 	}
 	ptp_init01();
+
+	/* Disable PWM mode here */
+	if (mt_cpufreq_get_freq_by_idx(cpu, 0) <= 1300000)
+		pmic_force_vproc_pwm(0);
+
 	ptp_data[0] = 0;
 	/* enable DVFS */
 	mt_cpufreq_enable_by_ptpod(MT_CPU_DVFS_LITTLE);

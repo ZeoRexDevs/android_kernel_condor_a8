@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #define LOG_TAG "LCM"
 
 #ifndef BUILD_LK
@@ -48,8 +61,8 @@ static LCM_UTIL_FUNCS lcm_util;
 #define MDELAY(n)		(lcm_util.mdelay(n))
 #define UDELAY(n)		(lcm_util.udelay(n))
 
-
-
+#define dsi_set_cmdq_V22(cmdq, cmd, count, ppara, force_update) \
+	lcm_util.dsi_set_cmdq_V22(cmdq, cmd, count, ppara, force_update)
 #define dsi_set_cmdq_V2(cmd, count, ppara, force_update) \
 	lcm_util.dsi_set_cmdq_V2(cmd, count, ppara, force_update)
 #define dsi_set_cmdq(pdata, queue_size, force_update) \
@@ -203,6 +216,7 @@ static const unsigned char LCD_MODULE_ID = 0x01;
 
 #define VIRTUAL_WIDTH									(1080)
 #define VIRTUAL_HEIGHT								(1920)
+#define LCM_DENSITY											(240)
 
 #ifndef CONFIG_FPGA_EARLY_PORTING
 #define GPIO_65132_EN GPIO_LCD_BIAS_ENP_PIN
@@ -239,6 +253,9 @@ static struct LCM_setting_table lcm_suspend_setting[] = {
 };
 
 static struct LCM_setting_table init_setting[] = {
+	{0xFF, 1, {0x24} },
+	{0xFB, 1, {0x01} },
+	{0x2D, 1, {0x08} },
 	{0xFF, 1, {0x24} },	/* Return  To      CMD1 */
 	{0x6E, 1, {0x10} },	/* Return  To      CMD1 */
 	{0xFB, 1, {0x01} },	/* Return  To      CMD1 */
@@ -247,9 +264,9 @@ static struct LCM_setting_table init_setting[] = {
 	{0xFF, 1, {0x10} },	/* Return  To      CMD1 */
 	{REGFLAG_UDELAY, 1, {} },
 #if (LCM_DSI_CMD_MODE)
-	{0xBB, 1, {0x10} },
+	{0xBB, 1, {0x10} },/*CMD MODE*/
 #else
-	{0xBB, 1, {0x03} },
+	{0xBB, 1, {0x03} },/*VDO MODE*/
 #endif
 	{0x3B, 5, {0x03, 0x0A, 0x0A, 0x0A, 0x0A} },
 	{0x53, 1, {0x24} },
@@ -846,7 +863,8 @@ static struct LCM_setting_table bl_level[] = {
 	{REGFLAG_END_OF_TABLE, 0x00, {} }
 };
 
-static void push_table(struct LCM_setting_table *table, unsigned int count, unsigned char force_update)
+static void push_table(void *cmdq, struct LCM_setting_table *table,
+	unsigned int count, unsigned char force_update)
 {
 	unsigned int i;
 	unsigned cmd;
@@ -871,7 +889,7 @@ static void push_table(struct LCM_setting_table *table, unsigned int count, unsi
 			break;
 
 		default:
-			dsi_set_cmdq_V2(cmd, table[i].count, table[i].para_list, force_update);
+			dsi_set_cmdq_V22(cmdq, cmd, table[i].count, table[i].para_list, force_update);
 		}
 	}
 }
@@ -893,6 +911,7 @@ static void lcm_get_params(LCM_PARAMS *params)
 	params->height = FRAME_HEIGHT;
 	params->virtual_width = VIRTUAL_WIDTH;
 	params->virtual_height = VIRTUAL_HEIGHT;
+	params->density = LCM_DENSITY;
 
 #if (LCM_DSI_CMD_MODE)
 	params->dsi.mode = CMD_MODE;
@@ -1080,12 +1099,12 @@ static void lcm_init(void)
 	SET_RESET_PIN(1);
 	MDELAY(10);
 
-	push_table(init_setting, sizeof(init_setting) / sizeof(struct LCM_setting_table), 1);
+	push_table(NULL, init_setting, sizeof(init_setting) / sizeof(struct LCM_setting_table), 1);
 }
 
 static void lcm_suspend(void)
 {
-	push_table(lcm_suspend_setting, sizeof(lcm_suspend_setting) / sizeof(struct LCM_setting_table), 1);
+	push_table(NULL, lcm_suspend_setting, sizeof(lcm_suspend_setting) / sizeof(struct LCM_setting_table), 1);
 	MDELAY(10);
 #ifndef CONFIG_FPGA_EARLY_PORTING
 #ifdef CONFIG_MTK_LEGACY
@@ -1245,18 +1264,9 @@ static void lcm_setbacklight_cmdq(void *handle, unsigned int level)
 
 	bl_level[0].para_list[0] = level;
 
-	push_table(bl_level, sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
+	push_table(handle, bl_level, sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
 }
-/*
-static void lcm_setbacklight(unsigned int level)
-{
-	LCM_LOGI("%s,nt35695 backlight: level = %d\n", __func__, level);
 
-	bl_level[0].para_list[0] = level;
-
-	push_table(bl_level, sizeof(bl_level) / sizeof(struct LCM_setting_table), 1);
-}
-*/
 static void *lcm_switch_mode(int mode)
 {
 #ifndef BUILD_LK

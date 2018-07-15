@@ -1,3 +1,16 @@
+/*
+* Copyright (C) 2016 MediaTek Inc.
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+* See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+*/
+
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -11,7 +24,6 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include "mt-plat/mtk_thermal_monitor.h"
-#include "mtk_thermal_typedefs.h"
 #include "mach/mt_thermal.h"
 #include "mt_dramc.h"
 #include <linux/uidgid.h>
@@ -19,6 +31,7 @@
 
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
+static DEFINE_SEMAPHORE(sem_mutex);
 /*
 The thermal policy is meaningless here.
 We only use it to make this thermal zone work.
@@ -58,7 +71,9 @@ do {								\
 
 static int mtktsdram_get_temp(struct thermal_zone_device *thermal, unsigned long *t)
 {
+#if !defined(CONFIG_ARCH_MT6570)
 	unsigned char t1, t2;
+#endif
 	/*
 	The value getting from the read_dram_temperature api is only from 0 to 7.
 	000B: SDRAM Low temperature operating limit exceeded
@@ -70,10 +85,14 @@ static int mtktsdram_get_temp(struct thermal_zone_device *thermal, unsigned long
 	110B: 0.25x tREFI, 0.25x tREFIpb, 0.25x tREFW, de-rate SDRAM
 	*/
 	mtktsdram_dprintk("[mtktsdram_get_temp]\n");
+#if !defined(CONFIG_ARCH_MT6570)
 	t1 = read_dram_temperature(CHANNEL_A);
 	t2 = read_dram_temperature(CHANNEL_B);
 
 	*t = (t1 > t2) ? t1 : t2;
+#else
+	*t = read_dram_temperature();
+#endif
 
 	mtktsdram_dprintk("temp =%lu\n", *t);
 	return 0;
@@ -294,7 +313,7 @@ static ssize_t mtktsdram_write(struct file *file, const char __user *buffer, siz
 
 	if (sscanf
 	    (ptr_mtktsdram_data->desc,
-	     "%d %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d",
+	     "%d %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d %d %19s %d",
 		&num_trip,
 		&ptr_mtktsdram_data->trip[0], &ptr_mtktsdram_data->t_type[0], ptr_mtktsdram_data->bind0,
 		&ptr_mtktsdram_data->trip[1], &ptr_mtktsdram_data->t_type[1], ptr_mtktsdram_data->bind1,
@@ -308,7 +327,16 @@ static ssize_t mtktsdram_write(struct file *file, const char __user *buffer, siz
 		&ptr_mtktsdram_data->trip[9], &ptr_mtktsdram_data->t_type[9], ptr_mtktsdram_data->bind9,
 		&ptr_mtktsdram_data->time_msec) == 32) {
 		mtktsdram_dprintk("[mtktsdram_write] mtktsdram_unregister_thermal\n");
+		down(&sem_mutex);
 		mtktsdram_unregister_thermal();
+
+		if (num_trip < 0 || num_trip > 10) {
+			aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT, "mtktsdram_write",
+					"Bad argument");
+			mtktsdram_dprintk("mtktsdram_write bad argument\n");
+			kfree(ptr_mtktsdram_data);
+			return -EINVAL;
+		}
 
 		for (i = 0; i < num_trip; i++)
 			g_THERMAL_TRIP[i] = ptr_mtktsdram_data->t_type[i];
@@ -353,6 +381,7 @@ static ssize_t mtktsdram_write(struct file *file, const char __user *buffer, siz
 
 		mtktsdram_dprintk("[mtktsdram_write] mtktsdram_register_thermal\n");
 		mtktsdram_register_thermal();
+		up(&sem_mutex);
 
 		kfree(ptr_mtktsdram_data);
 		return count;

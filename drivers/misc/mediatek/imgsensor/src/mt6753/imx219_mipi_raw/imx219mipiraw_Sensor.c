@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 /*****************************************************************************
  *
  * Filename:
@@ -27,8 +40,8 @@
 #include <linux/fs.h>
 #include <asm/atomic.h>
 //#include <asm/system.h>
-/*#include <linux/xlog.h>*/
-#include "kd_camera_typedef.h"
+#include <linux/xlog.h>
+
 #include "kd_camera_hw.h"
 #include "kd_imgsensor.h"
 #include "kd_imgsensor_define.h"
@@ -312,7 +325,7 @@ static kal_uint32 return_sensor_id(void)
 }
 static void set_max_framerate(UINT16 framerate,kal_bool min_framelength_en)
 {
-	//kal_int16 dummy_line;
+	kal_int16 dummy_line;
 	kal_uint32 frame_length = imgsensor.frame_length;
 	//unsigned long flags;
 
@@ -339,11 +352,11 @@ static void set_max_framerate(UINT16 framerate,kal_bool min_framelength_en)
 	set_dummy();
 }	/*	set_max_framerate  */
 
-#if 0
+
 static void write_shutter(kal_uint16 shutter)
 {
 	kal_uint16 realtime_fps = 0;
-	//kal_uint32 frame_length = 0;
+	kal_uint32 frame_length = 0;
 
 	/* 0x3500, 0x3501, 0x3502 will increase VBLANK to get exposure larger than frame exposure */
 	/* AE doesn't update sensor gain at capture mode, thus extra exposure lines must be updated here. */
@@ -390,7 +403,7 @@ static void write_shutter(kal_uint16 shutter)
 	//LOG_INF("frame_length = %d ", frame_length);
 
 }	/*	write_shutter  */
-#endif
+
 
 
 /*************************************************************************
@@ -413,7 +426,7 @@ static void set_shutter(kal_uint16 shutter)
 {
 	unsigned long flags;
 	kal_uint16 realtime_fps = 0;
-	//kal_uint32 frame_length = 0;
+	kal_uint32 frame_length = 0;
 	spin_lock_irqsave(&imgsensor_drv_lock, flags);
 	imgsensor.shutter = shutter;
 	spin_unlock_irqrestore(&imgsensor_drv_lock, flags);
@@ -558,11 +571,11 @@ static void ihdr_write_shutter_gain(kal_uint16 le, kal_uint16 se, kal_uint16 gai
 }
 
 
-#if 0
+
 static void set_mirror_flip(kal_uint8 image_mirror)
 {
-	kal_uint8  iTemp;
 	LOG_INF("image_mirror = %d\n", image_mirror);
+
 	/********************************************************
 	   *
 	   *   0x3820[2] ISP Vertical flip
@@ -574,8 +587,8 @@ static void set_mirror_flip(kal_uint8 image_mirror)
 	   *   ISP and Sensor flip or mirror register bit should be the same!!
 	   *
 	   ********************************************************/
-
-	  LOG_INF("set_mirror_flip function\n");
+	kal_uint8  iTemp;
+	LOG_INF("set_mirror_flip function\n");
     iTemp = read_cmos_sensor(0x0172) & 0x03;	//Clear the mirror and flip bits.
     switch (image_mirror)
     {
@@ -595,7 +608,7 @@ static void set_mirror_flip(kal_uint8 image_mirror)
 	LOG_INF("Error image_mirror setting\n");
 
 }
-#endif
+
 /*************************************************************************
 * FUNCTION
 *	night_mode
@@ -1698,7 +1711,7 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	UINT32 *feature_return_para_32=(UINT32 *) feature_para;
 	UINT32 *feature_data_32=(UINT32 *) feature_para;
     unsigned long long *feature_data=(unsigned long long *) feature_para;
-//    unsigned long long *feature_return_para=(unsigned long long *) feature_para;
+    unsigned long long *feature_return_para=(unsigned long long *) feature_para;
 
 	SENSOR_WINSIZE_INFO_STRUCT *wininfo;
 	MSDK_SENSOR_REG_INFO_STRUCT *sensor_reg_data=(MSDK_SENSOR_REG_INFO_STRUCT *) feature_para;

@@ -2536,8 +2536,8 @@ static inline void tcp_end_cwnd_reduction(struct sock *sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	/* Reset cwnd to ssthresh in CWR or Recovery (unless it's undone) */
-	if (inet_csk(sk)->icsk_ca_state == TCP_CA_CWR ||
-	    (tp->undo_marker && tp->snd_ssthresh < TCP_INFINITE_SSTHRESH)) {
+	if (tp->snd_ssthresh < TCP_INFINITE_SSTHRESH &&
+	    (inet_csk(sk)->icsk_ca_state == TCP_CA_CWR || tp->undo_marker)) {
 		tp->snd_cwnd = tp->snd_ssthresh;
 		tp->snd_cwnd_stamp = tcp_time_stamp;
 	}
@@ -2986,8 +2986,7 @@ void tcp_rearm_rto(struct sock *sk)
 			/* delta may not be positive if the socket is locked
 			 * when the retrans timer fires and is rescheduled.
 			 */
-			if (delta > 0)
-				rto = delta;
+			rto = max(delta, 1);
 		}
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS, rto,
 					  sysctl_tcp_rto_max);
@@ -3325,9 +3324,9 @@ static void tcp_send_challenge_ack(struct sock *sk)
 	/* unprotected vars, we dont care of overwrites */
 	static u32 challenge_timestamp;
 	static unsigned int challenge_count;
-	u32 count, now = jiffies / HZ;
+	u32 now = jiffies / HZ;
+	u32 count;
 
-	/* Then check host-wide RFC 5961 rate limit. */
 	if (now != challenge_timestamp) {
 		u32 half = (sysctl_tcp_challenge_ack_limit + 1) >> 1;
 
@@ -4829,7 +4828,7 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	    /* More than one full frame received... */
-	if (((tp->rcv_nxt - tp->rcv_wup) > inet_csk(sk)->icsk_ack.rcv_mss &&
+	if (((tp->rcv_nxt - tp->rcv_wup) > sysctl_tcp_ack_number * inet_csk(sk)->icsk_ack.rcv_mss &&
 	     /* ... and right edge of window advances far enough.
 	      * (tcp_recvmsg() will send ACK otherwise). Or...
 	      */
@@ -4967,7 +4966,7 @@ static int tcp_copy_to_iovec(struct sock *sk, struct sk_buff *skb, int hlen)
 		err = skb_copy_datagram_iovec(skb, hlen, tp->ucopy.iov, chunk);
 	else
 		err = skb_copy_and_csum_datagram_iovec(skb, hlen,
-						       tp->ucopy.iov, chunk);
+						       tp->ucopy.iov);
 
 	if (!err) {
 		tp->ucopy.len -= chunk;
@@ -5294,9 +5293,19 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
+#ifdef CONFIG_MTK_NET_LOGGING
+	struct tcphdr *th = tcp_hdr(skb);
+#endif
 
 	tcp_set_state(sk, TCP_ESTABLISHED);
 	icsk->icsk_ack.lrcvtime = tcp_time_stamp;
+
+#ifdef CONFIG_MTK_NET_LOGGING
+	if (skb) {
+		pr_info("[mtk_net][tcp_finish_connect] inode = %lu; sport = %d; dport = %d\n",
+			sk->sk_socket ? SOCK_INODE(sk->sk_socket)->i_ino : 0, ntohs(th->dest), ntohs(th->source));
+	}
+#endif
 
 	if (skb != NULL) {
 		icsk->icsk_af_ops->sk_rx_dst_set(sk, skb);

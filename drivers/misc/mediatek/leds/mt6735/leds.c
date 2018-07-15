@@ -1,11 +1,19 @@
 /*
+ * Copyright (C) 2015 MediaTek Inc.
  *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file COPYING in the main directory of this archive for
- * more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ */
+
+/*
  *
- * mt65xx leds driver
+ * mt6735 leds driver
  *
  */
 
@@ -32,6 +40,8 @@
 /* #include <linux/aee.h> */
 #endif
 
+#include <ddp_gamma.h>
+
 #include <mt-plat/mt_pwm.h>
 #include <mt-plat/upmu_common.h>
 
@@ -39,7 +49,6 @@
 #include "leds_hal.h"
 #include "ddp_pwm.h"
 #include "mtkfb.h"
-
 
 /* for LED&Backlight bringup, define the dummy API */
 #ifndef CONFIG_MTK_PMIC
@@ -77,11 +86,6 @@ static int button_flag_isink1;
 static int button_flag_isink2;
 static int button_flag_isink3;
 
-#if defined(LYCONFIG_RGB_LEDS_SUPPORT)
-extern  void leds_red_en_gpio_output( int level);
-extern  void leds_blue_en_gpio_output( int level);
-extern  void leds_green_en_gpio_output( int level) ;
-#endif
 struct wake_lock leds_suspend_lock;
 
 char *leds_name[MT65XX_LED_TYPE_TOTAL] = {
@@ -171,7 +175,7 @@ struct cust_mt65xx_led *get_cust_led_dtsi(void)
 	int mode, data;
 	int pwm_config[5] = { 0 };
 
-	LEDS_DEBUG("get_cust_led_dtsi: get the leds info from device tree\n");
+	/* LEDS_DEBUG("get_cust_led_dtsi: get the leds info from device tree\n"); */
 	if (pled_dtsi == NULL) {
 		/* this can allocat an new struct array */
 		pled_dtsi = kmalloc(MT65XX_LED_TYPE_TOTAL *
@@ -191,10 +195,10 @@ struct cust_mt65xx_led *get_cust_led_dtsi(void)
 
 			led_node =
 			    of_find_compatible_node(NULL, NULL,
-						    strcat(node_name,
-							   leds_name[i]));
+				strncat(node_name, leds_name[i],
+					(sizeof(node_name)-strlen(node_name)-1)));
 			if (!led_node) {
-				LEDS_DEBUG("Cannot find LED node from dts\n");
+				LEDS_DEBUG("Cannot find LED node:%s from dts\n", node_name);
 				pled_dtsi[i].mode = 0;
 				pled_dtsi[i].data = -1;
 			} else {
@@ -322,6 +326,7 @@ int mt_led_set_pwm(int pwm_num, struct nled_setting *led)
 	struct pwm_spec_config pwm_setting;
 	int time_index = 0;
 
+	memset(&pwm_setting, 0, sizeof(struct pwm_spec_config));
 	pwm_setting.pwm_no = pwm_num;
 	pwm_setting.mode = PWM_MODE_OLD;
 
@@ -330,6 +335,7 @@ int mt_led_set_pwm(int pwm_num, struct nled_setting *led)
 	/* We won't choose 32K to be the clock src of old mode because of system performance. */
 	/* The setting here will be clock src = 26MHz, CLKSEL = 26M/1625 (i.e. 16K) */
 	pwm_setting.clk_src = PWM_CLK_OLD_MODE_32K;
+	pwm_setting.pmic_pad = 0;
 
 	switch (led->nled_mode) {
 	/* Actually, the setting still can not to turn off NLED. We should disable PWM to turn off NLED. */
@@ -359,6 +365,10 @@ int mt_led_set_pwm(int pwm_num, struct nled_setting *led)
 		pwm_setting.PWM_MODE_OLD_REGS.THRESH =
 		    (led->blink_on_time * 100) / (led->blink_on_time +
 						  led->blink_off_time);
+		break;
+	default:
+		LEDS_DEBUG("Invalid nled mode\n");
+		return -1;
 	}
 
 	pwm_setting.PWM_MODE_FIFO_REGS.IDLE_VALUE = 0;
@@ -527,11 +537,8 @@ int mt_led_blink_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting *led)
 
 	LEDS_DEBUG("led_blink_pmic: pmic_type=%d\n", pmic_type);
 
-	if ((pmic_type != MT65XX_LED_PMIC_NLED_ISINK0
-	     && pmic_type != MT65XX_LED_PMIC_NLED_ISINK1)
-	    || led->nled_mode != NLED_BLINK) {
+	if (led->nled_mode != NLED_BLINK)
 		return -1;
-	}
 
 	LEDS_DEBUG("LED blink on time = %d offtime = %d\n",
 		   led->blink_on_time, led->blink_off_time);
@@ -565,7 +572,8 @@ int mt_led_blink_pmic(enum mt65xx_led_pmic pmic_type, struct nled_setting *led)
 					pmic_freqsel_array[time_index]);
 		pmic_set_register_value(PMIC_ISINK_CH1_EN, NLED_ON);
 		break;
-	default:
+	default:/* Just support isink0&1 on mt6328 */
+		LEDS_DEBUG("LED type=0x%dx do not support!\n", pmic_type);
 		break;
 	}
 	return 0;
@@ -830,32 +838,7 @@ int mt_mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 
 	case MT65XX_LED_MODE_GPIO:
 		LEDS_DEBUG("brightness_set_cust:go GPIO mode!!!!!\n");
-		//return ((cust_set_brightness) (cust->data)) (level);
-		#if defined(LYCONFIG_RGB_LEDS_SUPPORT)
-		if ((strcmp(cust->name, "red") == 0)) 
-		{
-			 if(level > 0)
-	                       leds_red_en_gpio_output(1);
-	               else
-	                       leds_red_en_gpio_output(0);
-		}
-		
-		if ((strcmp(cust->name, "blue") == 0)) 
-		{
-			 if(level > 0)
-	                       leds_blue_en_gpio_output(1);
-	               else
-	                       leds_blue_en_gpio_output(0);
-		}
-		if ((strcmp(cust->name, "green") == 0)) 
-		{
-			 if(level > 0)
-	                       leds_green_en_gpio_output(1);
-	               else
-	                       leds_green_en_gpio_output(0);
-		}
-		#endif
-               return 1;
+		return ((cust_set_brightness) (cust->data)) (level);
 
 	case MT65XX_LED_MODE_PMIC:
 		/* for button baclight used SINK channel, when set button ISINK,
@@ -940,6 +923,10 @@ void mt_mt65xx_led_set(struct led_classdev *led_cdev, enum led_brightness level)
 			    ("Set Backlight directly %d at time %lu, mapping level is %d\n",
 			     led_data->level, jiffies, level);
 			/* mt_mt65xx_led_set_cust(&led_data->cust, led_data->level); */
+			disp_pq_notify_backlight_changed((((1 <<
+							     MT_LED_INTERNAL_LEVEL_BIT_CNT)
+							    - 1) * level +
+							   127) / 255);
 			disp_aal_notify_backlight_changed((((1 <<
 							     MT_LED_INTERNAL_LEVEL_BIT_CNT)
 							    - 1) * level +
@@ -966,6 +953,10 @@ void mt_mt65xx_led_set(struct led_classdev *led_cdev, enum led_brightness level)
 			LEDS_DEBUG
 			    ("Set Backlight directly %d at time %lu, mapping level is %d\n",
 			     led_data->level, jiffies, level);
+			disp_pq_notify_backlight_changed((((1 <<
+							     MT_LED_INTERNAL_LEVEL_BIT_CNT)
+							    - 1) * level +
+							   127) / 255);
 			if (MT65XX_LED_MODE_CUST_BLS_PWM == led_data->cust.mode) {
 				mt_mt65xx_led_set_cust(&led_data->cust,
 						       ((((1 <<

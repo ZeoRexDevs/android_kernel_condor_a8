@@ -589,7 +589,6 @@ struct inode {
 	struct mutex		i_mutex;
 
 	unsigned long		dirtied_when;	/* jiffies of first dirtying */
-	unsigned long		dirtied_time_when;
 
 	struct hlist_node	i_hash;
 	struct list_head	i_wb_list;	/* backing dev IO list */
@@ -1634,8 +1633,6 @@ struct super_operations {
 #define S_IMA		1024	/* Inode has an associated IMA struct */
 #define S_AUTOMOUNT	2048	/* Automount/referral quasi-directory */
 #define S_NOSEC		4096	/* no suid or xattr security attributes */
-#define S_ATOMIC_COPY	8192	/* Pages mapped with this inode need to be
-				   atomically copied (gem) */
 
 /*
  * Note that nosuid etc flags are inode-specific: setting some file-system
@@ -2156,14 +2153,6 @@ extern void emergency_thaw_all(void);
 extern int thaw_bdev(struct block_device *bdev, struct super_block *sb);
 extern int fsync_bdev(struct block_device *);
 extern int sb_is_blkdev_sb(struct super_block *sb);
-extern int fsync_super(struct super_block *);
-extern int fsync_no_super(struct block_device *);
-#define FS_FREEZER_FUSE 1
-#define FS_FREEZER_NORMAL 2
-#define FS_FREEZER_ALL (FS_FREEZER_FUSE | FS_FREEZER_NORMAL)
-void freeze_filesystems(int which);
-void thaw_filesystems(int which);
-extern int sb_is_blkdev_sb(struct super_block *sb);
 #else
 static inline void bd_forget(struct inode *inode) {}
 static inline int sync_blockdev(struct block_device *bdev) { return 0; }
@@ -2456,11 +2445,6 @@ extern struct inode *ilookup(struct super_block *sb, unsigned long ino);
 
 extern struct inode * iget5_locked(struct super_block *, unsigned long, int (*test)(struct inode *, void *), int (*set)(struct inode *, void *), void *);
 extern struct inode * iget_locked(struct super_block *, unsigned long);
-extern struct inode *find_inode_nowait(struct super_block *,
-				       unsigned long,
-				       int (*match)(struct inode *,
-						    unsigned long, void *),
-				       void *data);
 extern int insert_inode_locked4(struct inode *, unsigned long, int (*test)(struct inode *, void *), void *);
 extern int insert_inode_locked(struct inode *);
 #ifdef CONFIG_DEBUG_LOCK_ALLOC

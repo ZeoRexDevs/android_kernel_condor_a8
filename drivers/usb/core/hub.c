@@ -2667,13 +2667,16 @@ static int hub_port_wait_reset(struct usb_hub *hub, int port1,
 	if (!(portstatus & USB_PORT_STAT_CONNECTION))
 		return -ENOTCONN;
 
-	/* bomb out completely if the connection bounced.  A USB 3.0
-	 * connection may bounce if multiple warm resets were issued,
+	/* Retry if connect change is set but status is still connected.
+	 * A USB 3.0 connection may bounce if multiple warm resets were issued,
 	 * but the device may have successfully re-connected. Ignore it.
 	 */
 	if (!hub_is_superspeed(hub->hdev) &&
-			(portchange & USB_PORT_STAT_C_CONNECTION))
-		return -ENOTCONN;
+	    (portchange & USB_PORT_STAT_C_CONNECTION)) {
+		usb_clear_port_feature(hub->hdev, port1,
+				       USB_PORT_FEAT_C_CONNECTION);
+		return -EAGAIN;
+	}
 
 	if (!(portstatus & USB_PORT_STAT_ENABLE))
 		return -EBUSY;
@@ -4620,10 +4623,12 @@ hub_power_remaining (struct usb_hub *hub)
 	return remaining;
 }
 
+static struct usb_device *cur_udev;
 static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 		u16 portchange)
 {
-	int status, i;
+	int status = -ENODEV;
+	int i;
 	unsigned unit_load;
 	struct usb_device *hdev = hub->hdev;
 	struct usb_hcd *hcd = bus_to_hcd(hdev->bus);
@@ -4692,6 +4697,8 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 					"couldn't allocate usb_device\n");
 			goto done;
 		}
+		/* catch current USB device */
+		cur_udev = udev;
 
 		usb_set_device_state(udev, USB_STATE_POWERED);
 		udev->bus_mA = hub->mA_per_port;
@@ -4718,7 +4725,7 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 			goto loop;
 
 		if (udev->quirks & USB_QUIRK_DELAY_INIT)
-			msleep(1000);
+			msleep(2000);
 
 		/* consecutive bus-powered hubs aren't reliable; they can
 		 * violate the voltage drop budget.  if the new child has
@@ -4823,9 +4830,10 @@ loop:
 
 done:
 	hub_port_disable(hub, port1, 1);
-	if (hcd->driver->relinquish_port && !hub->hdev->parent)
-		hcd->driver->relinquish_port(hcd, port1);
-
+	if (hcd->driver->relinquish_port && !hub->hdev->parent) {
+		if (status != -ENOTCONN && status != -ENODEV)
+			hcd->driver->relinquish_port(hcd, port1);
+	}
 }
 
 /* Handle physical or logical connection change events.
@@ -5464,8 +5472,11 @@ done:
 	return 0;
 
 re_enumerate:
-	usb_release_bos_descriptor(udev);
-	udev->bos = bos;
+	/* release the new BOS descriptor allocated  by hub_port_init() */
+	if (udev->bos != bos) {
+		usb_release_bos_descriptor(udev);
+		udev->bos = bos;
+	}
 re_enumerate_no_bos:
 	/* LPM state doesn't matter when we're about to destroy the device. */
 	hub_port_logical_disconnect(parent_hub, port1);
@@ -5705,3 +5716,72 @@ acpi_handle usb_get_hub_port_acpi_handle(struct usb_device *hdev,
 	return ACPI_HANDLE(&hub->ports[port1 - 1]->dev);
 }
 #endif
+static struct delayed_work ep0_stress_work;
+static void do_ep0_stress_work(struct work_struct *data)
+{
+	int ret;
+	u16 status;
+	static DEFINE_RATELIMIT_STATE(ratelimit, HZ, 30);
+	static int skip_cnt;
+
+
+	ret = usb_get_status(cur_udev, USB_RECIP_DEVICE, 0, &status);
+	if (__ratelimit(&ratelimit)) {
+		pr_notice("%s, usb_get_status<%d>, cur_udev<%p>\n", __func__, ret, cur_udev);
+		skip_cnt = 0;
+	} else
+		skip_cnt++;
+
+	if (ret == 0)
+		schedule_delayed_work(&ep0_stress_work, 0);
+	else {
+		pr_notice("%s, usb_get_status<%d>, cur_udev<%p>", __func__, ret, cur_udev);
+		usb_autosuspend_device(cur_udev);
+	}
+}
+static void trigger_ep0_stress_work(void)
+{
+	int ret;
+
+	ret = usb_autoresume_device(cur_udev);
+	pr_notice("%s, ret<%d>, cur_udev<%p>\n", __func__, ret, cur_udev);
+	if (ret)
+		return;
+
+	INIT_DELAYED_WORK(&ep0_stress_work, do_ep0_stress_work);
+	schedule_delayed_work(&ep0_stress_work, 0);
+
+}
+static int option;
+static int set_option(const char *val, const struct kernel_param *kp)
+{
+	int local_option;
+	int rv;
+
+	/* update module parameter */
+	rv = param_set_int(val, kp);
+	if (rv)
+		return rv;
+
+	/* update local_option */
+	rv = kstrtoint(val, 10, &local_option);
+	if (rv != 0)
+		return rv;
+
+	pr_notice("option:%d, local_option:%d\n", option, local_option);
+
+	switch (local_option) {
+	case 0:
+		pr_notice("case %d\n", local_option);
+		trigger_ep0_stress_work();
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+static struct kernel_param_ops option_param_ops = {
+	.set = set_option,
+	.get = param_get_int,
+};
+module_param_cb(option, &option_param_ops, &option, 0644);

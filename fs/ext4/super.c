@@ -40,9 +40,6 @@
 #include <linux/crc16.h>
 #include <linux/cleancache.h>
 #include <asm/uaccess.h>
-#ifdef CONFIG_PWR_LOSS_MTK_SPOH
-#include <mach/power_loss_test.h>
-#endif
 
 #include <linux/kthread.h>
 #include <linux/freezer.h>
@@ -783,6 +780,23 @@ static void dump_orphan_list(struct super_block *sb, struct ext4_sb_info *sbi)
 	}
 }
 
+#ifdef CONFIG_QUOTA
+static int ext4_quota_off(struct super_block *sb, int type);
+
+static inline void ext4_quota_off_umount(struct super_block *sb)
+{
+	int type;
+
+	/* Use our quota_off function to clear inode flags etc. */
+	for (type = 0; type < EXT4_MAXQUOTAS; type++)
+		ext4_quota_off(sb, type);
+}
+#else
+static inline void ext4_quota_off_umount(struct super_block *sb)
+{
+}
+#endif
+
 static void ext4_put_super(struct super_block *sb)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
@@ -790,7 +804,7 @@ static void ext4_put_super(struct super_block *sb)
 	int i, err;
 
 	ext4_unregister_li_request(sb);
-	dquot_disable(sb, -1, DQUOT_USAGE_ENABLED | DQUOT_LIMITS_ENABLED);
+	ext4_quota_off_umount(sb);
 
 	flush_workqueue(sbi->rsv_conversion_wq);
 	destroy_workqueue(sbi->rsv_conversion_wq);
@@ -1077,7 +1091,6 @@ static int ext4_quota_on(struct super_block *sb, int type, int format_id,
 			 struct path *path);
 static int ext4_quota_on_sysfile(struct super_block *sb, int type,
 				 int format_id);
-static int ext4_quota_off(struct super_block *sb, int type);
 static int ext4_quota_off_sysfile(struct super_block *sb, int type);
 static int ext4_quota_on_mount(struct super_block *sb, int type);
 static ssize_t ext4_quota_read(struct super_block *sb, int type, char *data,
@@ -1162,7 +1175,6 @@ enum {
 	Opt_noquota, Opt_barrier, Opt_nobarrier, Opt_err,
 	Opt_usrquota, Opt_grpquota, Opt_i_version,
 	Opt_stripe, Opt_delalloc, Opt_nodelalloc, Opt_mblk_io_submit,
-	Opt_lazytime, Opt_nolazytime,
 	Opt_nomblk_io_submit, Opt_block_validity, Opt_noblock_validity,
 	Opt_inode_readahead_blks, Opt_journal_ioprio,
 	Opt_dioread_nolock, Opt_dioread_lock,
@@ -1225,8 +1237,6 @@ static const match_table_t tokens = {
 	{Opt_i_version, "i_version"},
 	{Opt_stripe, "stripe=%u"},
 	{Opt_delalloc, "delalloc"},
-	{Opt_lazytime, "lazytime"},
-	{Opt_nolazytime, "nolazytime"},
 	{Opt_nodelalloc, "nodelalloc"},
 	{Opt_removed, "mblk_io_submit"},
 	{Opt_removed, "nomblk_io_submit"},
@@ -1483,12 +1493,6 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 		return 1;
 	case Opt_i_version:
 		sb->s_flags |= MS_I_VERSION;
-		return 1;
-	case Opt_lazytime:
-		sb->s_flags |= MS_LAZYTIME;
-		return 1;
-	case Opt_nolazytime:
-		sb->s_flags &= ~MS_LAZYTIME;
 		return 1;
 	}
 
@@ -1939,9 +1943,6 @@ static int ext4_setup_super(struct super_block *sb, struct ext4_super_block *es,
 	if (sbi->s_journal)
 		EXT4_SET_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_RECOVER);
 
-#ifdef CONFIG_PWR_LOSS_MTK_SPOH
-	PL_RESET_ON_CASE("EXT4", "Mount");
-#endif
 	ext4_commit_super(sb, 1);
 done:
 	if (test_opt(sb, DEBUG))
@@ -2026,24 +2027,22 @@ failed:
 static __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 				   struct ext4_group_desc *gdp)
 {
-	int offset = offsetof(struct ext4_group_desc, bg_checksum);
+	int offset;
 	__u16 crc = 0;
 	__le32 le_group = cpu_to_le32(block_group);
 
 	if (ext4_has_metadata_csum(sbi->s_sb)) {
 		/* Use new metadata_csum algorithm */
+		__le16 save_csum;
 		__u32 csum32;
-		__u16 dummy_csum = 0;
 
+		save_csum = gdp->bg_checksum;
+		gdp->bg_checksum = 0;
 		csum32 = ext4_chksum(sbi, sbi->s_csum_seed, (__u8 *)&le_group,
 				     sizeof(le_group));
-		csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp, offset);
-		csum32 = ext4_chksum(sbi, csum32, (__u8 *)&dummy_csum,
-				     sizeof(dummy_csum));
-		offset += sizeof(dummy_csum);
-		if (offset < sbi->s_desc_size)
-			csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp + offset,
-					     sbi->s_desc_size - offset);
+		csum32 = ext4_chksum(sbi, csum32, (__u8 *)gdp,
+				     sbi->s_desc_size);
+		gdp->bg_checksum = save_csum;
 
 		crc = csum32 & 0xFFFF;
 		goto out;
@@ -2053,6 +2052,8 @@ static __le16 ext4_group_desc_csum(struct ext4_sb_info *sbi, __u32 block_group,
 	if (!(sbi->s_es->s_feature_ro_compat &
 	      cpu_to_le32(EXT4_FEATURE_RO_COMPAT_GDT_CSUM)))
 		return 0;
+
+	offset = offsetof(struct ext4_group_desc, bg_checksum);
 
 	crc = crc16(~0, sbi->s_es->s_uuid, sizeof(sbi->s_es->s_uuid));
 	crc = crc16(crc, (__u8 *)&le_group, sizeof(le_group));
@@ -2239,7 +2240,7 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 #ifdef CONFIG_QUOTA
 	/* Needed for iput() to work correctly and not trash data */
 	sb->s_flags |= MS_ACTIVE;
-	/* Turn on quotas so that they are updated correctly */
+	/* Turn on journaled quotas so that they are updated correctly */
 	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
 		if (EXT4_SB(sb)->s_qf_names[i]) {
 			int ret = ext4_quota_on_mount(sb, i);
@@ -2305,9 +2306,9 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 		ext4_msg(sb, KERN_INFO, "%d truncate%s cleaned up",
 		       PLURAL(nr_truncates));
 #ifdef CONFIG_QUOTA
-	/* Turn quotas off */
+	/* Turn off journaled quotas if they were enabled for orphan cleanup */
 	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
-		if (sb_dqopt(sb)->files[i])
+		if (EXT4_SB(sb)->s_qf_names[i] && sb_dqopt(sb)->files[i])
 			dquot_quota_off(sb, i);
 	}
 #endif
@@ -3743,17 +3744,17 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		goto failed_mount;
 	}
 
-	if (le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks) > (blocksize / 4)) {
-		ext4_msg(sb, KERN_ERR,
-			 "Number of reserved GDT blocks insanely large: %d",
-			 le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks));
-		goto failed_mount;
-	}
-
 	if (EXT4_HAS_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_ENCRYPT) &&
 	    es->s_encryption_level) {
 		ext4_msg(sb, KERN_ERR, "Unsupported encryption level %d",
 			 es->s_encryption_level);
+		goto failed_mount;
+	}
+
+	if (le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks) > (blocksize / 4)) {
+		ext4_msg(sb, KERN_ERR,
+			 "Number of reserved GDT blocks insanely large: %d",
+			 le16_to_cpu(sbi->s_es->s_reserved_gdt_blocks));
 		goto failed_mount;
 	}
 
@@ -4941,8 +4942,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 #endif
 	char *orig_data = kstrdup(data, GFP_KERNEL);
 
-	sync_filesystem(sb);
-
 	/* Store the original options */
 	old_sb_flags = sb->s_flags;
 	old_opts.s_mount_opt = sbi->s_mount_opt;
@@ -5012,9 +5011,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 		ext4_init_journal_params(sb, sbi->s_journal);
 		set_task_ioprio(sbi->s_journal->j_task, journal_ioprio);
 	}
-
-	if (*flags & MS_LAZYTIME)
-		sb->s_flags |= MS_LAZYTIME;
 
 	if ((*flags & MS_RDONLY) != (sb->s_flags & MS_RDONLY)) {
 		if (sbi->s_mount_flags & EXT4_MF_FS_ABORTED) {
@@ -5139,7 +5135,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	}
 #endif
 
-	*flags = (*flags & ~MS_LAZYTIME) | (sb->s_flags & MS_LAZYTIME);
 	ext4_msg(sb, KERN_INFO, "re-mounted. Opts: %s", orig_data);
 	kfree(orig_data);
 	return 0;
@@ -5448,24 +5443,32 @@ static int ext4_quota_off(struct super_block *sb, int type)
 {
 	struct inode *inode = sb_dqopt(sb)->files[type];
 	handle_t *handle;
+	int err;
 
 	/* Force all delayed allocation blocks to be allocated.
 	 * Caller already holds s_umount sem */
 	if (test_opt(sb, DELALLOC))
 		sync_filesystem(sb);
 
-	if (!inode)
+	if (!inode || !igrab(inode))
 		goto out;
+
+	err = dquot_quota_off(sb, type);
+	if (err || EXT4_HAS_RO_COMPAT_FEATURE(sb, EXT4_FEATURE_RO_COMPAT_QUOTA))
+		goto out_put;
 
 	/* Update modification times of quota files when userspace can
 	 * start looking at them */
 	handle = ext4_journal_start(inode, EXT4_HT_QUOTA, 1);
 	if (IS_ERR(handle))
-		goto out;
+		goto out_put;
 	inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	ext4_mark_inode_dirty(handle, inode);
 	ext4_journal_stop(handle);
-
+out_put:
+	lockdep_set_quota_inode(inode, I_DATA_SEM_NORMAL);
+	iput(inode);
+	return err;
 out:
 	return dquot_quota_off(sb, type);
 }

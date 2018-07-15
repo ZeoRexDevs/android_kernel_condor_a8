@@ -217,18 +217,12 @@ bool kbase_debug_job_fault_process(struct kbase_jd_atom *katom,
 		u32 completion_code)
 {
 	struct kbase_context *kctx = katom->kctx;
-	static int queued_atoms[4];
+
 	/* Check if dumping is in the process
 	 * only one atom of each context can be dumped at the same time
 	 * If the atom belongs to different context, it can be dumped
 	 */
 	if (atomic_read(&kctx->job_fault_count) > 0) {
-		if (queued_atoms[kctx->id&0x3] == kbase_jd_atom_id(kctx, katom)) {
-			dev_warn(kctx->kbdev->dev,
-				"atoms %d has been queued, just skip\n",
-				kbase_jd_atom_id(kctx, katom));
-			return true;
-		}
 		kbase_job_fault_event_queue(
 				&kctx->job_fault_resume_event_list,
 				katom, completion_code);
@@ -251,7 +245,6 @@ bool kbase_debug_job_fault_process(struct kbase_jd_atom *katom,
 			atomic_inc(&kctx->job_fault_count);
 			dev_info(kctx->kbdev->dev, "post:%d\n",
 					kbase_jd_atom_id(kctx, katom));
-			queued_atoms[kctx->id&0x3] = kbase_jd_atom_id(kctx, katom);
 			return true;
 
 		}

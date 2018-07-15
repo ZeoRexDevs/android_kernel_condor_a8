@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef AUDDRV_BTCVSD_H
 #define AUDDRV_BTCVSD_H
 
@@ -94,6 +107,11 @@ typedef struct {
 	kal_bool fUnderflow;
 	kal_uint32 u4BufferSize;	/*TX packetbuf size*/
 } BT_SCO_TX_T;
+
+typedef struct {
+	unsigned long long uDataCountEquiTime;
+	unsigned long long uTimestampUS;
+} TIME_BUFFER_INFO_T;
 
 CVSD_MEMBLOCK_T BT_CVSD_Mem;
 

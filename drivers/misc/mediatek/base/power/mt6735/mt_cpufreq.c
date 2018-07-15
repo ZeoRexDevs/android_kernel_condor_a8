@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 /**
  * @file	mt_cpufreq.c
  * @brief   Driver for CPU DVFS
@@ -5,7 +18,7 @@
  */
 
 #define __MT_CPUFREQ_C__
-//#define DEBUG 1
+#define DEBUG 1
 /*=============================================================*/
 /* Include files											   */
 /*=============================================================*/
@@ -22,12 +35,8 @@
 #include <linux/proc_fs.h>
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#else
 #include <linux/notifier.h>
 #include <linux/fb.h>
-#endif
 #include <linux/spinlock.h>
 #include <linux/kthread.h>
 #include <linux/hrtimer.h>
@@ -552,12 +561,7 @@ static unsigned int _mt_cpufreq_get(unsigned int cpu);
 #endif
 
 /* (early-)suspend */
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void _mt_cpufreq_early_suspend(struct early_suspend *h);
-static void _mt_cpufreq_late_resume(struct early_suspend *h);
-#else
 static int _mt_cpufreq_fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data);
-#endif
 static int _mt_cpufreq_suspend(struct device *dev);
 static int _mt_cpufreq_resume(struct device *dev);
 static int _mt_cpufreq_pm_restore_early(struct device *dev);	/* for IPO-H HW(freq) / SW(opp_tbl_idx) */
@@ -750,7 +754,7 @@ static struct mt_cpu_freq_info opp_tbl_e1_1[] = {
 
 /* CPU LEVEL 2, 1.25GHz segment */
 static struct mt_cpu_freq_info opp_tbl_e1_2[] = {
-	OP(CPU_DVFS_FREQ0_1,125000),
+	OP(CPU_DVFS_FREQ0_1, 125000),
 	OP(CPU_DVFS_FREQ1,  121875),
 	OP(CPU_DVFS_FREQ5,  118750),
 	OP(CPU_DVFS_FREQ6,  115000),
@@ -762,7 +766,7 @@ static struct mt_cpu_freq_info opp_tbl_e1_2[] = {
 
 /* CPU LEVEL 3, 1.1GHz segment */
 static struct mt_cpu_freq_info opp_tbl_e1_3[] = {
-	OP(CPU_DVFS_FREQ1_1,125000),
+	OP(CPU_DVFS_FREQ1_1, 125000),
 	OP(CPU_DVFS_FREQ2,  121875),
 	OP(CPU_DVFS_FREQ5,  118750),
 	OP(CPU_DVFS_FREQ6,  115000),
@@ -817,7 +821,7 @@ static struct mt_cpu_freq_info opp_tbl_e1_2[] = {
 
 /* CPU LEVEL 3, 1.45GHz segment */
 static struct mt_cpu_freq_info opp_tbl_e1_3[] = {
-	OP(CPU_DVFS_FREQ0_1,125000),
+	OP(CPU_DVFS_FREQ0_1, 125000),
 	OP(CPU_DVFS_FREQ1,  123125),
 	OP(CPU_DVFS_FREQ3,  120625),
 	OP(CPU_DVFS_FREQ4,  115000),
@@ -897,17 +901,9 @@ static struct cpufreq_driver _mt_cpufreq_driver = {
 
 
 /* (early-)suspend / (late-)resume */
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static struct early_suspend _mt_cpufreq_early_suspend_handler = {
-	.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 200,
-	.suspend = _mt_cpufreq_early_suspend,
-	.resume = _mt_cpufreq_late_resume,
-};
-#else
 static struct notifier_block _mt_cpufreq_fb_notifier = {
 	.notifier_call = _mt_cpufreq_fb_notifier_callback,
 };
-#endif	/* CONFIG_HAS_EARLYSUSPEND */
 
 static const struct dev_pm_ops _mt_cpufreq_pm_ops = {
 	.suspend = _mt_cpufreq_suspend,
@@ -956,6 +952,11 @@ static cpuVoltsampler_func g_pCpuVoltSampler;
 #ifdef CONFIG_ARCH_MT6753
 static bool pmic_5A_throttle_enable;
 static bool pmic_5A_throttle_on;
+#endif
+
+/* only for 37T */
+#ifdef CONFIG_ARCH_MT6735
+static bool use_fix_lkg_tbl;
 #endif
 
 /*=============================================================*/
@@ -1008,7 +1009,7 @@ static unsigned int _mt_cpufreq_get_cpu_level(void)
 	struct device_node *node = of_find_node_by_type(NULL, "cpu");
 
 	if (!of_property_read_u32(node, "clock-frequency", &cpu_speed))
-		cpu_speed = cpu_speed / 1000 / 1000;	// MHz
+		cpu_speed = cpu_speed / 1000 / 1000;	/* MHz */
 	else {
 		cpufreq_err("@%s: missing clock-frequency property, use default CPU level\n", __func__);
 		return CPU_LEVEL_1;
@@ -1035,27 +1036,35 @@ static unsigned int _mt_cpufreq_get_cpu_level(void)
 		cpufreq_info("@%s: segment_code = 0x%x\n", __func__, segment_code);
 
 #if defined(CONFIG_ARCH_MT6735) && defined(CONFIG_MTK_EFUSE_DOWNGRADE)
-			return CPU_LEVEL_4;	/* SW config 37T to 35M+ */
+		return CPU_LEVEL_4;	/* SW config 37T to 35M+ */
 #endif
 
 		switch (segment_code) {
 		case 0x41:
 		case 0x42:
 		case 0x43:
+#ifdef CONFIG_ARCH_MT6735
+			use_fix_lkg_tbl = true;
+#endif
 			return CPU_LEVEL_3;	/* 37T: 1.45G */
 		case 0x49:
-			return CPU_LEVEL_2;	/* 37M: 1.1G */
+			return CPU_LEVEL_4;	/* 37M: 1.1G */
 		case 0x4A:
 		case 0x4B:
 			return CPU_LEVEL_3;	/* 35M+: 1.1G */
 		case 0x51:
+		case 0x54:
+		case 0x55:
+#ifdef CONFIG_ARCH_MT6735
+			use_fix_lkg_tbl = true;
+#endif
 			return CPU_LEVEL_1;	/* 37: 1.3G */
 		case 0x52:
 		case 0x53:
 #ifdef CONFIG_MTK_EFUSE_DOWNGRADE
-				return CPU_LEVEL_3;	/* SW config to 35M+ */
+			return CPU_LEVEL_3;	/* SW config to 35M+ */
 #else
-				return CPU_LEVEL_2;	/* 35P+ 1.25G */
+			return CPU_LEVEL_2;	/* 35P+ 1.25G */
 #endif
 		default:
 			break;
@@ -2014,8 +2023,8 @@ static void _mt_cpufreq_set_cur_freq(struct mt_cpu_dvfs *p, unsigned int cur_khz
 		unsigned int sel = 0;
 		unsigned int ckdiv1_val = _GET_BITS_VAL_(4:0, cpufreq_read(TOP_CKDIV1));
 		unsigned int ckdiv1_mask = _BITMASK_(4:0);
-		
-		switch (target_khz) {		
+
+		switch (target_khz) {
 		case CPU_DVFS_FREQ0:
 		case CPU_DVFS_FREQ0_1:
 		case CPU_DVFS_FREQ1:
@@ -2042,16 +2051,16 @@ static void _mt_cpufreq_set_cur_freq(struct mt_cpu_dvfs *p, unsigned int cur_khz
 			cpufreq_err("@%s: invalid target freq = %dKHz\n", __func__, target_khz);
 			BUG();
 		}
-	
+
 		/* ignore postdiv */
 		dds &= ~(_BITMASK_(26:24));
-	
+
 		cpufreq_ver("@%s():%d, cur_khz = %d, target_khz = %d, dds = 0x%x, sel = %d\n",
 				__func__, __LINE__, cur_khz, target_khz, dds, sel);
-	
+
 		/* posdiv should be 2 */
 		/* BUG_ON((dds & _BITMASK_(26 : 24)) != (1 << 24)); */
-	
+
 #if !defined(__KERNEL__)	/* for CTP */
 		if (target_khz > cur_khz) {
 #if defined(MTKDRV_FREQHOP)
@@ -2064,7 +2073,7 @@ static void _mt_cpufreq_set_cur_freq(struct mt_cpu_dvfs *p, unsigned int cur_khz
 			fhdrv_dvt_dvfs_enable(ARMPLL_ID, dds);
 #endif
 		}
-	
+
 #else	/* __KERNEL__ */
 		if (target_khz > cur_khz) {
 			mt_dfs_armpll(FH_ARM_PLLID, dds);
@@ -2086,7 +2095,8 @@ static void _mt_cpufreq_set_cur_freq(struct mt_cpu_dvfs *p, unsigned int cur_khz
 			cur_khz = CPUFREQ_BOUNDARY_FOR_FHCTL;
 		}
 
-		is_fhctl_used = ((target_khz >= CPUFREQ_BOUNDARY_FOR_FHCTL) && (cur_khz >= CPUFREQ_BOUNDARY_FOR_FHCTL)) ? 1 : 0;
+		is_fhctl_used = ((target_khz >= CPUFREQ_BOUNDARY_FOR_FHCTL)
+				&& (cur_khz >= CPUFREQ_BOUNDARY_FOR_FHCTL)) ? 1 : 0;
 
 		cpufreq_ver("@%s():%d, cur_khz = %d, target_khz = %d, is_fhctl_used = %d\n",
 					__func__,
@@ -2098,7 +2108,6 @@ static void _mt_cpufreq_set_cur_freq(struct mt_cpu_dvfs *p, unsigned int cur_khz
 
 		if (!is_fhctl_used) {
 			switch (target_khz) {
-			case CPU_DVFS_FREQ1_1:
 			case CPU_DVFS_FREQ1:
 			case CPU_DVFS_FREQ2:
 			case CPU_DVFS_FREQ3:
@@ -3215,7 +3224,6 @@ static int _mt_cpufreq_sync_opp_tbl_idx(struct mt_cpu_dvfs *p)
 }
 
 #ifdef CONFIG_ARCH_MT6735
-
 unsigned int leakage_data[NR_MAX_OPP_TBL] = {638, 594, 535, 424, 344, 279, 227, 183};
 #endif
 
@@ -3244,10 +3252,10 @@ static void _mt_cpufreq_power_calculation(struct mt_cpu_dvfs *p, int oppidx, int
 
 	/* TODO: Use temp=65 to calculate leakage? check this! */
 #ifdef CONFIG_ARCH_MT6735
-	if (p->cpu_level == CPU_LEVEL_3)
+	if (use_fix_lkg_tbl)
 		p_leakage = leakage_data[oppidx];
 	else
-	p_leakage = mt_spower_get_leakage(MT_SPOWER_CPU, p->opp_tbl[oppidx].cpufreq_volt / 100, 65);
+		p_leakage = mt_spower_get_leakage(MT_SPOWER_CPU, p->opp_tbl[oppidx].cpufreq_volt / 100, 65);
 #else
 	p_leakage = mt_spower_get_leakage(MT_SPOWER_CPU, p->opp_tbl[oppidx].cpufreq_volt / 100, 65);
 #endif
@@ -3586,6 +3594,8 @@ static void _mt_cpufreq_calc_power_throttle_idx(struct mt_cpu_dvfs *p)
 #ifdef CONFIG_ARCH_MT6735M
 		case CPU_LEVEL_0:
 		case CPU_LEVEL_1:
+			p->idx_pwr_thro_max_opp = 3;
+			break;
 		case CPU_LEVEL_2:
 		case CPU_LEVEL_3:
 			p->idx_pwr_thro_max_opp = 3;
@@ -3983,7 +3993,7 @@ static int _mt_cpufreq_init(struct cpufreq_policy *policy)
 
 		cpufreq_info("@%s: limited_power_idx = %d\n", __func__, p->limited_power_idx);
 
-#ifdef CONFIG_CPU_DVFS_SYSTEM_BOOTUP_BOOST
+#ifdef CONFIG_MT_BOOT_TIME_CPU_BOOST
 		p->limited_min_freq_by_kdriver = cpu_dvfs_get_max_freq(p);
 #endif
 
@@ -4104,25 +4114,6 @@ static void _mt_cpufreq_lcm_status_switch(int onoff)
 	}
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void _mt_cpufreq_early_suspend(struct early_suspend *h)
-{
-	FUNC_ENTER(FUNC_LV_MODULE);
-
-	_mt_cpufreq_lcm_status_switch(0);
-
-	FUNC_EXIT(FUNC_LV_MODULE);
-}
-
-static void _mt_cpufreq_late_resume(struct early_suspend *h)
-{
-	FUNC_ENTER(FUNC_LV_MODULE);
-
-	_mt_cpufreq_lcm_status_switch(1);
-
-	FUNC_EXIT(FUNC_LV_MODULE);
-}
-#else
 static int _mt_cpufreq_fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
 	struct fb_event *evdata = data;
@@ -4154,7 +4145,6 @@ static int _mt_cpufreq_fb_notifier_callback(struct notifier_block *self, unsigne
 
 	return 0;
 }
-#endif
 
 static int _mt_cpufreq_suspend(struct device *dev)
 {
@@ -4253,14 +4243,10 @@ static int _mt_cpufreq_pdrv_probe(struct platform_device *pdev)
 #endif
 
 	/* register early suspend */
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	register_early_suspend(&_mt_cpufreq_early_suspend_handler);
-#else
 	if (fb_register_client(&_mt_cpufreq_fb_notifier)) {
 		cpufreq_err("@%s: register FB client failed!\n", __func__);
 		return 0;
 	}
-#endif
 
 	/* init PMIC_WRAP & volt */
 	mt_cpufreq_set_pmic_phase(PMIC_WRAP_PHASE_NORMAL);
@@ -4972,6 +4958,17 @@ static ssize_t cpufreq_limited_max_freq_by_user_proc_write(struct file *file,
 	return count;
 }
 
+/* cpufreq_limited_by_kdriver */
+static int cpufreq_limited_by_kdriver_proc_show(struct seq_file *m, void *v)
+{
+	struct mt_cpu_dvfs *p = (struct mt_cpu_dvfs *)m->private;
+
+	seq_printf(m, "min = %d KHz\n", p->limited_min_freq_by_kdriver);
+	seq_printf(m, "max = %d KHz\n", p->limited_max_freq_by_kdriver);
+
+	return 0;
+}
+
 /* cpufreq_power_dump */
 static int cpufreq_power_dump_proc_show(struct seq_file *m, void *v)
 {
@@ -5315,6 +5312,7 @@ PROC_FOPS_RW(cpufreq_limited_by_thermal);
 PROC_FOPS_RW(cpufreq_5A_throttle_enable);
 #endif
 PROC_FOPS_RW(cpufreq_limited_max_freq_by_user);
+PROC_FOPS_RO(cpufreq_limited_by_kdriver);
 PROC_FOPS_RO(cpufreq_power_dump);
 PROC_FOPS_RO(cpufreq_ptpod_freq_volt);
 PROC_FOPS_RW(cpufreq_state);
@@ -5355,6 +5353,7 @@ static int _mt_cpufreq_create_procfs(void)
 	const struct pentry cpu_entries[] = {
 		PROC_ENTRY(cpufreq_limited_by_hevc),
 		PROC_ENTRY(cpufreq_limited_max_freq_by_user),
+		PROC_ENTRY(cpufreq_limited_by_kdriver),
 		PROC_ENTRY(cpufreq_ptpod_freq_volt),
 		PROC_ENTRY(cpufreq_state),
 		PROC_ENTRY(cpufreq_oppidx),	/* <-XXX */

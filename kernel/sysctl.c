@@ -128,7 +128,9 @@ static int __maybe_unused two = 2;
 static int __maybe_unused four = 4;
 static unsigned long one_ul = 1;
 static int one_hundred = 100;
+#ifdef CONFIG_MTK_GMO_RAM_OPTIMIZE
 static int two_hundred = 200;
+#endif
 #ifdef CONFIG_PRINTK
 static int ten_thousand = 10000;
 #endif
@@ -344,7 +346,8 @@ static struct ctl_table kern_table[] = {
 		.data		= &sysctl_sched_time_avg,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &one
 	},
 	{
 		.procname	= "sched_shares_window_ns",
@@ -1215,18 +1218,38 @@ static struct ctl_table vm_table[] = {
 		.extra1		= &zero,
 	},
 	{
-		.procname	= "dirtytime_expire_seconds",
-		.data		= &dirtytime_expire_interval,
-		.maxlen		= sizeof(dirty_expire_interval),
-		.mode		= 0644,
-		.proc_handler	= dirtytime_interval_handler,
-		.extra1		= &zero,
-	},
-	{
 		.procname       = "nr_pdflush_threads",
 		.mode           = 0444 /* read-only */,
 		.proc_handler   = pdflush_proc_obsolete,
 	},
+#ifdef CONFIG_MEMCG
+	{
+		.procname	= "vmpressure_level_med",
+		.data		= &vmpressure_level_med,
+		.maxlen		= sizeof(vmpressure_level_med),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &vmpressure_level_critical,
+	},
+	{
+		.procname	= "vmpressure_level_critical",
+		.data		= &vmpressure_level_critical,
+		.maxlen		= sizeof(vmpressure_level_critical),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &vmpressure_level_med,
+		.extra2		= &one_hundred,
+	},
+	{
+		.procname	= "vmpressure_win",
+		.data		= &vmpressure_win,
+		.maxlen		= sizeof(vmpressure_win),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+	},
+#endif
 	{
 		.procname	= "swappiness",
 		.data		= &vm_swappiness,
@@ -1234,7 +1257,11 @@ static struct ctl_table vm_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
+#ifndef CONFIG_MTK_GMO_RAM_OPTIMIZE
+		.extra2		= &one_hundred,
+#else
 		.extra2		= &two_hundred,
+#endif
 	},
 #ifdef CONFIG_HUGETLB_PAGE
 	{

@@ -137,7 +137,7 @@ int drm_gem_object_init(struct drm_device *dev,
 
 	drm_gem_private_object_init(dev, obj, size);
 
-	filp = shmem_file_setup("drm mm object", size, VM_NORESERVE, 1);
+	filp = shmem_file_setup("drm mm object", size, VM_NORESERVE);
 	if (IS_ERR(filp))
 		return PTR_ERR(filp);
 
@@ -710,12 +710,12 @@ drm_gem_object_release_handle(int id, void *ptr, void *data)
 	struct drm_gem_object *obj = ptr;
 	struct drm_device *dev = obj->dev;
 
+	if (dev->driver->gem_close_object)
+		dev->driver->gem_close_object(obj, file_priv);
+
 	if (drm_core_check_feature(dev, DRIVER_PRIME))
 		drm_gem_remove_prime_handles(obj, file_priv);
 	drm_vma_node_revoke(&obj->vma_node, file_priv->filp);
-
-	if (dev->driver->gem_close_object)
-		dev->driver->gem_close_object(obj, file_priv);
 
 	drm_gem_object_handle_unreference_unlocked(obj);
 
@@ -818,8 +818,6 @@ EXPORT_SYMBOL(drm_gem_vm_close);
  * drm_gem_mmap() prevents unprivileged users from mapping random objects. So
  * callers must verify access restrictions before calling this helper.
  *
- * NOTE: This function has to be protected with dev->struct_mutex
- *
  * Return 0 or success or -EINVAL if the object size is smaller than the VMA
  * size, or if no gem_vm_ops are provided.
  */
@@ -827,8 +825,6 @@ int drm_gem_mmap_obj(struct drm_gem_object *obj, unsigned long obj_size,
 		     struct vm_area_struct *vma)
 {
 	struct drm_device *dev = obj->dev;
-
-	lockdep_assert_held(&dev->struct_mutex);
 
 	/* Check for valid size. */
 	if (obj_size < vma->vm_end - vma->vm_start)

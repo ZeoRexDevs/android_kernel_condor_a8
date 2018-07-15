@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/string.h>
 #include <linux/wait.h>
 #include <linux/platform_device.h>
@@ -46,7 +59,7 @@ static int lcm_get_vgp_supply(struct device *dev)
 	}
 
 	pr_debug("LCM: lcm get supply ok.\n");
-	ret = regulator_enable(lcm_vgp_ldo);
+
 	/* get current voltage settings */
 	ret = regulator_get_voltage(lcm_vgp_ldo);
 	pr_debug("lcm LDO voltage = %d in LK stage\n", ret);

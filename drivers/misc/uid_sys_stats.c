@@ -68,8 +68,6 @@ struct uid_entry {
 	cputime_t stime;
 	cputime_t active_utime;
 	cputime_t active_stime;
-	cputime_t total_utime;
-	cputime_t total_stime;
 	unsigned long long active_power;
 	unsigned long long power;
 	int state;
@@ -323,9 +321,6 @@ static struct uid_entry *find_or_register_uid(uid_t uid)
 		return NULL;
 
 	uid_entry->uid = uid;
-	uid_entry->total_utime = 0;
-	uid_entry->total_stime = 0;
-
 #ifdef CONFIG_UID_SYS_STATS_DEBUG
 	hash_init(uid_entry->task_entries);
 #endif
@@ -382,20 +377,6 @@ static int uid_cputime_show(struct seq_file *m, void *v)
 							uid_entry->active_stime;
 		unsigned long long total_power = uid_entry->power +
 							uid_entry->active_power;
-
-		/***
-		 *	workaround for KernelUidCpuTimeReader issue
-		***/
-		if (total_stime < uid_entry->total_stime)
-			total_stime = uid_entry->total_stime;
-		else
-			uid_entry->total_stime = total_stime;
-
-		if (total_utime < uid_entry->total_utime)
-			total_utime = uid_entry->total_utime;
-		else
-			uid_entry->total_utime = total_utime;
-
 		seq_printf(m, "%d: %llu %llu %llu\n", uid_entry->uid,
 			(unsigned long long)jiffies_to_msecs(
 				cputime_to_jiffies(total_utime)) * USEC_PER_MSEC,

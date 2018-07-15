@@ -126,9 +126,12 @@ extern void exm_event_notify(struct exm_info *info);
 
 extern bool extmem_in_mspace(struct vm_area_struct *vma);
 extern unsigned long get_virt_from_mspace(unsigned long pa);
+extern void *extmem_malloc(size_t bytes);
 extern void *extmem_malloc_page_align(size_t bytes);
 extern size_t extmem_get_mem_size(unsigned long pgoff);
 extern void extmem_free(void *mem);
-extern void init_debug_alloc_pool_aligned(void);
+extern void __init init_debug_alloc_pool_aligned(void);
+extern void __init *extmem_malloc_init(size_t bytes);
+extern void __init *extmem_malloc_page_align_init(size_t bytes);
 
 #endif				/* _LINUX_EXM_DRIVER_H_ */

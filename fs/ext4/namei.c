@@ -271,7 +271,7 @@ static struct buffer_head * ext4_dx_find_entry(struct inode *dir,
 		struct ext4_filename *fname,
 		struct ext4_dir_entry_2 **res_dir);
 static int ext4_dx_add_entry(handle_t *handle, struct ext4_filename *fname,
-			     struct inode *dir, struct inode *inode);
+			     struct dentry *dentry, struct inode *inode);
 
 /* checksumming functions */
 void initialize_dirent_tail(struct ext4_dir_entry_tail *t,
@@ -414,14 +414,15 @@ static __le32 ext4_dx_csum(struct inode *inode, struct ext4_dir_entry *dirent,
 	struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
 	struct ext4_inode_info *ei = EXT4_I(inode);
 	__u32 csum;
+	__le32 save_csum;
 	int size;
-	__u32 dummy_csum = 0;
-	int offset = offsetof(struct dx_tail, dt_checksum);
 
 	size = count_offset + (count * sizeof(struct dx_entry));
+	save_csum = t->dt_checksum;
+	t->dt_checksum = 0;
 	csum = ext4_chksum(sbi, ei->i_csum_seed, (__u8 *)dirent, size);
-	csum = ext4_chksum(sbi, csum, (__u8 *)t, offset);
-	csum = ext4_chksum(sbi, csum, (__u8 *)&dummy_csum, sizeof(dummy_csum));
+	csum = ext4_chksum(sbi, csum, (__u8 *)t, sizeof(struct dx_tail));
+	t->dt_checksum = save_csum;
 
 	return cpu_to_le32(csum);
 }
@@ -1934,9 +1935,10 @@ static int add_dirent_to_buf(handle_t *handle, struct ext4_filename *fname,
  * directory, and adds the dentry to the indexed directory.
  */
 static int make_indexed_dir(handle_t *handle, struct ext4_filename *fname,
-			    struct inode *dir,
+			    struct dentry *dentry,
 			    struct inode *inode, struct buffer_head *bh)
 {
+	struct inode	*dir = dentry->d_parent->d_inode;
 	struct buffer_head *bh2;
 	struct dx_root	*root;
 	struct dx_frame	frames[2], *frame;
@@ -2091,7 +2093,8 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 		return retval;
 
 	if (ext4_has_inline_data(dir)) {
-		retval = ext4_try_add_inline_entry(handle, &fname, dir, inode);
+		retval = ext4_try_add_inline_entry(handle, &fname,
+						   dentry, inode);
 		if (retval < 0)
 			goto out;
 		if (retval == 1) {
@@ -2101,7 +2104,7 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 	}
 
 	if (is_dx(dir)) {
-		retval = ext4_dx_add_entry(handle, &fname, dir, inode);
+		retval = ext4_dx_add_entry(handle, &fname, dentry, inode);
 		if (!retval || (retval != ERR_BAD_DX_DIR))
 			goto out;
 		ext4_clear_inode_flag(dir, EXT4_INODE_INDEX);
@@ -2116,6 +2119,7 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 			bh = NULL;
 			goto out;
 		}
+
 		retval = add_dirent_to_buf(handle, &fname, dir, inode,
 					   NULL, bh);
 		if (retval != -ENOSPC)
@@ -2123,7 +2127,7 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 
 		if (blocks == 1 && !dx_fallback &&
 		    EXT4_HAS_COMPAT_FEATURE(sb, EXT4_FEATURE_COMPAT_DIR_INDEX)) {
-			retval = make_indexed_dir(handle, &fname, dir,
+			retval = make_indexed_dir(handle, &fname, dentry,
 						  inode, bh);
 			bh = NULL; /* make_indexed_dir releases bh */
 			goto out;
@@ -2158,11 +2162,12 @@ out:
  * Returns 0 for success, or a negative error value
  */
 static int ext4_dx_add_entry(handle_t *handle, struct ext4_filename *fname,
-			     struct inode *dir, struct inode *inode)
+			     struct dentry *dentry, struct inode *inode)
 {
 	struct dx_frame frames[2], *frame;
 	struct dx_entry *entries, *at;
 	struct buffer_head *bh;
+	struct inode *dir = dentry->d_parent->d_inode;
 	struct super_block *sb = dir->i_sb;
 	struct ext4_dir_entry_2 *de;
 	int err;
@@ -2496,7 +2501,6 @@ retry:
 	return err;
 }
 
-#if 0
 static int ext4_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	handle_t *handle;
@@ -2534,7 +2538,6 @@ err_unlock_inode:
 	unlock_new_inode(inode);
 	return err;
 }
-#endif
 
 struct ext4_dir_entry_2 *ext4_init_dot_dotdot(struct inode *inode,
 			  struct ext4_dir_entry_2 *de,
@@ -3409,7 +3412,6 @@ static void ext4_rename_delete(handle_t *handle, struct ext4_renament *ent,
 	}
 }
 
-#if 0
 static void ext4_update_dir_count(handle_t *handle, struct ext4_renament *ent)
 {
 	if (ent->dir_nlink_delta) {
@@ -3453,7 +3455,6 @@ retry:
 	}
 	return wh;
 }
-#endif
 
 /*
  * Anybody can rename anything with this: the permission checks are left to the
@@ -3531,16 +3532,13 @@ static int ext4_rename(struct inode *old_dir, struct dentry *old_dentry,
 
 	credits = (2 * EXT4_DATA_TRANS_BLOCKS(old.dir->i_sb) +
 		   EXT4_INDEX_EXTRA_TRANS_BLOCKS + 2);
-#if 0
 	if (!(flags & RENAME_WHITEOUT)) {
-#endif
 		handle = ext4_journal_start(old.dir, EXT4_HT_DIR, credits);
 		if (IS_ERR(handle)) {
 			retval = PTR_ERR(handle);
 			handle = NULL;
 			goto end_rename;
 		}
-#if 0
 	} else {
 		whiteout = ext4_whiteout_for_rename(&old, credits, &handle);
 		if (IS_ERR(whiteout)) {
@@ -3549,7 +3547,6 @@ static int ext4_rename(struct inode *old_dir, struct dentry *old_dentry,
 			goto end_rename;
 		}
 	}
-#endif
 
 	if (IS_DIRSYNC(old.dir) || IS_DIRSYNC(new.dir))
 		ext4_handle_sync(handle);
@@ -3664,7 +3661,6 @@ end_rename:
 	return retval;
 }
 
-#if 0
 static int ext4_cross_rename(struct inode *old_dir, struct dentry *old_dentry,
 			     struct inode *new_dir, struct dentry *new_dentry)
 {
@@ -3799,12 +3795,20 @@ end_rename:
 		ext4_journal_stop(handle);
 	return retval;
 }
-#endif
 
 static int ext4_rename2(struct inode *old_dir, struct dentry *old_dentry,
-			struct inode *new_dir, struct dentry *new_dentry)
+			struct inode *new_dir, struct dentry *new_dentry,
+			unsigned int flags)
 {
-	return ext4_rename(old_dir, old_dentry, new_dir, new_dentry, 0);
+	if (flags & ~(RENAME_NOREPLACE | RENAME_EXCHANGE | RENAME_WHITEOUT))
+		return -EINVAL;
+
+	if (flags & RENAME_EXCHANGE) {
+		return ext4_cross_rename(old_dir, old_dentry,
+					 new_dir, new_dentry);
+	}
+
+	return ext4_rename(old_dir, old_dentry, new_dir, new_dentry, flags);
 }
 
 /*
@@ -3819,19 +3823,15 @@ const struct inode_operations ext4_dir_inode_operations = {
 	.mkdir		= ext4_mkdir,
 	.rmdir		= ext4_rmdir,
 	.mknod		= ext4_mknod,
-#if 0
 	.tmpfile	= ext4_tmpfile,
-#endif
-	.rename		= ext4_rename2,
+	.rename2	= ext4_rename2,
 	.setattr	= ext4_setattr,
 	.setxattr	= generic_setxattr,
 	.getxattr	= generic_getxattr,
 	.listxattr	= ext4_listxattr,
 	.removexattr	= generic_removexattr,
 	.get_acl	= ext4_get_acl,
-#if 0
 	.set_acl	= ext4_set_acl,
-#endif
 	.fiemap         = ext4_fiemap,
 };
 
@@ -3842,7 +3842,5 @@ const struct inode_operations ext4_special_inode_operations = {
 	.listxattr	= ext4_listxattr,
 	.removexattr	= generic_removexattr,
 	.get_acl	= ext4_get_acl,
-#if 0
 	.set_acl	= ext4_set_acl,
-#endif
 };

@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
@@ -638,7 +651,7 @@ static int sdm_pll_dump_regs_op(struct pll *pll, unsigned int *ptr)
 
 static int sdm_pll_hp_enable_op(struct pll *pll)
 {
-	int err;
+	int err = 0;
 
 	if (!pll->hp_switch || (pll->state == PWR_DOWN))
 		return 0;
@@ -652,7 +665,7 @@ static int sdm_pll_hp_enable_op(struct pll *pll)
 
 static int sdm_pll_hp_disable_op(struct pll *pll)
 {
-	int err;
+	int err = 0;
 
 	if (!pll->hp_switch || (pll->state == PWR_ON))
 		return 0;

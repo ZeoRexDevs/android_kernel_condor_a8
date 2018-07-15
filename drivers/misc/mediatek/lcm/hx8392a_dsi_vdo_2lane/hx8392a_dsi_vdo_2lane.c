@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef BUILD_LK
 #include <linux/string.h>
 #endif
@@ -10,6 +23,11 @@
 
 #define FRAME_WIDTH										(720)
 #define FRAME_HEIGHT										(1280)
+#define LCM_DENSITY					(320)
+
+/* physical size in um */
+#define LCM_PHYSICAL_WIDTH    (59500)
+#define LCM_PHYSICAL_HEIGHT   (104700)
 
 #define REGFLAG_DELAY								0xFE
 #define REGFLAG_END_OF_TABLE							0xFF	/* END OF REGISTERS MARKER */
@@ -236,6 +254,12 @@ static void lcm_get_params(LCM_PARAMS *params)
 	params->type = LCM_TYPE_DSI;
 	params->width = FRAME_WIDTH;
 	params->height = FRAME_HEIGHT;
+	params->density = LCM_DENSITY;
+
+	params->physical_width = LCM_PHYSICAL_WIDTH/1000;
+	params->physical_height = LCM_PHYSICAL_HEIGHT/1000;
+	params->physical_width_um = LCM_PHYSICAL_WIDTH;
+	params->physical_height_um = LCM_PHYSICAL_HEIGHT;
 
 	/* enable tearing-free */
 	params->dbi.te_mode = LCM_DBI_TE_MODE_VSYNC_ONLY;
@@ -267,7 +291,7 @@ static void lcm_get_params(LCM_PARAMS *params)
 	params->dsi.horizontal_active_pixel = FRAME_WIDTH;
 
 #ifndef CONFIG_FPGA_EARLY_PORTING
-	params->dsi.PLL_CLOCK = 350;
+	params->dsi.PLL_CLOCK = 475;
 #else
 	params->dsi.pll_div1 = 0;
 	params->dsi.pll_div2 = 0;

@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef __MT_MSDC_DEUBG__
 #define __MT_MSDC_DEUBG__
 #include "mt_sd.h"
@@ -110,6 +123,8 @@ typedef enum {
 	MMC_ETT_TUNE = 24,
 	MMC_CRC_STRESS = 25,
 	ENABLE_AXI_MODULE = 26,
+	/* for DB dump, do not change index */
+	MMC_HANG_DETECT_DUMP = 256,
 } msdc_dbg;
 
 
@@ -120,6 +135,22 @@ typedef struct {
 	unsigned char rst_drv;
 	unsigned char ds_drv;
 } drv_mod;
+
+#define SPREAD_PRINTF(buff, size, evt, fmt, args...) \
+do { \
+	if (buff && size && *(size)) { \
+		unsigned long var = snprintf(*(buff), *(size), fmt, ##args); \
+		if (var > 0) { \
+			*(size) -= var; \
+			*(buff) += var; \
+		} \
+	} \
+	if (evt) \
+		seq_printf(evt, fmt, ##args); \
+	if (!buff && !evt) { \
+		pr_info(fmt, ##args); \
+	} \
+} while (0)
 
 extern u32 dma_size[HOST_MAX_NUM];
 extern unsigned char msdc_clock_src[HOST_MAX_NUM];
@@ -170,10 +201,11 @@ extern u32 sdio_cmd_drv;
 extern u32 sdio_data_drv;
 extern u32 sdio_tune_flag;
 
-int msdc_debug_proc_init(void);
-
 extern void GPT_GetCounter64(u32 *cntL32, u32 *cntH32);
 u32 msdc_time_calc(u32 old_L32, u32 old_H32, u32 new_L32, u32 new_H32);
 void msdc_performance(u32 opcode, u32 sizes, u32 bRx, u32 ticks);
 
+void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg);
+void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
+	struct mmc_host *mmc, u32 latest_cnt);
 #endif

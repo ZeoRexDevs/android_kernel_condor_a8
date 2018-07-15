@@ -211,7 +211,8 @@ static int get_eint_attr_val(int md_id, struct device_node *node, int index)
 		if (ret != 0) {
 			md_eint_struct[type].value_sim[index] = ERR_SIM_HOT_PLUG_QUERY_TYPE;
 			CCCI_NORMAL_LOG(md_id, RPC, "%s:  not found\n", md_eint_struct[type].property);
-			return ERR_SIM_HOT_PLUG_QUERY_TYPE;
+			ret = ERR_SIM_HOT_PLUG_QUERY_TYPE;
+			continue;
 		}
 		/* special case: polarity's position == sensitivity's start[ */
 		if (type == SIM_HOT_PLUG_EINT_POLARITY) {
@@ -240,7 +241,7 @@ static int get_eint_attr_val(int md_id, struct device_node *node, int index)
 		} else
 			md_eint_struct[type].value_sim[index] = value;
 	}
-	return 0;
+	return ret;
 }
 
 void get_dtsi_eint_node(int md_id)
@@ -289,7 +290,8 @@ int get_eint_attr_DTSVal(int md_id, char *name, unsigned int name_len,
 			CCCI_BOOTUP_LOG(md_id, RPC, "md_eint:%s, sizeof: %d, sim_info: %d, %d\n",
 					eint_node_prop.eint_value[type].property,
 					*len, *sim_info, eint_node_prop.eint_value[type].value_sim[i]);
-			return 0;
+			if (sim_value >= 0)
+				return 0;
 		}
 	}
 	return ERR_SIM_HOT_PLUG_QUERY_STRING;
@@ -1301,9 +1303,46 @@ int port_rpc_recv_match(struct ccci_port *port, struct sk_buff *skb)
 	return 0;
 }
 
+void port_rpc_md_state_notice(struct ccci_port *port, MD_STATE state)
+{
+	struct sk_buff *skb = NULL;
+	int clear_cnt = 0;
+
+	if (port->md_id != MD_SYS1)
+		return;
+
+	switch (state) {
+	case GATED:
+		CCCI_DEBUG_LOG(port->md_id, CHAR, "port rpc notice stop\n");
+		if (port->private_data != NULL) {
+			kthread_stop(port->private_data);
+			CCCI_DEBUG_LOG(port->md_id, CHAR, "port rpc notice clear list\n");
+			/* clear queue list */
+			while ((skb = __skb_dequeue(&port->rx_skb_list)) != NULL) {
+				ccci_free_skb(skb);
+				clear_cnt++;
+			}
+			port->rx_drop_cnt += clear_cnt;
+			CCCI_NORMAL_LOG(port->md_id, CHAR,
+				"port rpc notice: port %s state notice rx_len=%d empty=%d, clear_cnt=%d, drop=%d\n",
+				port->name, port->rx_skb_list.qlen, skb_queue_empty(&port->rx_skb_list),
+				clear_cnt, port->rx_drop_cnt);
+			ccci_event_log("md%d: port %s close rx_len=%d empty=%d, clear_cnt=%d, drop=%d\n",
+				port->md_id, port->name, port->rx_skb_list.qlen,
+				skb_queue_empty(&port->rx_skb_list), clear_cnt, port->rx_drop_cnt);
+			port->private_data = kthread_run(port_kthread_handler, port, "%s", port->name);
+			CCCI_NOTICE_LOG(port->md_id, CHAR, "port rpc notice end\n");
+		}
+		break;
+	default:
+		break;
+	};
+}
+
 struct ccci_port_ops rpc_port_ops = {
 	.init = &port_rpc_init,
 	.recv_match = &port_rpc_recv_match,
 	.recv_skb = &port_recv_skb,
+	.md_state_notice = &port_rpc_md_state_notice,
 };
 

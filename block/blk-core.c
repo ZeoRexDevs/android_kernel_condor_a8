@@ -11,9 +11,6 @@
 /*
  * This handles all read/write requests to block devices
  */
-#if defined(CONFIG_MT_ENG_BUILD)
-#define DEBUG 1
-#endif
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/backing-dev.h>
@@ -43,12 +40,6 @@
 #include "blk-cgroup.h"
 #include "blk-mq.h"
 
-#if defined(FEATURE_STORAGE_PID_LOGGER)
-#include <linux/vmalloc.h>
-#include <linux/memblock.h>
-unsigned long long system_dram_size = 0;
-#endif
-
 #include <linux/math64.h>
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
@@ -58,9 +49,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(block_split);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_unplug);
 
 DEFINE_IDA(blk_queue_ida);
-
-int trap_non_toi_io;
-EXPORT_SYMBOL_GPL(trap_non_toi_io);
 
 /*
  * For the allocated request tables
@@ -208,7 +196,7 @@ EXPORT_SYMBOL(blk_delay_queue);
  **/
 void blk_start_queue(struct request_queue *q)
 {
-	WARN_ON(!irqs_disabled());
+	WARN_ON(!in_interrupt() && !irqs_disabled());
 
 	queue_flag_clear(QUEUE_FLAG_STOPPED, q);
 	__blk_run_queue(q);
@@ -295,20 +283,9 @@ inline void __blk_run_queue_uncond(struct request_queue *q)
 	 * number of active request_fn invocations such that blk_drain_queue()
 	 * can wait until all these request_fn calls have finished.
 	 */
-
-	if (!q->notified_urgent &&
-		q->elevator->type->ops.elevator_is_urgent_fn &&
-		q->urgent_request_fn &&
-		q->elevator->type->ops.elevator_is_urgent_fn(q)) {
-		q->notified_urgent = true;
-		q->request_fn_active++;
-		q->urgent_request_fn(q);
-		q->request_fn_active--;
-	} else {
-		q->request_fn_active++;
-		q->request_fn(q);
-		q->request_fn_active--;
-	}
+	q->request_fn_active++;
+	q->request_fn(q);
+	q->request_fn_active--;
 }
 
 /**
@@ -318,12 +295,6 @@ inline void __blk_run_queue_uncond(struct request_queue *q)
  * Description:
  *    See @blk_run_queue. This variant must be called with the queue lock
  *    held and interrupts disabled.
- *    Device driver will be notified of an urgent request
- *    pending under the following conditions:
- *    1. The driver and the current scheduler support urgent reques handling
- *    2. There is an urgent request pending in the scheduler
- *    3. There isn't already an urgent request in flight, meaning previously
- *       notified urgent request completed (!q->notified_urgent)
  */
 void __blk_run_queue(struct request_queue *q)
 {
@@ -1305,73 +1276,9 @@ void blk_requeue_request(struct request_queue *q, struct request *rq)
 
 	BUG_ON(blk_queued_rq(rq));
 
-	if (rq->cmd_flags & REQ_URGENT) {
-		/*
-		 * It's not compliant with the design to re-insert
-		 * urgent requests. We want to be able to track this
-		 * down.
-		 */
-		pr_err("%s(): requeueing an URGENT request", __func__);
-		WARN_ON(!q->dispatched_urgent);
-		q->dispatched_urgent = false;
-	}
 	elv_requeue_request(q, rq);
 }
 EXPORT_SYMBOL(blk_requeue_request);
-
-/**
- * blk_reinsert_request() - Insert a request back to the scheduler
- * @q:		request queue
- * @rq:		request to be inserted
- *
- * This function inserts the request back to the scheduler as if
- * it was never dispatched.
- *
- * Return: 0 on success, error code on fail
- */
-int blk_reinsert_request(struct request_queue *q, struct request *rq)
-{
-	if (unlikely(!rq) || unlikely(!q))
-		return -EIO;
-
-	blk_delete_timer(rq);
-	blk_clear_rq_complete(rq);
-	trace_block_rq_requeue(q, rq);
-
-	if (rq->cmd_flags & REQ_QUEUED)
-		blk_queue_end_tag(q, rq);
-
-	BUG_ON(blk_queued_rq(rq));
-	if (rq->cmd_flags & REQ_URGENT) {
-		/*
-		 * It's not compliant with the design to re-insert
-		 * urgent requests. We want to be able to track this
-		 * down.
-		 */
-		pr_err("%s(): reinserting an URGENT request", __func__);
-		WARN_ON(!q->dispatched_urgent);
-		q->dispatched_urgent = false;
-	}
-
-	return elv_reinsert_request(q, rq);
-}
-EXPORT_SYMBOL(blk_reinsert_request);
-
-/**
- * blk_reinsert_req_sup() - check whether the scheduler supports
- *          reinsertion of requests
- * @q:		request queue
- *
- * Returns true if the current scheduler supports reinserting
- * request. False otherwise
- */
-bool blk_reinsert_req_sup(struct request_queue *q)
-{
-	if (unlikely(!q))
-		return false;
-	return q->elevator->type->ops.elevator_reinsert_req_fn ? true : false;
-}
-EXPORT_SYMBOL(blk_reinsert_req_sup);
 
 static void add_acct_request(struct request_queue *q, struct request *rq,
 			     int where)
@@ -2026,9 +1933,6 @@ void submit_bio(int rw, struct bio *bio)
 {
 	bio->bi_rw |= rw;
 
-	if (unlikely(trap_non_toi_io))
-		BUG_ON(!(bio->bi_flags & BIO_TOI));
-
 	/*
 	 * If it's a regular read/write or a barrier with data attached,
 	 * go through the normal accounting stuff before submission.
@@ -2047,32 +1951,8 @@ void submit_bio(int rw, struct bio *bio)
 			task_io_account_read(bio->bi_iter.bi_size);
 			count_vm_events(PGPGIN, count);
 		}
-#if defined(FEATURE_STORAGE_PID_LOGGER)
-	{
-		struct bio_vec bvec;
-		struct bvec_iter iter;
 
-		bio_for_each_segment(bvec, bio, iter) {
-			struct page_pid_logger *tmp_logger;
-			unsigned long flags;
-
-			if (page_logger && bvec.bv_page) {
-				unsigned long page_index;
-
-				page_index = (unsigned long)(__page_to_pfn(bvec.bv_page)) - PHYS_PFN_OFFSET;
-				tmp_logger = ((struct page_pid_logger *)page_logger) + page_index;
-				spin_lock_irqsave(&g_locker, flags);
-				if (page_index < (system_dram_size >> PAGE_SHIFT)) {
-					if (tmp_logger->pid1 == 0XFFFF && tmp_logger->pid2 != current->pid)
-						tmp_logger->pid1 = current->pid;
-					else if (tmp_logger->pid1 != current->pid)
-						tmp_logger->pid2 = current->pid;
-				}
-				spin_unlock_irqrestore(&g_locker, flags);
-			}
-		}
-	}
-#endif
+		mt_pidlog_submit_bio(bio);
 
 		if (unlikely(block_dump)) {
 			char b[BDEVNAME_SIZE];
@@ -2361,10 +2241,6 @@ struct request *blk_peek_request(struct request_queue *q)
 			 * not be passed by new incoming requests
 			 */
 			rq->cmd_flags |= REQ_STARTED;
-			if (rq->cmd_flags & REQ_URGENT) {
-				WARN_ON(q->dispatched_urgent);
-				q->dispatched_urgent = true;
-			}
 			trace_block_rq_issue(q, rq);
 		}
 
@@ -3452,20 +3328,6 @@ int __init blk_dev_init(void)
 
 	return 0;
 }
-
-#if defined(FEATURE_STORAGE_PID_LOGGER)
-
-static int __init display_early_memory_info(void)
-{
-phys_addr_t start, end;
-start = memblock_start_of_DRAM();
-end = memblock_end_of_DRAM();
-system_dram_size = (unsigned long long)(end - start);
-pr_debug("DRAM: %pa - %pa, size: 0x%llx\n", &start, &end, (unsigned long long)(end - start));
-return 0;
-}
-fs_initcall(display_early_memory_info);
-#endif
 
 /*
  * Blk IO latency support. We want this to be as cheap as possible, so doing

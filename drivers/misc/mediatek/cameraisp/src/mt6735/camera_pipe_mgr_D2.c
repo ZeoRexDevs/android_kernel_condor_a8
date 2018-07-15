@@ -213,7 +213,8 @@ static void CamPipeMgr_StorePipeInfo(MUINT32 PipeMask)
 			if (CamPipeMgr.PipeInfo[i].Pid == 0 && CamPipeMgr.PipeInfo[i].Tgid == 0) {
 				CamPipeMgr.PipeInfo[i].Pid = current->pid;
 				CamPipeMgr.PipeInfo[i].Tgid = current->tgid;
-				strcpy(CamPipeMgr.PipeInfo[i].ProcName, current->comm);
+				strncpy(CamPipeMgr.PipeInfo[i].ProcName, current->comm,
+					sizeof(CamPipeMgr.PipeInfo[i].ProcName)-1);
 				CamPipeMgr_GetTime(&(CamPipeMgr.PipeInfo[i].TimeS),
 						   &(CamPipeMgr.PipeInfo[i].TimeUS));
 			} else {
@@ -241,7 +242,8 @@ static void CamPipeMgr_RemovePipeInfo(MUINT32 PipeMask)
 			if (CamPipeMgr.PipeInfo[i].Pid != 0 && CamPipeMgr.PipeInfo[i].Tgid != 0) {
 				CamPipeMgr.PipeInfo[i].Pid = 0;
 				CamPipeMgr.PipeInfo[i].Tgid = 0;
-				strcpy(CamPipeMgr.PipeInfo[i].ProcName, CAM_PIPE_MGR_PROC_NAME);
+				strncpy(CamPipeMgr.PipeInfo[i].ProcName, CAM_PIPE_MGR_PROC_NAME,
+					sizeof(CamPipeMgr.PipeInfo[i].ProcName)-1);
 			} else {
 				LOG_WRN
 				    ("PipeMask(0x%lX),Pipe(%ld,%s),Pid(%d),Tgid(%d),Time(%ld.%06ld)",
@@ -324,7 +326,7 @@ static int CamPipeMgr_Open(struct inode *pInode, struct file *pFile)
 		pProc = (CAM_PIPE_MGR_PROC_STRUCT *) pFile->private_data;
 		pProc->Pid = 0;
 		pProc->Tgid = 0;
-		strcpy(pProc->ProcName, CAM_PIPE_MGR_PROC_NAME);
+		strncpy(pProc->ProcName, CAM_PIPE_MGR_PROC_NAME, sizeof(pProc->ProcName)-1);
 		pProc->PipeMask = 0;
 		pProc->TimeS = Sec;
 		pProc->TimeUS = USec;
@@ -485,10 +487,10 @@ static int CamPipeMgr_Flush(struct file *pFile, fl_owner_t Id)
 }
 
 /* ----------------------------------------------------------------------------- */
-extern u32 get_devinfo_with_index(u32 index);
+/*extern u32 get_devinfo_with_index(u32 index);*/
 static long CamPipeMgr_Ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 {
-	long int Ret;   
+	long int Ret;
 	MUINT32 Sec, USec;
 	pid_t Pid;
 	pid_t Tgid;
@@ -543,7 +545,8 @@ static long CamPipeMgr_Ioctl(struct file *pFile, unsigned int Cmd, unsigned long
 					/**/	if (pProc->Tgid == 0) {
 							pProc->Pid = current->pid;
 							pProc->Tgid = current->tgid;
-							strcpy(pProc->ProcName, current->comm);
+							strncpy(pProc->ProcName, current->comm,
+								sizeof(pProc->ProcName)-1);
 							CamPipeMgr_SpinUnlock();
 					/**/		if (CamPipeMgr.LogMask & Lock.PipeMask) {
 								LOG_MSG
@@ -600,13 +603,14 @@ static long CamPipeMgr_Ioctl(struct file *pFile, unsigned int Cmd, unsigned long
 					/* Store info before clear. */
 					Pid = pProc->Pid;
 					Tgid = pProc->Tgid;
-					strcpy(ProcName, pProc->ProcName);
+					strncpy(ProcName, pProc->ProcName, sizeof(ProcName)-1);
 					/*  */
 					pProc->PipeMask &= (~Unlock.PipeMask);
 					if (pProc->PipeMask == 0) {
 						pProc->Pid = 0;
 						pProc->Tgid = 0;
-						strcpy(pProc->ProcName, CAM_PIPE_MGR_PROC_NAME);
+						strncpy(pProc->ProcName, CAM_PIPE_MGR_PROC_NAME,
+							sizeof(pProc->ProcName)-1);
 					}
 					CamPipeMgr_SpinUnlock();
 					if (CamPipeMgr.LogMask & Unlock.PipeMask) {
@@ -794,43 +798,45 @@ static long CamPipeMgr_Ioctl(struct file *pFile, unsigned int Cmd, unsigned long
 			if (copy_from_user
 			    (&vencpll_ctrlEnum, (void *)Param,
 			     sizeof(CAM_PIPE_MGR_CMD_VECNPLL_CTRL_ENUM)) == 0) {
-			    unsigned int segment_code = (get_devinfo_with_index(47) >> 25) & 0x7F;
+				unsigned int segment_code = (get_devinfo_with_index(47) >> 25) & 0x7F;
 				LOG_MSG("VPLL CTRL(%d)", vencpll_ctrlEnum);
 				if (vencpll_ctrlEnum == CAM_PIPE_MGR_CMD_VECNPLL_CTRL_SET_HIGH) {
 					switch (segment_code) {
-					   case 0x4A:
-					   case 0x4B:
-					   case 0x52:
-					   case 0x53:
-						mmdvfs_set_step(MMDVFS_SCEN_ISP, MMDVFS_VOLTAGE_HIGH); /* Voltage: can't be skip */
+					case 0x4A:
+					case 0x4B:
+					case 0x52:
+					case 0x53:
+						/* Voltage: can't be skip */
+						mmdvfs_set_step(MMDVFS_SCEN_ISP, MMDVFS_VOLTAGE_HIGH);
 						mmdvfs_set_mmsys_clk(MMDVFS_SCEN_ISP, MMSYS_CLK_HIGH);
-						//err = mt_dfs_vencpll(0x1713B1);	/* 300MHz */
+						/*err = mt_dfs_vencpll(0x1713B1);*/ /* 300MHz */
 						break;
-					   default:
-						err = mt_dfs_vencpll(0x1713B1);	/* 300MHz */
-						if (err) {
-							LOG_ERR("DISABLE_PIPE SET HIGH fail");
-							Ret = -EFAULT;
-						}
-						break;
+					default:
+					err = mt_dfs_vencpll(0x1713B1);	/* 300MHz */
+					if (err) {
+						LOG_ERR("DISABLE_PIPE SET HIGH fail");
+						Ret = -EFAULT;
+					}
+					break;
 					}
 				} else if (vencpll_ctrlEnum ==
 					   CAM_PIPE_MGR_CMD_VECNPLL_CTRL_SET_LOW) {
 					switch (segment_code) {
-					   case 0x4A:
-					   case 0x4B:
-					   case 0x52:
-					   case 0x53:
+					case 0x4A:
+					case 0x4B:
+					case 0x52:
+					case 0x53:
 						mmdvfs_set_mmsys_clk(MMDVFS_SCEN_ISP, MMSYS_CLK_LOW); /* Frequency */
-						mmdvfs_set_step(MMDVFS_SCEN_ISP, MMDVFS_VOLTAGE_LOW); /* Voltage: for power saving*/
+						mmdvfs_set_step(MMDVFS_SCEN_ISP, MMDVFS_VOLTAGE_LOW);
+						/* Voltage: for power saving*/
 						break;
-					   default:
-						err = mt_dfs_vencpll(0xE0000);	/* 182MHz */
-						if (err) {
-							LOG_ERR("DISABLE_PIPE SET LOW fail");
-							Ret = -EFAULT;
-						}
-						break;
+					default:
+					err = mt_dfs_vencpll(0xE0000);	/* 182MHz */
+					if (err) {
+						LOG_ERR("DISABLE_PIPE SET LOW fail");
+						Ret = -EFAULT;
+					}
+					break;
 					}
 				}
 			} else {
@@ -1264,14 +1270,18 @@ static int CamPipeMgr_Probe(struct platform_device *pDev)
 	for (i = 0; i < CAM_PIPE_MGR_PIPE_AMOUNT; i++) {
 		CamPipeMgr.PipeInfo[i].Pid = 0;
 		CamPipeMgr.PipeInfo[i].Tgid = 0;
-		strcpy(CamPipeMgr.PipeInfo[i].ProcName, CAM_PIPE_MGR_PROC_NAME);
+		strncpy(CamPipeMgr.PipeInfo[i].ProcName, CAM_PIPE_MGR_PROC_NAME,
+			sizeof(CamPipeMgr.PipeInfo[i].ProcName)-1);
 		CamPipeMgr.PipeInfo[i].TimeS = 0;
 		CamPipeMgr.PipeInfo[i].TimeUS = 0;
 	}
 	/*  */
-	strcpy(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_CAM_IO], CAM_PIPE_MGR_PIPE_NAME_CAM_IO);
-	strcpy(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_POST_PROC], CAM_PIPE_MGR_PIPE_NAME_POST_PROC);
-	strcpy(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_XDP_CAM], CAM_PIPE_MGR_PIPE_NAME_XDP_CAM);
+	strncpy(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_CAM_IO], CAM_PIPE_MGR_PIPE_NAME_CAM_IO,
+		sizeof(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_CAM_IO])-1);
+	strncpy(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_POST_PROC], CAM_PIPE_MGR_PIPE_NAME_POST_PROC,
+		sizeof(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_POST_PROC])-1);
+	strncpy(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_XDP_CAM], CAM_PIPE_MGR_PIPE_NAME_XDP_CAM,
+		sizeof(CamPipeMgr.PipeName[CAM_PIPE_MGR_PIPE_XDP_CAM])-1);
 	/*  */
 	CamPipeMgr_UpdatePipeLockTable(CamPipeMgr.Mode.ScenSw);
 	CamPipeMgr.LogMask = (CAM_PIPE_MGR_PIPE_MASK_CAM_IO |
