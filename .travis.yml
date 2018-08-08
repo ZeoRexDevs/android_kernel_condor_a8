@@ -21,6 +21,7 @@ install: true
 
 script:
   - mkdir out
+  - mkdir -p arch/{arm,arm64}/boot/dts/include
   - cd arch/arm/boot/dts/include/ && ln -s ../../../../../include/dt-bindings dt-bindings && cd ../../../../../
   - cd arch/arm64/boot/dts/include/ && ln -s ../../../../../include/dt-bindings dt-bindings && cd ../../../../../
   - make O=out clean
