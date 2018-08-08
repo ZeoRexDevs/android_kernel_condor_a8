@@ -168,6 +168,9 @@
 #define rtc_xfatal(fmt, args...)	\
 	pr_emerg(fmt, ##args)
 
+#undef rtc_xinfo
+#define rtc_xinfo(fmt, args...) do {} while(0)
+
 static struct rtc_device *rtc;
 static DEFINE_SPINLOCK(rtc_lock);
 

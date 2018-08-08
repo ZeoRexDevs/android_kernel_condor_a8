@@ -575,7 +575,7 @@ static void __batt_meter_parse_table(const struct device_node *np,
 int __batt_meter_init_cust_data_from_dt(void)
 {
 	struct device_node *np;
-	int num;
+	int num = 0;
 	unsigned int idx, addr, val;
 
 	/* check customer setting */
@@ -2816,6 +2816,7 @@ void fgauge_algo_run(void)
 	}
 
 /* 5. Logging */
+#if 0
 	pr_err(
 		 "[FGADC] %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
 		 gFG_Is_Charging, gFG_current, gFG_columb, gFG_voltage, gFG_capacity_by_v,
@@ -2824,6 +2825,7 @@ void fgauge_algo_run(void)
 		 batt_meter_cust_data.ocv_board_compesate, batt_meter_cust_data.r_fg_board_slope,
 		 gFG_voltage_init, batt_meter_cust_data.minerroroffset, gFG_DOD0, gFG_DOD1,
 		 batt_meter_cust_data.car_tune_value, batt_meter_cust_data.aging_tuning_value);
+#endif
 	update_fg_dbg_tool_value();
 }
 

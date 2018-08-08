@@ -328,7 +328,7 @@ void mt_idle_dump_cnt_in_interval(void)
 	mt_idle_dump_cnt(IDLE_TYPE_SO);
 
 	/* dump log */
-	idle_prof_warn("%s\n", get_log());
+	//idle_prof_warn("%s\n", get_log());
 
 	/* dump idle ratio */
 	if (idle_ratio_en) {
@@ -382,7 +382,7 @@ bool mt_idle_state_pick(int type, int cpu, int reason)
 			append_log("CNT(%s,rgidle): ", p_idle->name);
 			for (i = 0; i < nr_cpu_ids; i++)
 				append_log("[%d] = (%lu,%lu), ", i, p_idle->cnt[i], idle_block[IDLE_TYPE_RG].cnt[i]);
-			idle_prof_warn("%s\n", get_log());
+			//idle_prof_warn("%s\n", get_log());
 
 			/* block category */
 			reset_log();
@@ -390,14 +390,14 @@ bool mt_idle_state_pick(int type, int cpu, int reason)
 			append_log("%s_block_cnt: ", p_idle->name);
 			for (i = 0; i < NR_REASONS; i++)
 				append_log("[%s] = %lu, ", reason_name[i], p_idle->block_cnt[i]);
-			idle_prof_warn("%s\n", get_log());
+			//idle_prof_warn("%s\n", get_log());
 
 			reset_log();
 
 			append_log("%s_block_mask: ", p_idle->name);
 			for (i = 0; i < NR_GRPS; i++)
 				append_log("0x%08x, ", p_idle->block_mask[i]);
-			idle_prof_warn("%s\n", get_log());
+			//idle_prof_warn("%s\n", get_log());
 
 			memset(p_idle->block_cnt, 0, NR_REASONS * sizeof(p_idle->block_cnt[0]));
 			p_idle->prev_time = idle_get_current_time_ms();

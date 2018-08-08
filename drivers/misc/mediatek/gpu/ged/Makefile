@@ -72,9 +72,9 @@ ccflags-y += -DGED_DVFS_ENABLE \
 	     -DENABLE_TIMER_BACKUP 
 endif
 
-ccflags-y += -DGED_SYSTRACE_UTIL
+# ccflags-y += -DGED_SYSTRACE_UTIL
 
-ccflags-y += -DGED_DVFS_DEBUG_BUF
+# ccflags-y += -DGED_DVFS_DEBUG_BUF
 
 ccflags-y += \
 	-include $(GED_TOP)/include/config_kernel_$(VER).h

@@ -1395,13 +1395,13 @@ out:
 				p += sprintf(p, "dpidle_block_cnt: ");
 				for (i = 0; i < NR_REASONS; i++)
 					p += sprintf(p, "[%s] = %lu, ", reason_name[i], dpidle_block_cnt[i]);
-				idle_warn("%s\n", log_buf);
+				//idle_warn("%s\n", log_buf);
 
 				p = log_buf;
 				p += sprintf(p, "dpidle_block_mask: ");
 				for (i = 0; i < NR_GRPS; i++)
 					p += sprintf(p, "0x%08x, ", dpidle_block_mask[i]);
-				idle_warn("%s\n", log_buf);
+				//idle_warn("%s\n", log_buf);
 
 				memset(dpidle_block_cnt, 0, sizeof(dpidle_block_cnt));
 				dpidle_block_prev_time = idle_get_current_time_ms();
@@ -1807,7 +1807,7 @@ void dump_idle_cnt_in_interval(int cpu)
 		p2 += sprintf(p2, "SODI: No enter --- ");
 
 	/* dump log */
-	idle_warn("%s\n", log_buf_2);
+	//idle_warn("%s\n", log_buf_2);
 
 	/* dump idle ratio */
 	if (idle_ratio_en) {

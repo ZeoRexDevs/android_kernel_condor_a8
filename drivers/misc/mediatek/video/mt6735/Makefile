@@ -39,6 +39,7 @@ obj-$(CONFIG_MTK_FB) += mtkfb_console.o        \
 			    ddp_mmp.o              \
 			    ddp_met.o
 
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/video/$(MTK_PLATFORM)
 ifeq ($(CONFIG_ARCH_MT6735),y)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/video/$(MTK_PLATFORM)/mt6735/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/video/$(MTK_PLATFORM)/mt6735/

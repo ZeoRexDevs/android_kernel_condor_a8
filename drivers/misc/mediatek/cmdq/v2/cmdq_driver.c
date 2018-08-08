@@ -11,9 +11,9 @@
  * GNU General Public License for more details.
  */
 
+#include "cmdq_core.h"
 #include "cmdq_driver.h"
 #include "cmdq_struct.h"
-#include "cmdq_core.h"
 #include "cmdq_virtual.h"
 #include "cmdq_reg.h"
 #include "cmdq_mdp_common.h"

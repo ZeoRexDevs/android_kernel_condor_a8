@@ -11,8 +11,6 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include "mt6735-pinfunc.h"
 #include <dt-bindings/mmc/mt67xx-msdc.h>
-#include <generated/autoconf.h>
-
 / {
 	model = "MT6735";
 	compatible = "mediatek,MT6735";
@@ -226,7 +224,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 		consys-reserve-memory {
 			compatible = "mediatek,consys-reserve-memory";
 			no-map;
-			size = <0 0x200000>;
+			size = <0 0x100000>;
 			alignment = <0 0x200000>;
 		};
 	};
@@ -3406,8 +3404,4 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 #include "mt6735_fg20_bat_setting.dtsi"
 #else
 #include "mt6735_oldgauge_bat_setting.dtsi"
-#endif
-
-#ifdef CONFIG_MTK_RT9466_SUPPORT
-#include "rt9466.dtsi"
 #endif

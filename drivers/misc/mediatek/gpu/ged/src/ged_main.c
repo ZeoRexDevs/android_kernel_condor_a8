@@ -129,51 +129,38 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 			}
 		}
 
-		/* Make sure that the UM will never break the KM.
-		 * Check IO size are both matched the size of IO sturct.
-		 */
-#define SET_FUNC_AND_CHECK(func, struct_name) do { \
-	pFunc = (ged_bridge_func_type *) func; \
-	if (sizeof(GED_BRIDGE_IN_##struct_name) > psBridgePackageKM->i32InBufferSize || \
-			sizeof(GED_BRIDGE_OUT_##struct_name) > psBridgePackageKM->i32OutBufferSize) { \
-		GED_LOGE("GED_BRIDGE_COMMAND_##cmd fail io_size:%d/%d, expected: %zu/%zu", \
-				psBridgePackageKM->i32InBufferSize, psBridgePackageKM->i32OutBufferSize, \
-				sizeof(GED_BRIDGE_IN_##struct_name), sizeof(GED_BRIDGE_OUT_##struct_name)); \
-		goto dispatch_exit; \
-	} } while (0)
-
 		// we will change the below switch into a function pointer mapping table in the future
 		switch (GED_GET_BRIDGE_ID(psBridgePackageKM->ui32FunctionID))
 		{
 			case GED_BRIDGE_COMMAND_LOG_BUF_GET:
-				SET_FUNC_AND_CHECK(ged_bridge_log_buf_get, LOGBUFGET);
+				pFunc = (ged_bridge_func_type*)ged_bridge_log_buf_get;
 				break;
 			case GED_BRIDGE_COMMAND_LOG_BUF_WRITE:
-				SET_FUNC_AND_CHECK(ged_bridge_log_buf_write, LOGBUFWRITE);
+				pFunc = (ged_bridge_func_type*)ged_bridge_log_buf_write;
 				break;
 			case GED_BRIDGE_COMMAND_LOG_BUF_RESET:
-				SET_FUNC_AND_CHECK(ged_bridge_log_buf_reset, LOGBUFRESET);
+				pFunc = (ged_bridge_func_type*)ged_bridge_log_buf_reset;
 				break;
 			case GED_BRIDGE_COMMAND_BOOST_GPU_FREQ:
-				SET_FUNC_AND_CHECK(ged_bridge_boost_gpu_freq, BOOSTGPUFREQ);
+				pFunc = (ged_bridge_func_type*)ged_bridge_boost_gpu_freq;
 				break;
 			case GED_BRIDGE_COMMAND_MONITOR_3D_FENCE:
-				SET_FUNC_AND_CHECK(ged_bridge_monitor_3D_fence, MONITOR3DFENCE);
+				pFunc = (ged_bridge_func_type*)ged_bridge_monitor_3D_fence;
 				break;
 			case GED_BRIDGE_COMMAND_QUERY_INFO:
-				SET_FUNC_AND_CHECK(ged_bridge_query_info, QUERY_INFO);
+				pFunc = (ged_bridge_func_type*)ged_bridge_query_info;
 				break;
 			case GED_BRIDGE_COMMAND_NOTIFY_VSYNC:
-				SET_FUNC_AND_CHECK(ged_bridge_notify_vsync, NOTIFY_VSYNC);
+				pFunc = (ged_bridge_func_type*)ged_bridge_notify_vsync;
 				break;
 			case GED_BRIDGE_COMMAND_DVFS_PROBE:
-				SET_FUNC_AND_CHECK(ged_bridge_dvfs_probe, DVFS_PROBE);
+				pFunc = (ged_bridge_func_type*)ged_bridge_dvfs_probe;
 				break;
 			case GED_BRIDGE_COMMAND_DVFS_UM_RETURN:
-				SET_FUNC_AND_CHECK(ged_bridge_dvfs_um_retrun, DVFS_UM_RETURN);
+				pFunc = (ged_bridge_func_type*)ged_bridge_dvfs_um_retrun;
 				break;
 			case GED_BRIDGE_COMMAND_EVENT_NOTIFY:
-				SET_FUNC_AND_CHECK(ged_bridge_event_notify, EVENT_NOTIFY);
+				pFunc = (ged_bridge_func_type*)ged_bridge_event_notify;
 				break;
 #ifdef ENABLE_FRR_FOR_MT6XXX_PLATFORM
             case GED_BRIDGE_COMMAND_VSYNC_WAIT:
@@ -181,19 +168,19 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 				break;
 #endif
 			case GED_BRIDGE_COMMAND_GE_ALLOC:
-				SET_FUNC_AND_CHECK(ged_bridge_ge_alloc, GE_ALLOC);
+				pFunc = (ged_bridge_func_type *)ged_bridge_ge_alloc;
 				break;
 			case GED_BRIDGE_COMMAND_GE_RETAIN:
-				SET_FUNC_AND_CHECK(ged_bridge_ge_retain, GE_RETAIN);
+				pFunc = (ged_bridge_func_type *)ged_bridge_ge_retain;
 				break;
 			case GED_BRIDGE_COMMAND_GE_RELEASE:
-				SET_FUNC_AND_CHECK(ged_bridge_ge_release, GE_RELEASE);
+				pFunc = (ged_bridge_func_type *)ged_bridge_ge_release;
 				break;
 			case GED_BRIDGE_COMMAND_GE_GET:
-				SET_FUNC_AND_CHECK(ged_bridge_ge_get, GE_GET);
+				pFunc = (ged_bridge_func_type *)ged_bridge_ge_get;
 				break;
 			case GED_BRIDGE_COMMAND_GE_SET:
-				SET_FUNC_AND_CHECK(ged_bridge_ge_set, GE_SET);
+				pFunc = (ged_bridge_func_type *)ged_bridge_ge_set;
 				break;
 			default:
 				GED_LOGE("Unknown Bridge ID: %u\n", GED_GET_BRIDGE_ID(psBridgePackageKM->ui32FunctionID));
@@ -248,7 +235,6 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 		}
 	}
 
-dispatch_exit:
 	return ret;
 }
 

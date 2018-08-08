@@ -160,6 +160,7 @@ MTKFB_LAYER_DBG_OPTIONS mtkfb_layer_dbg_opt[DDP_OVL_LAYER_MUN];
 /* --------------------------------------------------------------------------- */
 /* Command Processor */
 /* --------------------------------------------------------------------------- */
+#if 0
 static void process_dbg_debug(const char *opt)
 {
 	static disp_session_config config;
@@ -573,6 +574,7 @@ static void process_dbg_debug(const char *opt)
 		sprintf(buf, "gMutexFreeRun: %d\n", gMutexFreeRun);
 	}
 }
+#endif
 
 int get_ovl1_to_mem_on(void)
 {
@@ -587,6 +589,7 @@ void switch_ovl1_to_mem(bool on)
 
 void ddp_process_dbg_opt(const char *opt)
 {
+#if 0
 	char *buf = dbg_buf + strlen(dbg_buf);
 	int ret = 0;
 	char *p;
@@ -835,11 +838,11 @@ void ddp_process_dbg_opt(const char *opt)
 		dbg_buf[0] = '\0';
 		goto Error;
 	}
-
+#endif
 	return;
 
-Error:
-	DISPERR("parse command error!\n%s\n\n%s", opt, DDP_STR_HELP);
+// Error:
+	// DISPERR("parse command error!\n%s\n\n%s", opt, DDP_STR_HELP);
 }
 
 void mtkfb_process_dbg_opt(const char *opt)

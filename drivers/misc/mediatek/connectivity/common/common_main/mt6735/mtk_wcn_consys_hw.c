@@ -1049,20 +1049,20 @@ INT32 mtk_wcn_consys_hw_restore(struct device *device)
 
 #if defined(CONFIG_ARCH_MT6735)
 		emi_mpu_set_region_protection(gConEmiPhyBase + SZ_1M / 2,
-							gConEmiPhyBase + SZ_1M * 2 - 1,
+							gConEmiPhyBase + SZ_1M - 1,
 							13,
 							SET_ACCESS_PERMISSON(FORBIDDEN, FORBIDDEN, FORBIDDEN, FORBIDDEN,
 							FORBIDDEN, NO_PROTECTION, FORBIDDEN, NO_PROTECTION));
 
 #elif defined(CONFIG_ARCH_MT6735M)
 		emi_mpu_set_region_protection(gConEmiPhyBase,
-							gConEmiPhyBase + SZ_1M * 2 - 1,
+							gConEmiPhyBase + SZ_1M - 1,
 							6,
 							SET_ACCESS_PERMISSON(FORBIDDEN, NO_PROTECTION, FORBIDDEN,
 							NO_PROTECTION));
 #elif defined(CONFIG_ARCH_MT6753)
 		emi_mpu_set_region_protection(gConEmiPhyBase + SZ_1M / 2,
-							gConEmiPhyBase + SZ_1M * 2 - 1,
+							gConEmiPhyBase + SZ_1M - 1,
 							13,
 							SET_ACCESS_PERMISSON(FORBIDDEN, FORBIDDEN, FORBIDDEN,
 							FORBIDDEN, FORBIDDEN, NO_PROTECTION, FORBIDDEN, NO_PROTECTION));
@@ -1144,20 +1144,20 @@ INT32 mtk_wcn_consys_hw_init(void)
 
 #if defined(CONFIG_ARCH_MT6735)
 		emi_mpu_set_region_protection(gConEmiPhyBase + SZ_1M / 2,
-							gConEmiPhyBase + SZ_1M * 2 - 1,
+							gConEmiPhyBase + SZ_1M - 1,
 							13,
 							SET_ACCESS_PERMISSON(FORBIDDEN, FORBIDDEN, FORBIDDEN, FORBIDDEN,
 							FORBIDDEN, NO_PROTECTION, FORBIDDEN, NO_PROTECTION));
 
 #elif defined(CONFIG_ARCH_MT6735M)
 		emi_mpu_set_region_protection(gConEmiPhyBase,
-							gConEmiPhyBase + SZ_1M * 2 - 1,
+							gConEmiPhyBase + SZ_1M - 1,
 							6,
 							SET_ACCESS_PERMISSON(FORBIDDEN, NO_PROTECTION, FORBIDDEN,
 							NO_PROTECTION));
 #elif defined(CONFIG_ARCH_MT6753)
 		emi_mpu_set_region_protection(gConEmiPhyBase + SZ_1M / 2,
-							gConEmiPhyBase + SZ_1M * 2 - 1,
+							gConEmiPhyBase + SZ_1M - 1,
 							13,
 							SET_ACCESS_PERMISSON(FORBIDDEN, FORBIDDEN, FORBIDDEN,
 							FORBIDDEN, FORBIDDEN, NO_PROTECTION, FORBIDDEN, NO_PROTECTION));

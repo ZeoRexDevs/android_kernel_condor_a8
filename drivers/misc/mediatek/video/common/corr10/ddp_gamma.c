@@ -456,6 +456,36 @@ static int disp_ccorr_set_coef(const DISP_CCORR_COEF_T __user *user_color_corr, 
 }
 
 
+static DISP_CCORR_COEF_T *disp_ccorr_get_coef(int id)
+{
+	const unsigned long ccorr_base = CCORR0_BASE_NAMING;
+	static DISP_CCORR_COEF_T *ccorr;
+
+	mutex_lock(&g_gamma_global_lock);
+
+	if (ccorr == NULL)
+		ccorr = kmalloc(sizeof(DISP_CCORR_COEF_T), GFP_KERNEL);
+
+	ccorr->coef[0][0] = (DISP_REG_GET(CCORR_REG(ccorr_base, 0)) >> 16) & 0xfff;
+	ccorr->coef[0][1] = (DISP_REG_GET(CCORR_REG(ccorr_base, 0)) >> 0) & 0xfff;
+	ccorr->coef[0][2] = (DISP_REG_GET(CCORR_REG(ccorr_base, 1)) >> 16) & 0xfff;
+	ccorr->coef[1][0] = (DISP_REG_GET(CCORR_REG(ccorr_base, 1)) >> 0) & 0xfff;
+	ccorr->coef[1][1] = (DISP_REG_GET(CCORR_REG(ccorr_base, 2)) >> 16) & 0xfff;
+	ccorr->coef[1][2] = (DISP_REG_GET(CCORR_REG(ccorr_base, 2)) >> 0) & 0xfff;
+	ccorr->coef[2][0] = (DISP_REG_GET(CCORR_REG(ccorr_base, 3)) >> 16) & 0xfff;
+	ccorr->coef[2][1] = (DISP_REG_GET(CCORR_REG(ccorr_base, 3)) >> 0) & 0xfff;
+	ccorr->coef[2][2] = (DISP_REG_GET(CCORR_REG(ccorr_base, 4)) >> 16) & 0xfff;
+
+	mutex_unlock(&g_gamma_global_lock);
+
+	CCORR_DBG("\nccorr_coef_get:\n %6d %6d %6d\n %6d %6d %6d\n %6d %6d %6d\n",
+			ccorr->coef[0][0], ccorr->coef[0][1], ccorr->coef[0][2],
+			ccorr->coef[1][0], ccorr->coef[1][1], ccorr->coef[1][2],
+			ccorr->coef[2][0], ccorr->coef[2][1], ccorr->coef[2][2]);
+
+	return ccorr;
+}
+
 static int disp_ccorr_config(DISP_MODULE_ENUM module, disp_ddp_path_config *pConfig, void *cmdq)
 {
 	if (pConfig->dst_dirty)
@@ -494,6 +524,16 @@ static int disp_ccorr_io(DISP_MODULE_ENUM module, int msg, unsigned long arg, vo
 	case DISP_IOCTL_SET_CCORR:
 		if (disp_ccorr_set_coef((DISP_CCORR_COEF_T *) arg, cmdq) < 0) {
 			CCORR_ERR("DISP_IOCTL_SET_CCORR: failed\n");
+			return -EFAULT;
+		}
+		break;
+	case DISP_IOCTL_GET_CCORR:
+		if (disp_ccorr_get_coef(DISP_CCORR0) == NULL) {
+			CCORR_ERR("DISP_IOCTL_GET_PQPARAM Get coef failed\n");
+			return -EFAULT;
+		}
+		if (copy_to_user((void *)arg, disp_ccorr_get_coef(DISP_CCORR0), sizeof(DISP_CCORR_COEF_T))) {
+			CCORR_ERR("DISP_IOCTL_GET_PQPARAM Copy to user failed\n");
 			return -EFAULT;
 		}
 		break;

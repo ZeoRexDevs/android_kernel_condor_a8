@@ -86,7 +86,7 @@ static DEFINE_SPINLOCK(kdsensor_drv_lock);
     #define SUPPORT_I2C_BUS_NUM1        0
 #endif
 #ifndef SUPPORT_I2C_BUS_NUM2
-    #define SUPPORT_I2C_BUS_NUM2        2
+    #define SUPPORT_I2C_BUS_NUM2        0
 #endif
 
 

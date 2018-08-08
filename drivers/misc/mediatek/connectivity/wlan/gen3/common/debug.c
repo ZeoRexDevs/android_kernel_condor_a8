@@ -198,10 +198,10 @@ VOID wlanPrintFwLog(PUINT_8 pucLogContent, UINT_16 u2MsgSize, UINT_8 ucMsgType)
 		LOG_FUNC("%s\n", pucLogContent);
 		break;
 	case DEBUG_MSG_TYPE_MEM8:
-		DBGLOG_MEM8(RX, INFO, pucLogContent, u2MsgSize);
+		DBGLOG_MEM8(RX, TRACE, pucLogContent, u2MsgSize);
 		break;
 	default:
-		DBGLOG_MEM32(RX, INFO, (PUINT_32)pucLogContent, u2MsgSize);
+		DBGLOG_MEM32(RX, TRACE, (PUINT_32)pucLogContent, u2MsgSize);
 		break;
 	}
 
