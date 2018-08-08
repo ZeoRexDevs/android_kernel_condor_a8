@@ -11,6 +11,7 @@
 # GNU General Public License for more details.
 #
 
+
 ccflags-y += -I$(srctree)/drivers/staging/android/ion
 include $(srctree)/drivers/misc/mediatek/gud/Makefile.include
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/mach/$(MTK_PLATFORM)/include/trustzone/m4u
@@ -19,7 +20,9 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/irq/$(MTK_PLATFORM)/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp/
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
+include $(srctree)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)/m4u.mk
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/m4u/2.0
+ccflags-y += -I$(srctree)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)
 
 ifeq ($(CONFIG_ARCH_MT6735),y)
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)/mt6735/

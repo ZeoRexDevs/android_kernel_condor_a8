@@ -41,6 +41,7 @@
 /*****************************************************************************
  *                E X T E R N A L   R E F E R E N C E S
  *****************************************************************************/
+#include "AudioBTCVSDDef.h"
 #include "AudDrv_BTCVSD.h"
 #include "AudDrv_BTCVSD_ioctl.h"
 

@@ -16,6 +16,7 @@
 
 #include <linux/types.h>
 #include "cmdq_def.h"
+#include "cmdq_engine.h"
 #include "cmdq_core.h"
 
 struct TaskStruct;

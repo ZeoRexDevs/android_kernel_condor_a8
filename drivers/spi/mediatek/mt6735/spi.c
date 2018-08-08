@@ -1250,7 +1250,7 @@ static int mt_spi_setup(struct spi_device *spidev)
 		spidev->controller_data = chip_config;
 	}
 
-	SPI_INFO(&spidev->dev, "set up chip config,mode:%d\n", chip_config->com_mod);
+	//SPI_INFO(&spidev->dev, "set up chip config,mode:%d\n", chip_config->com_mod);
 
 /*		#ifdef SPI_REC_DEBUG
 		pi_speed = 134300/(chip_config->low_time + chip_config->high_time);

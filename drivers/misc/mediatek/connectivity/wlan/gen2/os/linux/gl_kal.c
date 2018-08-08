@@ -998,7 +998,6 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 	struct cfg80211_bss *bss;
 	UINT_8 ucChannelNum;
 	P_BSS_DESC_T prBssDesc = NULL;
-	UINT_16 u2StatusCode = WLAN_STATUS_AUTH_TIMEOUT;
 
 	GLUE_SPIN_LOCK_DECLARATION();
 
@@ -1137,8 +1136,7 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 			P_WIFI_VAR_T prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
 			UINT_16 u2DeauthReason = prWifiVar->arBssInfo[NETWORK_TYPE_AIS_INDEX].u2DeauthReason;
 			/* CFG80211 Indication */
-			DBGLOG(AIS, INFO, "[wifi] %s cfg80211_disconnected: Reason=%d\n",
-				prGlueInfo->prDevHandler->name, u2DeauthReason);
+			DBGLOG(AIS, INFO, "[wifi] %s cfg80211_disconnected\n", prGlueInfo->prDevHandler->name);
 			cfg80211_disconnected(prGlueInfo->prDevHandler, u2DeauthReason, NULL, 0, GFP_KERNEL);
 		}
 
@@ -1164,14 +1162,9 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 		if (prScanRequest != NULL)
 			cfg80211_scan_done(prScanRequest, FALSE);
 		break;
-
-	case WLAN_STATUS_JOIN_FAILURE:
-		if (pvBuf)
-			u2StatusCode = *(UINT_16 *)pvBuf;
-
+	case WLAN_STATUS_CONNECT_INDICATION:
 		prBssDesc = prGlueInfo->prAdapter->rWifiVar.rAisFsmInfo.prTargetBssDesc;
 
-		DBGLOG(INIT, INFO, "JOIN Failure: u2StatusCode=%d", u2StatusCode);
 		if (prBssDesc)
 			COPY_MAC_ADDR(arBssid, prBssDesc->aucBSSID);
 		else
@@ -1184,8 +1177,7 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 					prGlueInfo->aucReqIe,
 					prGlueInfo->u4ReqIeLength,
 					prGlueInfo->aucRspIe,
-					prGlueInfo->u4RspIeLength, u2StatusCode, GFP_KERNEL);
-		prGlueInfo->eParamMediaStateIndicated = PARAM_MEDIA_STATE_DISCONNECTED;
+					prGlueInfo->u4RspIeLength, WLAN_STATUS_AUTH_TIMEOUT, GFP_KERNEL);
 		break;
 
 #if 0

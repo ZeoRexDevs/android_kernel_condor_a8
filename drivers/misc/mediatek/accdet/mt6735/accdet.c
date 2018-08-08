@@ -1326,11 +1326,6 @@ static ssize_t store_accdet_call_state(struct device_driver *ddri, const char *b
 {
 	int ret = 0;
 
-	if (buf == NULL) {
-		ACCDET_INFO("[%s] NULL input!!\n",  __func__);
-		return -EINVAL;
-	}
-
 	if (strlen(buf) < 1) {
 		ACCDET_INFO("[%s] Invalid input!!\n",  __func__);
 		return -EINVAL;
@@ -1381,11 +1376,6 @@ static ssize_t store_accdet_set_headset_mode(struct device_driver *ddri, const c
 {
 	int ret = 0;
 	int tmp_headset_mode = 0;
-
-	if (buf == NULL) {
-		ACCDET_INFO("[%s] NULL input!!\n",  __func__);
-		return -EINVAL;
-	}
 
 	if (strlen(buf) < 1) {
 		ACCDET_INFO("[%s] Invalid input!!\n",  __func__);
@@ -1446,12 +1436,6 @@ static ssize_t store_accdet_start_debug_thread(struct device_driver *ddri, const
 {
 	int error = 0;
 	int ret = 0;
-	int tmp_value = 0;
-
-	if (buf == NULL) {
-		ACCDET_INFO("[%s] NULL input!!\n",  __func__);
-		return -EINVAL;
-	}
 
 	if (strlen(buf) < 1) {
 		ACCDET_INFO("[%s] Invalid input!!\n",  __func__);
@@ -1459,8 +1443,8 @@ static ssize_t store_accdet_start_debug_thread(struct device_driver *ddri, const
 	}
 
 	/* if write 0, Invalid; otherwise, valid */
-	ret = kstrtoint(buf, 10, &tmp_value);
-	if (tmp_value) {
+	ret = strncmp(buf, "0", 1);
+	if (ret) {
 		g_start_debug_thread = 1;
 		thread = kthread_run(dbug_thread, 0, "ACCDET");
 		if (IS_ERR(thread)) {
@@ -1480,12 +1464,6 @@ static ssize_t store_accdet_start_debug_thread(struct device_driver *ddri, const
 static ssize_t store_accdet_dump_register(struct device_driver *ddri, const char *buf, size_t count)
 {
 	int ret = 0;
-	int tmp_value = 0;
-
-	if (buf == NULL) {
-		ACCDET_INFO("[%s] NULL input!!\n",  __func__);
-		return -EINVAL;
-	}
 
 	if (strlen(buf) < 1) {
 		ACCDET_INFO("[%s] Invalid input!!\n",  __func__);
@@ -1493,8 +1471,8 @@ static ssize_t store_accdet_dump_register(struct device_driver *ddri, const char
 	}
 
 	/* if write 0, Invalid; otherwise, valid */
-	ret = kstrtoint(buf, 10, &tmp_value);
-	if (tmp_value) {
+	ret = strncmp(buf, "0", 1);
+	if (ret) {
 		g_dump_register = 1;
 		ACCDET_INFO("[%s]start dump regs!\n",  __func__);
 	} else {
@@ -1510,11 +1488,6 @@ static ssize_t store_accdet_set_register(struct device_driver *ddri, const char 
 	int ret = 0;
 	unsigned int addr_temp = 0;
 	unsigned int value_temp = 0;
-
-	if (buf == NULL) {
-		ACCDET_INFO("[%s] NULL input!!\n",  __func__);
-		return -EINVAL;
-	}
 
 	if (strlen(buf) < 3) {
 		ACCDET_INFO("[%s] Invalid input!!\n",  __func__);

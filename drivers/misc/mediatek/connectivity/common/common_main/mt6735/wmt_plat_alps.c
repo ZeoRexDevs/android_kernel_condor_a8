@@ -86,6 +86,7 @@ EMI_CTRL_STATE_OFFSET mtk_wcn_emi_state_off = {
 	.emi_apmem_ctrl_chip_int_status = EXP_APMEM_CTRL_CHIP_INT_STATUS,
 	.emi_apmem_ctrl_chip_paded_dump_end = EXP_APMEM_CTRL_CHIP_PAGED_DUMP_END,
 	.emi_apmem_ctrl_host_outband_assert_w1 = EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1,
+	.emi_apmem_ctrl_chip_page_dump_num = EXP_APMEM_CTRL_CHIP_PAGE_DUMP_NUM,
 };
 
 CONSYS_EMI_ADDR_INFO mtk_wcn_emi_addr_info = {
@@ -935,12 +936,20 @@ UINT32 wmt_plat_read_cpupcr(void)
 }
 EXPORT_SYMBOL(wmt_plat_read_cpupcr);
 
+UINT32 wmt_plat_read_chipid(void)
+{
+	return CONSYS_REG_READ(conn_reg.mcu_base + CONSYS_CHIP_ID_OFFSET);
+}
+EXPORT_SYMBOL(wmt_plat_read_chipid);
+
 VOID wmt_plat_cpu_sw_rst(VOID)
 {
 	/*3.assert CONNSYS CPU SW reset  0x10007018 "[12]=1'b1  [31:24]=8'h88 (key)" */
 	CONSYS_REG_WRITE((conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET),
 			CONSYS_REG_READ(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET) |
 			CONSYS_CPU_SW_RST_BIT | CONSYS_CPU_SW_RST_CTRL_KEY);
+	WMT_PLAT_WARN_FUNC("WMT-PLAT: 0x10007018: %x.\n",
+			CONSYS_REG_READ(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET));
 }
 
 VOID wmt_plat_cpu_sw_rst_deassert(VOID)
@@ -949,6 +958,8 @@ VOID wmt_plat_cpu_sw_rst_deassert(VOID)
 	CONSYS_REG_WRITE(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET,
 			(CONSYS_REG_READ(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET) &
 			 ~CONSYS_CPU_SW_RST_BIT) | CONSYS_CPU_SW_RST_CTRL_KEY);
+	WMT_PLAT_WARN_FUNC("WMT-PLAT: 0x10007018: %x.\n",
+			CONSYS_REG_READ(conn_reg.ap_rgu_base + CONSYS_CPU_SW_RST_OFFSET));
 }
 
 UINT32 wmt_plat_read_dmaregs(UINT32 type)

@@ -116,7 +116,7 @@
 /* ////////////////////////////////////////////////////////////////////////////// */
 /* Battery Logging Entry */
 /* ////////////////////////////////////////////////////////////////////////////// */
-int Enable_BATDRV_LOG = BAT_LOG_CRTI;
+int Enable_BATDRV_LOG = 0;
 
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
 /* // Smart Battery Structure */
@@ -2493,6 +2493,7 @@ static void mt_battery_thermal_check(void)
 				    "[Battery] In thermal_test_mode , Tbat=%d\n",
 				    BMT_status.temperature);
 		}
+BMT_status.temperature = 25;				
 #if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT)
 		/* ignore default rule */
 #else

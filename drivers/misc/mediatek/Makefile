@@ -216,3 +216,8 @@ endif
 obj-$(CONFIG_MTK_VOW_SUPPORT)	+= vow/
 obj-$(CONFIG_USB)	+= usb_boost/
 obj-$(CONFIG_RT_REGMAP) += rt-regmap/
+#obj-y				+= spi_driver/
+#ethernet
+#ifeq ($(CONFIG_ETHERNET_DM9051),y)
+obj-y	+= dm9051/
+#endif

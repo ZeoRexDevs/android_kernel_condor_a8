@@ -24,13 +24,13 @@ config MTK_LCM_PHYSICAL_ROTATION
 
 config LCM_HEIGHT
 	string "LCM_HEIGHT"
-	default "1920"
+	default "1280"
 	help
 	  To set LCM resolution height size
 
 config LCM_WIDTH
 	string "LCM_WIDTH"
-	default "1080"
+	default "720"
 	help
 	  To set LCM resolution width size
 

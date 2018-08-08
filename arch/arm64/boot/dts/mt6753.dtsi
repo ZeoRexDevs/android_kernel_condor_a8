@@ -11,7 +11,6 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include "mt6735-pinfunc.h"
 #include <dt-bindings/mmc/mt67xx-msdc.h>
-#include <generated/autoconf.h>
 
 / {
 	model = "MT6753";
@@ -274,7 +273,7 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 		consys-reserve-memory {
 			compatible = "mediatek,consys-reserve-memory";
 			no-map;
-			size = <0 0x200000>;
+			size = <0 0x100000>;
 			alignment = <0 0x200000>;
 		};
 
@@ -2329,7 +2328,3 @@ initrd=0x44000000,0x300000 loglevel=8 androidboot.hardware=mt6735";
 /*CLDMA end*/
 
 #include <trusty.dtsi>
-
-#ifdef CONFIG_MTK_RT9466_SUPPORT
-#include "rt9466.dtsi"
-#endif

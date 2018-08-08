@@ -55,6 +55,7 @@ static void nft_reject_inet_eval(const struct nft_expr *expr,
 			break;
 		}
 		break;
+	default: break;
 	}
 	data[NFT_REG_VERDICT].verdict = NF_DROP;
 }
@@ -105,6 +106,7 @@ static int nft_reject_inet_dump(struct sk_buff *skb,
 		if (nla_put_u8(skb, NFTA_REJECT_ICMP_CODE, priv->icmp_code))
 			goto nla_put_failure;
 		break;
+	default: break;
 	}
 
 	return 0;

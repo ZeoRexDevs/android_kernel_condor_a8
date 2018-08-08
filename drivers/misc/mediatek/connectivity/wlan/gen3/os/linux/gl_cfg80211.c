@@ -2240,7 +2240,11 @@ int mtk_cfg80211_sched_scan_stop(IN struct wiphy *wiphy, IN struct net_device *n
 		DBGLOG(REQ, WARN, "scheduled scan error:%x\n", rStatus);
 		return -EINVAL;
 	}
-
+	/* 1. reset first for newly incoming request */
+	/* GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV); */
+	if (prGlueInfo->prSchedScanRequest != NULL)
+		prGlueInfo->prSchedScanRequest = NULL;
+	/* GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV); */
 	return 0;
 }
 

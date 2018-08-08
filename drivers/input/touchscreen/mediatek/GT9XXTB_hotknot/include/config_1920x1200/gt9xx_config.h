@@ -77,7 +77,7 @@
 /* TODO: define your config for Sensor_ID == 5 here, if needed */
 #define CTP_CFG_GROUP6 {}
 
-#define TPD_CALIBRATION_MATRIX_ROTATION_NORMAL {4551, 0, 0, 0, 4096, 0, 0, 0}
+#define TPD_CALIBRATION_MATRIX_ROTATION_NORMAL  {4551, 0, 0, 0, 4096, 0, 0, 0}
 #define TPD_CALIBRATION_MATRIX_ROTATION_FACTORY {4551, 0, 0, 0, 4096, 0, 0, 0}
 
 #endif /* _GT1X_CONFIG_H_ */

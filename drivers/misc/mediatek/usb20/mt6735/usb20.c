@@ -420,19 +420,19 @@ bool mt_usb_is_device(void)
 static struct delayed_work connection_work;
 void do_connection_work(struct work_struct *data)
 {
-	static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 3);
+//	static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 3);
 	unsigned long flags = 0;
 	bool usb_in = false;
 
 
 	if (mtk_musb) {
-		if (__ratelimit(&ratelimit))
-			DBG(0, "is ready %d is_host %d power %d\n", mtk_musb->is_ready, mtk_musb->is_host,
-					mtk_musb->power);
+//		if (__ratelimit(&ratelimit))
+//			DBG(0, "is ready %d is_host %d power %d\n", mtk_musb->is_ready, mtk_musb->is_host,
+//					mtk_musb->power);
 	} else {
 		/* re issue delay work */
-		if (__ratelimit(&ratelimit))
-			DBG(0, "issue work after %d ms\n", CONN_WORK_DELAY);
+//		if (__ratelimit(&ratelimit))
+//			DBG(0, "issue work after %d ms\n", CONN_WORK_DELAY);
 		queue_delayed_work(mtk_musb->st_wq, &connection_work, msecs_to_jiffies(CONN_WORK_DELAY));
 		return;
 	}
@@ -441,8 +441,8 @@ void do_connection_work(struct work_struct *data)
 
 	if (!mtk_musb->is_ready) {
 		/* re issue work */
-		if (__ratelimit(&ratelimit))
-			DBG(0, "issue work after %d ms\n", CONN_WORK_DELAY);
+//		if (__ratelimit(&ratelimit))
+//			DBG(0, "issue work after %d ms\n", CONN_WORK_DELAY);
 		queue_delayed_work(mtk_musb->st_wq, &connection_work, msecs_to_jiffies(CONN_WORK_DELAY));
 		return;
 	}
@@ -1414,7 +1414,8 @@ static int mt_usb_dts_probe(struct platform_device *pdev)
 	int retval = 0;
 
 	/* enable uart log */
-	musb_uart_debug = 1;
+	/* disable it */
+	musb_uart_debug = 0;
 
 	DBG(0, "first_connect, check_delay_done to 0\n");
 	first_connect = 0;

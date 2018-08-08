@@ -108,7 +108,7 @@ static MTK_WCN_BOOL mtk_wcn_wmt_func_ctrl(ENUM_WMTDRV_TYPE_T type, ENUM_WMT_OPID
 #endif
 		pOp->op.au4OpData[0] = type;
 	if (WMTDRV_TYPE_WIFI == type)
-		pSignal->timeoutValue = 4000;
+		pSignal->timeoutValue = 5000;
 		/*donot block system server/Init/Netd from longer than 5s, in case of ANR happens */
 	else
 		pSignal->timeoutValue =

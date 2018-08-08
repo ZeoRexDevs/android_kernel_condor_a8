@@ -28,6 +28,7 @@
 
 /* #define TIMER_DEBUG */
 
+
 #ifdef TIMER_DEBUG
 #include <linux/timer.h>
 #include <linux/jiffies.h>
@@ -40,54 +41,8 @@
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-#include <mach/md32_ipi.h>
-#include <mach/md32_helper.h>
-#include <linux/irqchip/mtk-gic-extend.h>
-#endif
 
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-enum DOZE_T {
-	DOZE_DISABLED = 0,
-	DOZE_ENABLED = 1,
-	DOZE_WAKEUP = 2,
-};
-static enum DOZE_T doze_status = DOZE_DISABLED;
-#endif
 
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-static s8 ftp_enter_doze(struct i2c_client *client);
-static s8 ftp_exit_doze(struct i2c_client *client);
-
-enum TOUCH_IPI_CMD_T {
-	/* SCP->AP */
-	IPI_COMMAND_SA_GESTURE_TYPE,
-	/* AP->SCP */
-	IPI_COMMAND_AS_CUST_PARAMETER,
-	IPI_COMMAND_AS_ENTER_DOZEMODE,
-	IPI_COMMAND_AS_ENABLE_GESTURE,
-	IPI_COMMAND_AS_GESTURE_SWITCH,
-};
-
-struct Touch_Cust_Setting {
-	u32 i2c_num;
-	u32 int_num;
-	u32 io_int;
-	u32 io_rst;
-};
-
-struct Touch_IPI_Packet {
-	u32 cmd;
-	union {
-		u32 data;
-		struct Touch_Cust_Setting tcs;
-	} param;
-};
-
-static bool tpd_scp_doze_en;
-/*static bool tpd_scp_doze_en = true;*/
-DEFINE_MUTEX(i2c_access);
-#endif
 
 #define TPD_SUPPORT_POINTS	5
 
@@ -145,6 +100,14 @@ unsigned int touch_irq = 0;
 
 #define TPD_RESET_ISSUE_WORKAROUND
 #define TPD_MAX_RESET_COUNT	3
+
+//#define GTP_GPIO_AS_INT(pin) tpd_gpio_as_int(pin)
+//#define GTP_GPIO_OUTPUT(pin, level) tpd_gpio_output(pin, level)
+
+#define SWITCH_OFF                  0
+#define SWITCH_ON                   1
+
+static int power_flag;
 
 #ifdef TIMER_DEBUG
 
@@ -241,7 +204,7 @@ static struct i2c_driver tpd_i2c_driver = {
 	.id_table = ft5x0x_tpd_id,
 	.detect = tpd_i2c_detect,
 };
-
+#if 0
 static int of_get_ft5x0x_platform_data(struct device *dev)
 {
 	/*int ret, num;*/
@@ -268,82 +231,9 @@ static int of_get_ft5x0x_platform_data(struct device *dev)
 	TPD_DMESG("g_vproc_vsel_gpio_number %d\n", tpd_int_gpio_number);
 	return 0;
 }
-
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-
-void tpd_scp_wakeup_enable(bool en)
-{
-	tpd_scp_doze_en = en;
-}
-
-void tpd_enter_doze(void)
-{
-
-}
-static ssize_t show_scp_ctrl(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	return 0;
-}
-static ssize_t store_scp_ctrl(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
-{
-	unsigned long cmd;
-	/*struct Touch_IPI_Packet ipi_pkt;*/
-
-	if (kstrtoul(buf, 10, &cmd)) {
-		TPD_DEBUG("[SCP_CTRL]: Invalid values\n");
-		return -EINVAL;
-	}
-
-	TPD_DEBUG("SCP_CTRL: Command=%lu", cmd);
-	switch (cmd) {
-	case 1:
-	    /* make touch in doze mode */
-	    tpd_scp_wakeup_enable(true);
-	    tpd_suspend(NULL);
-	    break;
-	case 2:
-	    tpd_resume(NULL);
-	    break;
-		/*case 3:
-	    // emulate in-pocket on
-	    ipi_pkt.cmd = IPI_COMMAND_AS_GESTURE_SWITCH,
-	    ipi_pkt.param.data = 1;
-		md32_ipi_send(IPI_TOUCH, &ipi_pkt, sizeof(ipi_pkt), 0);
-	    break;
-	case 4:
-	    // emulate in-pocket off
-	    ipi_pkt.cmd = IPI_COMMAND_AS_GESTURE_SWITCH,
-	    ipi_pkt.param.data = 0;
-		md32_ipi_send(IPI_TOUCH, &ipi_pkt, sizeof(ipi_pkt), 0);
-	    break;*/
-	case 5:
-		{
-				struct Touch_IPI_Packet ipi_pkt;
-
-				ipi_pkt.cmd = IPI_COMMAND_AS_CUST_PARAMETER;
-			    ipi_pkt.param.tcs.i2c_num = 0;/* shuold be modify according your hardware design*/
-			ipi_pkt.param.tcs.int_num = get_hardware_irq(touch_irq);
-				ipi_pkt.param.tcs.io_int = tpd_int_gpio_number;
-			ipi_pkt.param.tcs.io_rst = tpd_rst_gpio_number;
-			if (md32_ipi_send(IPI_TOUCH, &ipi_pkt, sizeof(ipi_pkt), 0) < 0)
-				TPD_DEBUG("[TOUCH] IPI cmd failed (%d)\n", ipi_pkt.cmd);
-
-			break;
-		}
-	default:
-	    TPD_DEBUG("[SCP_CTRL] Unknown command");
-	    break;
-	}
-
-	return size;
-}
-static DEVICE_ATTR(tpd_scp_ctrl, 0664, show_scp_ctrl, store_scp_ctrl);
 #endif
 
 static struct device_attribute *ft5x0x_attrs[] = {
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-	&dev_attr_tpd_scp_ctrl,
-#endif
 };
 
 
@@ -360,7 +250,7 @@ static void tpd_down(int x, int y, int p)
 #ifdef TPD_SOLVE_CHARGING_ISSUE
 	if (0 != x) {
 #else
-	{
+	{  
 #endif
 		TPD_DEBUG("%s x:%d y:%d p:%d\n", __func__, x, y, p);
 		input_report_key(tpd->dev, BTN_TOUCH, 1);
@@ -391,7 +281,7 @@ static void tpd_up(int x, int y)
 		input_mt_sync(tpd->dev);
 	}
 }
-
+#if 0
 /*Coordination mapping*/
 static void tpd_calibrate_driver(int *x, int *y)
 {
@@ -401,7 +291,7 @@ static void tpd_calibrate_driver(int *x, int *y)
 	*y = ((tpd_def_calmat[3] * (*x)) + (tpd_def_calmat[4] * (*y)) + (tpd_def_calmat[5])) >> 12;
 	*x = tx;
 }
-
+#endif 
 static int tpd_touchinfo(struct touch_info *cinfo, struct touch_info *pinfo)
 {
 	int i = 0;
@@ -413,10 +303,11 @@ static int tpd_touchinfo(struct touch_info *cinfo, struct touch_info *pinfo)
 	i2c_smbus_read_i2c_block_data(i2c_client, 0x08, 8, &(data[8]));
 	i2c_smbus_read_i2c_block_data(i2c_client, 0x10, 8, &(data[16]));
 	i2c_smbus_read_i2c_block_data(i2c_client, 0x18, 8, &(data[24]));
-	i2c_smbus_read_i2c_block_data(i2c_client, 0xa6, 1, &(data[32]));
+	i2c_smbus_read_i2c_block_data(i2c_client, 0x20, 8, &(data[32]));
+	i2c_smbus_read_i2c_block_data(i2c_client, 0xa6, 1, &(data[40]));
 	i2c_smbus_read_i2c_block_data(i2c_client, 0x88, 1, &report_rate);
 
-	TPD_DEBUG("FW version=%x]\n", data[32]);
+	TPD_DEBUG("FW version=%x]\n", data[40]);
 
 #if 0
 	TPD_DEBUG("received raw data from touch panel as following:\n");
@@ -454,8 +345,9 @@ static int tpd_touchinfo(struct touch_info *cinfo, struct touch_info *pinfo)
 	TPD_DEBUG("Number of touch points = %d\n", cinfo->count);
 
 	TPD_DEBUG("Procss raw data...\n");
-
-	for (i = 0; i < cinfo->count; i++) {
+#if 1
+	for (i = 0; i < cinfo->count; i++) 
+	{
 		cinfo->p[i] = (data[3 + 6 * i] >> 6) & 0x0003; /* event flag */
 
 		/*get the X coordinate, 2 bytes*/
@@ -476,12 +368,47 @@ static int tpd_touchinfo(struct touch_info *cinfo, struct touch_info *pinfo)
 		low_byte &= 0x00FF;
 		cinfo->y[i] = high_byte | low_byte;
 
-		TPD_DEBUG(" cinfo->x[%d] = %d, cinfo->y[%d] = %d, cinfo->p[%d] = %d\n", i,
-		cinfo->x[i], i, cinfo->y[i], i, cinfo->p[i]);
+//		TPD_DEBUG(" tpd_dts_data.tpd_resolution[0] %d\n", tpd_dts_data.tpd_resolution[0]);
+//		TPD_DEBUG(" tpd_dts_data.tpd_resolution[1] %d\n", tpd_dts_data.tpd_resolution[1]);
+		TPD_DEBUG(" tpd_key_dim_local[0].key_x %d\n", tpd_dts_data.tpd_key_dim_local[0].key_x);
+		TPD_DEBUG(" tpd_key_dim_local[0].key_y %d\n", tpd_dts_data.tpd_key_dim_local[0].key_y);
+
+//		cinfo->x[i] = tpd_dts_data.tpd_resolution[0] - cinfo->x[i];
+//		cinfo->y[i] = tpd_dts_data.tpd_resolution[1] - cinfo->y[i];
+		
+		TPD_DEBUG(" cinfo->x[%d] = %d, cinfo->y[%d] = %d, cinfo->p[%d] = %d\n", i,cinfo->x[i], i, cinfo->y[i], i, cinfo->p[i]);
 	}
+#else
+		for (i = 0; i < cinfo->count; i++) 
+		{
+			cinfo->p[i] = data[3+6*i] >> 6; //event flag 
+			//cinfo->id[i] = data[3+6*i+2]>>4; //touch id
+			/*get the X coordinate, 2 bytes*/
+			high_byte = data[3+6*i];
+			high_byte <<= 8;
+			high_byte &= 0x0f00;
+			low_byte = data[3+6*i + 1];
+			cinfo->x[i] = high_byte |low_byte;
 
+			high_byte = data[3+6*i+2];
+			high_byte <<= 8;
+			high_byte &= 0x0f00;
+			low_byte = data[3+6*i+3];
+			cinfo->y[i] = high_byte |low_byte;		
+			//cinfo->count++;
+			
+			TPD_DEBUG(" tpd_dts_data.tpd_resolution[0] %d\n", tpd_dts_data.tpd_resolution[0]);
+			TPD_DEBUG(" tpd_dts_data.tpd_resolution[1] %d\n", tpd_dts_data.tpd_resolution[1]);
 
-
+			TPD_DEBUG(" tpd_key_dim_local %d %d \n", tpd_dts_data.tpd_key_dim_local[0].key_x,tpd_dts_data.tpd_key_dim_local[0].key_y);
+			
+			cinfo->x[i] = tpd_dts_data.tpd_resolution[0] - cinfo->x[i];
+			cinfo->y[i] = tpd_dts_data.tpd_resolution[1] - cinfo->y[i];
+			
+			TPD_DEBUG(" cinfo->x[%d] = %d, cinfo->y[%d] = %d, cinfo->p[%d] = %d\n", i,
+			cinfo->x[i], i, cinfo->y[i], i, cinfo->p[i]);	
+		}		
+#endif 
 
 #ifdef CONFIG_TPD_HAVE_CALIBRATION
 	for (i = 0; i < cinfo->count; i++) {
@@ -594,6 +521,7 @@ static irqreturn_t tpd_eint_interrupt_handler(int irq, void *dev_id)
 	wake_up_interruptible(&waiter);
 	return IRQ_HANDLED;
 }
+#if 0
 static int tpd_irq_registration(void)
 {
 	struct device_node *node = NULL;
@@ -612,6 +540,76 @@ static int tpd_irq_registration(void)
 	}
 	return 0;
 }
+#endif
+static int tpd_irq_registration(void)
+{
+#if 1
+
+	struct device_node *node = NULL;
+	
+	int ret = 0;
+	u32 ints[2] = { 0, 0 };
+
+	//GTP_INFO("Device Tree Tpd_irq_registration!");
+
+	node = of_find_matching_node(node, touch_of_match);
+	if (node) 
+	{
+		of_property_read_u32_array(node, "debounce", ints, ARRAY_SIZE(ints));
+		gpio_set_debounce(ints[0], ints[1]);
+
+		touch_irq = irq_of_parse_and_map(node, 0);
+		ret =request_irq(touch_irq, (irq_handler_t) tpd_eint_interrupt_handler, IRQF_TRIGGER_FALLING,"TOUCH_PANEL-eint", NULL);
+		if (ret > 0) 
+		{
+			ret = -1;
+	//		GTP_ERROR("tpd request_irq IRQ LINE NOT AVAILABLE!.");
+		}
+	} else {
+	//	GTP_ERROR("tpd request_irq can not find touch eint device node!.");
+		ret = -1;
+	}
+	//GTP_INFO("[%s]irq:%d, debounce:%d-%d:", __func__, touch_irq, ints[0], ints[1]);
+	#endif 
+	return ret;
+}
+
+
+#if !defined(CONFIG_MTK_LEGACY)
+void Ctp_power_switch(s32 state)
+{
+	int ret = 0;
+
+//	tpd_gpio_output(GTP_RST_PORT, 0);
+//	tpd_gpio_output(GTP_INT_PORT, 0);
+	msleep(20);
+
+	switch (state) {
+	case SWITCH_ON:
+		if (power_flag == 0) {
+			//GTP_DEBUG("Power switch on!");
+			ret = regulator_enable(tpd->reg);	/*enable regulator*/
+			if (ret)
+			//	GTP_ERROR("regulator_enable() failed!\n");
+			power_flag = 1;
+		} 
+		break;
+	case SWITCH_OFF:
+		if (power_flag == 1)
+		{
+		//	GTP_DEBUG("Power switch off!");
+			ret = regulator_disable(tpd->reg);	/*disable regulator*/
+			if (ret)
+		//		GTP_ERROR("regulator_disable() failed!\n");
+			power_flag = 0;
+		} 
+		break;
+	default:
+		//GTP_ERROR("Invalid power switch command!");
+		break;
+	}
+}
+#endif 
 static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int retval = TPD_OK;
@@ -620,7 +618,7 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	char data;
 
 	i2c_client = client;
-
+#if 0
 	of_get_ft5x0x_platform_data(&client->dev);
 	/* configure the gpio pins */
 	retval = gpio_request_one(tpd_rst_gpio_number, GPIOF_OUT_INIT_LOW,
@@ -651,10 +649,30 @@ static int tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	/* set INT mode */
 
 	gpio_direction_input(tpd_int_gpio_number);
+#endif 
+	Ctp_power_switch(SWITCH_ON);
+	msleep(20);
 
+	tpd_gpio_output(GTP_RST_PORT, 0); //tangh add 
+	msleep(50);
+	tpd_gpio_output(GTP_RST_PORT, 1); //tangh add 
+
+//tangh set eint part
+	tpd_gpio_as_int(GTP_INT_PORT);
+	msleep(50);
 	tpd_irq_registration();
+	thread = kthread_run(touch_event_handler, 0, TPD_DEVICE);
+	if (IS_ERR(thread)) {
+		retval = PTR_ERR(thread);
+		TPD_DMESG(TPD_DEVICE " failed to create kernel thread: %d\n", retval);
+	}
+
+	TPD_DMESG("Touch Panel Device Probe %s\n", (retval < TPD_OK) ? "FAIL" : "PASS");
+
+	
 	msleep(100);
 
+	printk("tangh :: tpd_probe \n");
 #ifdef CONFIG_FT_AUTO_UPGRADE_SUPPORT
 #ifdef CONFIG_MTK_I2C_EXTENSION
 	tpd_i2c_dma_va = (u8 *)dma_alloc_coherent(&client->dev, 4096, &tpd_i2c_dma_pa, GFP_KERNEL);
@@ -674,8 +692,8 @@ reset_proc:
 			goto reset_proc;
 		}
 #endif
-		gpio_free(tpd_rst_gpio_number);
-		gpio_free(tpd_int_gpio_number);
+		//gpio_free(tpd_rst_gpio_number);
+		//gpio_free(tpd_int_gpio_number);
 		return -1;
 	}
 	tpd_load_status = 1;
@@ -692,9 +710,12 @@ reset_proc:
 	tpd_auto_upgrade(client);
 	msleep(200);/* liuhuan */
 	/* Reset CTP */
-	gpio_direction_output(tpd_rst_gpio_number, 0);
+	tpd_gpio_output(GTP_RST_PORT, 0); //tangh add 
+	//gpio_direction_output(tpd_rst_gpio_number, 0);
 	msleep(20);/* liuhuan */
-	gpio_direction_output(tpd_rst_gpio_number, 1);
+	//gpio_direction_output(tpd_rst_gpio_number, 1);
+	tpd_gpio_output(GTP_RST_PORT, 1); //tangh add 
+	
 	/* msleep(50);//liuhuan */
 #endif
 	msleep(200);/* liuhuan */
@@ -707,13 +728,6 @@ reset_proc:
 
 	/* tpd_load_status = 1; */
 
-	thread = kthread_run(touch_event_handler, 0, TPD_DEVICE);
-	if (IS_ERR(thread)) {
-		retval = PTR_ERR(thread);
-		TPD_DMESG(TPD_DEVICE " failed to create kernel thread: %d\n", retval);
-	}
-
-	TPD_DMESG("Touch Panel Device Probe %s\n", (retval < TPD_OK) ? "FAIL" : "PASS");
 
 #ifdef TIMER_DEBUG
 	init_test_timer();
@@ -727,11 +741,6 @@ reset_proc:
 		TPD_DMESG(TPD_DEVICE " i2c_smbus_read_i2c_block_data version : %d\n", ver);
 	}
 
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-	retval = get_md32_semaphore(SEMAPHORE_TOUCH);
-	if (retval < 0)
-		pr_err("[TOUCH] HW semaphore reqiure timeout\n");
-#endif
 
 	return 0;
 }
@@ -752,8 +761,8 @@ static int tpd_remove(struct i2c_client *client)
 	}
 #endif				/* CONFIG_MTK_I2C_EXTENSION */
 #endif
-	gpio_free(tpd_rst_gpio_number);
-	gpio_free(tpd_int_gpio_number);
+	//gpio_free(tpd_rst_gpio_number);
+	//gpio_free(tpd_int_gpio_number);
 
 	return 0;
 }
@@ -763,7 +772,7 @@ static int tpd_local_init(void)
 	int retval;
 
 	TPD_DMESG("Focaltech FT5x0x I2C Touchscreen Driver...\n");
-	tpd->reg = regulator_get(tpd->tpd_dev, "vtouch");
+	tpd->reg = regulator_get(tpd->tpd_dev, "vgp1");
 	retval = regulator_set_voltage(tpd->reg, 2800000, 2800000);
 	if (retval != 0) {
 		TPD_DMESG("Failed to set reg-vgp6 voltage: %d\n", retval);
@@ -801,69 +810,6 @@ static int tpd_local_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-static s8 ftp_enter_doze(struct i2c_client *client)
-{
-	s8 ret = -1;
-	s8 retry = 0;
-	char gestrue_on = 0x01;
-	char gestrue_data;
-	int i;
-
-	pr_alert("[gesture] Entering doze mode...");
-
-	/* Enter gestrue recognition mode */
-	ret = i2c_smbus_write_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_on);
-	if (ret < 0) {
-		pr_err("[gesture] Failed to enter Doze %d", retry);
-		return ret;
-	}
-	msleep(30);
-
-	for (i = 0; i < 10; i++) {
-		i2c_smbus_read_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_data);
-		if (gestrue_data == 0x01) {
-			pr_alert("[gesture] FTP has been working in doze mode!");
-			return 0;
-		}
-		msleep(20);
-		ret = i2c_smbus_write_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_on);
-
-	}
-
-	return ret;
-}
-static s8 ftp_exit_doze(struct i2c_client *client)
-{
-	s8 ret = -1;
-	s8 retry = 0;
-	char gestrue_off = 0x00;
-	char gestrue_data;
-	int i;
-
-	pr_alert("[gesture] exiting doze mode...");
-
-	/* Enter gestrue recognition mode*/
-	ret = i2c_smbus_write_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_off);
-	if (ret < 0) {
-		pr_err("[gesture] Failed to exit Doze %d", retry);
-		return ret;
-	}
-	msleep(30);
-
-	for (i = 0; i < 10; i++) {
-		i2c_smbus_read_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_data);
-		if (gestrue_data == 0x00) {
-			pr_alert("[gesture] FTP has been working in normal mode!");
-			return 0;
-		}
-		msleep(20);
-		ret = i2c_smbus_write_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_off);
-	}
-
-	return ret;
-}
-#endif
 
 static void tpd_resume(struct device *h)
 {
@@ -871,162 +817,41 @@ static void tpd_resume(struct device *h)
 
 	TPD_DEBUG("TPD wake up\n");
 
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-	if (tpd_scp_doze_en) {
-		pr_alert("[gesture] tpd_resume: need enable sensor hub, and exit doze mode...");
-		retval = get_md32_semaphore(SEMAPHORE_TOUCH);
-		if (retval < 0) {
-			pr_err("[gesture] HW semaphore reqiure timeout\n");
-		} else {
-			struct Touch_IPI_Packet ipi_pkt = {.cmd = IPI_COMMAND_AS_ENABLE_GESTURE, .param.data = 0};
+	retval = regulator_enable(tpd->reg);
+	if (retval != 0)
+		TPD_DMESG("Failed to enable reg-vgp6: %d\n", retval);
 
-			retval = md32_ipi_send(IPI_TOUCH, &ipi_pkt, sizeof(ipi_pkt), 0);
-			if (retval < 0)
-				pr_err("[gesture] IPI cmd IPI_COMMAND_AS_ENABLE_GESTURE,param.data = 0  failed");
-			retval = ftp_exit_doze(i2c_client);
-			if (retval < 0)
-				pr_err("[gesture] FTP exit Doze mode failed\n");
-			else
-				doze_status = DOZE_DISABLED;
-		}
-		if (retval < 0) {
-			pr_alert("[gesture]TPD exit doze mode abnormally, so normal resume mode");
-			retval = regulator_enable(tpd->reg);
-			if (retval != 0)
-				pr_alert("[gesture] Failed to enable reg-vgp6: %d\n", retval);
+	msleep(100);
+	
+	tpd_gpio_output(GTP_RST_PORT, 0); //tangh add 
+	//gpio_direction_output(tpd_rst_gpio_number, 0);
+	msleep(20);
+	
+	tpd_gpio_output(GTP_RST_PORT, 1); //tangh add 
+	//gpio_direction_output(tpd_rst_gpio_number, 1);
+	msleep(20);
 
-			msleep(100);
-			gpio_direction_output(tpd_rst_gpio_number, 0);
-			msleep(20);
-			gpio_direction_output(tpd_rst_gpio_number, 1);
-			msleep(20);
-			enable_irq(touch_irq);
-		}
-	}	else {
-		pr_alert("[gesture] tpd_scp_doze_en false or doze_status disabled");
-#endif
 
-		retval = regulator_enable(tpd->reg);
-		if (retval != 0)
-			TPD_DMESG("Failed to enable reg-vgp6: %d\n", retval);
+	enable_irq(touch_irq);
 
-		msleep(100);
-
-		gpio_direction_output(tpd_rst_gpio_number, 0);
-		msleep(20);
-		gpio_direction_output(tpd_rst_gpio_number, 1);
-		msleep(20);
-		enable_irq(touch_irq);
-
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-	}
-#endif
 }
+
 
 static void tpd_suspend(struct device *h)
 {
 	int retval = TPD_OK;
 	static char data = 0x3;
 
-
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-	if (tpd_scp_doze_en) {
-		char gestrue_data;
-		/*char gestrue_cmd = 0x03;*/
-		static int scp_init_flag;
-
-		pr_alert("[gesture] tpd_suspend: need enable sensor hub, and enter doze mode...");
-		tpd_enter_doze();
+	TPD_DEBUG("TPD enter sleep\n");
 
 
-		/* pr_alert("[tpd_scp_doze]:init=%d en=%d", scp_init_flag, tpd_scp_doze_en); */
+	disable_irq(touch_irq);
+	i2c_smbus_write_i2c_block_data(i2c_client, 0xA5, 1, &data);  /* TP enter sleep mode */
 
-		mutex_lock(&i2c_access);
+	retval = regulator_disable(tpd->reg);
+	if (retval != 0)
+		TPD_DMESG("Failed to disable reg-vgp6: %d\n", retval);
 
-		retval = ftp_enter_doze(i2c_client);
-		if (retval < 0) {
-				pr_err("[gesture] FTP Enter Doze mode failed\n");
-		} else {
-			doze_status = DOZE_ENABLED;
-			if (scp_init_flag == 0) {
-				struct Touch_IPI_Packet ipi_pkt;
-
-				ipi_pkt.cmd = IPI_COMMAND_AS_CUST_PARAMETER;
-				ipi_pkt.param.tcs.i2c_num = 0;/* shuold be modify according your hardware design*/
-				ipi_pkt.param.tcs.int_num = get_hardware_irq(touch_irq);
-				ipi_pkt.param.tcs.io_int = tpd_int_gpio_number;
-				ipi_pkt.param.tcs.io_rst = tpd_rst_gpio_number;
-
-				pr_alert("[gesture]SEND CUST command :%d ", IPI_COMMAND_AS_CUST_PARAMETER);
-
-				retval = md32_ipi_send(IPI_TOUCH, &ipi_pkt, sizeof(ipi_pkt), 0);
-				if (retval < 0)
-					pr_err("[gesture] IPI cmd IPI_COMMAND_AS_CUST_PARAMETER failed");
-
-				msleep(20); /* delay added between continuous command */
-				/* Workaround if suffer MD32 reset */
-				/* scp_init_flag = 1; */
-			}
-
-			{
-				int retry = 5;
-				struct Touch_IPI_Packet ipi_pkt = {
-					.cmd = IPI_COMMAND_AS_ENABLE_GESTURE,
-					.param.data = 1
-				};
-
-				pr_alert("[gesture] SEND ENABLE GES command :%d ", IPI_COMMAND_AS_ENABLE_GESTURE);
-				/* check doze mode */
-				i2c_smbus_read_i2c_block_data(i2c_client, FT_GESTRUE_MODE_SWITCH_REG, 1, &gestrue_data);
-				pr_alert("========================>0x%x", gestrue_data);
-				msleep(20);
-				do {
-					if (md32_ipi_send(IPI_TOUCH, &ipi_pkt, sizeof(ipi_pkt), 1) == DONE)
-						break;
-					msleep(20);
-					pr_alert("[gesture] ==>retry=%d", retry);
-				} while (retry--);
-				if (retry <= 0) {
-					retval  = -1;
-					pr_err("[gesture]md32_ipi_send IPI_COMMAND_AS_ENABLE_GESTURE failed retry=%d",
-					retry);
-				}
-				/*while(release_md32_semaphore(SEMAPHORE_TOUCH) <= 0) {
-					//TPD_DEBUG("GTP release md32 sem failed\n");
-					pr_err("GTP release md32 sem failed\n");
-				}*/
-			}
-			retval = release_md32_semaphore(SEMAPHORE_TOUCH);
-			if (retval < 0)
-				pr_err("[gesture] HW semaphore release timeout\n");
-		}
-		if (retval < 0) {
-			pr_alert("[gesture]TPD enter doze mode abnormally, so enter sleep mode");
-
-			disable_irq(touch_irq);
-			i2c_smbus_write_i2c_block_data(i2c_client, 0xA5, 1, &data);  /* TP enter sleep mode */
-
-			retval = regulator_disable(tpd->reg);
-			if (retval != 0)
-				pr_alert("[gesture] Failed to disable reg-vgp6: %d\n", retval);
-		}
-
-		mutex_unlock(&i2c_access);
-	} else {
-		pr_alert("[gesture] tpd_scp_doze_en false\n");
-#endif
-		TPD_DEBUG("TPD enter sleep\n");
-
-		disable_irq(touch_irq);
-		i2c_smbus_write_i2c_block_data(i2c_client, 0xA5, 1, &data);  /* TP enter sleep mode */
-
-		retval = regulator_disable(tpd->reg);
-		if (retval != 0)
-			TPD_DMESG("Failed to disable reg-vgp6: %d\n", retval);
-
-#ifdef CONFIG_MTK_SENSOR_HUB_SUPPORT
-	}
-#endif
 
 }
 

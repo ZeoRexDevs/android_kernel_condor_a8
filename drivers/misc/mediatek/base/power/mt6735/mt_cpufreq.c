@@ -55,6 +55,7 @@
 #include "mt-plat/aee.h"
 
 /* project includes */
+#include "mt_gpufreq.h"
 #include "mach/mt_thermal.h"
 #include <mt-plat/mt_hotplug_strategy.h>
 /*#include "mach/mt_spm_idle.h"*/
